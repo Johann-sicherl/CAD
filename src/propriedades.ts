@@ -11,9 +11,25 @@ type Campo =
 
 const PLANOS: [string, string][] = (["XZ", "XY", "YZ"] as const).map((p) => [p, `Plano ${NOME_PLANO[p]} (${p})`]);
 
-function camposDe(f: Feature): Campo[] {
+/** Esboços disponíveis para a feature (os que vêm antes dela na árvore). */
+export type OpcaoEsboco = { id: string; nome: string };
+
+const FONTE: Campo = { tipo: "sel", caminho: "esboco", rotulo: "Perfil", opcoes: [] };
+
+function camposDe(f: Feature, esbocos: OpcaoEsboco[]): Campo[] {
+  const fonte: Campo = { ...FONTE, opcoes: [...esbocos.map((e): [string, string] => [e.id, `Esboço: ${e.nome}`]), ["", "Perfil rápido (sem esboço)"]] } as Campo;
   switch (f.tipo) {
+    case "esboco":
+      return [];
     case "extrusao": {
+      if (f.esboco) {
+        return [
+          { tipo: "sel", caminho: "operacao", rotulo: "Operação", opcoes: [["adicionar", "Adicionar material"], ["cortar", "Remover material"]] },
+          fonte,
+          { tipo: "titulo", rotulo: "Extrusão" },
+          { tipo: "num", caminho: "profundidade", rotulo: "Profundidade (− inverte)", unidade: "mm" },
+        ];
+      }
       const perfil: Campo[] = [
         { tipo: "titulo", rotulo: "Esboço" },
         { tipo: "sel", caminho: "plano", rotulo: "Plano", opcoes: PLANOS },
@@ -38,14 +54,24 @@ function camposDe(f: Feature): Campo[] {
       }
       return [
         { tipo: "sel", caminho: "operacao", rotulo: "Operação", opcoes: [["adicionar", "Adicionar material"], ["cortar", "Remover material"]] },
+        fonte,
         ...perfil,
         { tipo: "titulo", rotulo: "Extrusão" },
         { tipo: "num", caminho: "profundidade", rotulo: "Profundidade (− inverte)", unidade: "mm" },
       ];
     }
     case "revolucao":
+      if (f.esboco) {
+        return [
+          { tipo: "sel", caminho: "operacao", rotulo: "Operação", opcoes: [["adicionar", "Adicionar material"], ["cortar", "Remover material"]] },
+          fonte,
+          { tipo: "titulo", rotulo: "Eixo: 1ª linha de construção do esboço (ou eixo V)" },
+          { tipo: "num", caminho: "angulo", rotulo: "Ângulo", unidade: "°", passo: 15, min: 1 },
+        ];
+      }
       return [
         { tipo: "sel", caminho: "operacao", rotulo: "Operação", opcoes: [["adicionar", "Adicionar material"], ["cortar", "Remover material"]] },
+        fonte,
         { tipo: "sel", caminho: "plano", rotulo: "Plano do perfil", opcoes: PLANOS },
         { tipo: "num", caminho: "raioInterno", rotulo: "Raio interno", unidade: "mm", min: 0 },
         { tipo: "num", caminho: "largura", rotulo: "Largura radial", unidade: "mm", min: 0.01 },
@@ -86,6 +112,7 @@ export function renderizarPropriedades(
   erro: string | undefined,
   aoAlterar: (f: Feature, final: boolean) => void,
   aoExcluir: (f: Feature) => void,
+  esbocos: OpcaoEsboco[] = [],
 ) {
   painel.innerHTML = "";
   painel.classList.toggle("vazio", !f);
@@ -114,7 +141,7 @@ export function renderizarPropriedades(
     painel.appendChild(e);
   }
 
-  for (const c of camposDe(f)) {
+  for (const c of camposDe(f, esbocos)) {
     if (c.tipo === "titulo") {
       const h = document.createElement("h3");
       h.className = "prop-titulo";
@@ -129,15 +156,18 @@ export function renderizarPropriedades(
     if (c.tipo === "sel") {
       const s = document.createElement("select");
       for (const [v, r] of c.opcoes) s.add(new Option(r, v));
-      s.value = String(ler(f, c.caminho));
+      s.value = String(ler(f, c.caminho) ?? "");
       s.onchange = () => {
-        if (c.caminho === "perfil.tipo" && f.tipo === "extrusao") {
+        if (c.caminho === "esboco" && (f.tipo === "extrusao" || f.tipo === "revolucao")) {
+          if (s.value) f.esboco = s.value;
+          else delete f.esboco;
+        } else if (c.caminho === "perfil.tipo" && f.tipo === "extrusao") {
           f.perfil = structuredClone(PERFIL_PADRAO[s.value as Perfil["tipo"]]);
         } else {
           gravar(f, c.caminho, s.value);
         }
         aoAlterar(f, true);
-        renderizarPropriedades(painel, f, undefined, aoAlterar, aoExcluir); // campos podem mudar
+        renderizarPropriedades(painel, f, undefined, aoAlterar, aoExcluir, esbocos); // campos podem mudar
       };
       linha.appendChild(s);
     } else {
@@ -185,7 +215,7 @@ export function renderizarPropriedades(
   sup.onclick = () => {
     f.suprimida = !f.suprimida;
     aoAlterar(f, true);
-    renderizarPropriedades(painel, f, undefined, aoAlterar, aoExcluir);
+    renderizarPropriedades(painel, f, undefined, aoAlterar, aoExcluir, esbocos);
   };
   const exc = document.createElement("button");
   exc.className = "perigo";

@@ -22,6 +22,8 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Vite + TypeScript, sem framework de UI (DOM puro)
 - Kernel B-Rep: OpenCascade via `replicad` + `replicad-opencascadejs`, rodando em Web Worker
   (`src/kernel/worker.ts`); lógica pura em `src/kernel/regenerar.ts` (testável em Node)
+- Esboço (`src/esboco/`): solver PlaneGCS via `@salusoft89/planegcs` (WASM, LGPL) na thread da UI
+  (resposta imediata ao arrastar); geometria/operações puras e testadas em `scripts/teste-esboco.ts`
 - Visualização: Three.js (`src/viewport.ts`), Z para cima, render só quando algo muda
 - Modelo: lista de features serializada em JSON (`.cadt`), em `src/model.ts`
 - PWA (manifest + `public/sw.js`), deploy automático no GitHub Pages via `.github/workflows/deploy.yml`
@@ -39,6 +41,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 - **Tema claro** (fundo claro no viewport e painéis).
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
+- **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado): no esboço o botão
+  esquerdo desenha, o do meio arrasta a vista, o direito gira, a roda aproxima; atalhos de teclado
+  (L, R, C, A, S, P, T, D, O, M, V, Esc, Enter, Delete, Ctrl+Z/Y/S, F).
 - **Só três áreas de comando:** **Features**, **Sketch** e **Sheet Metal**. Nada de superfícies,
   soldas, simulação etc.
 - Layout de referência (genérico de CAD): barra superior com menus/ações rápidas → linha de ícones
@@ -63,7 +68,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
    flange de aresta; dobra por esboço; tabela material/espessura com fator K e raio de dobra;
    alívios de dobra e de canto; planificação e exportação **DXF** para corte.
 
-Fase atual: Fase 1 entregue (interface nova); próxima: **Fase 2**.
+Fase atual: Fases 1 e 2 entregues; próxima: **Fase 3** (features).
+Limitação conhecida da Fase 2: esboço em face guarda o plano da face no momento da criação
+(não acompanha a face se a peça mudar) — referência topológica fica para depois.
 
 ## Observações técnicas
 

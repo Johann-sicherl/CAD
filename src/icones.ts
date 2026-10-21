@@ -53,6 +53,10 @@ export const ICONES = {
   cota: svg(`<path d="M4 6v12M20 6v12"/><path d="M4 12h16M7 10l-3 2 3 2M17 10l3 2-3 2" stroke="${C}"/>`),
   relacao: svg(`<path d="M5 19 19 5"/><path d="M5 9h6M5 13h6" stroke="${C}"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="${C}"/>`),
 
+  selecionar: svg(`<path d="M6 3l12 9-5.5 1.2L15.5 20l-2.6 1.2-3-6.6L6 18z" stroke="${C}"/>`),
+  construcao: svg(`<path d="M4 20 20 4" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="6" stroke="${C}" stroke-dasharray="2 2.5"/>`),
+  concluir: svg(`<path d="M3 17l7 4 11-6-7-4z"/><path d="m9 9 3 3 7-8" stroke="${C}" stroke-width="2.2"/>`),
+
   // ---------- Sheet Metal ----------
   flangeBase: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M3 15v1.5l9 4 9-4V15" stroke="${C}"/>`),
   flangeAresta: svg(`<path d="M3 17l9 4 9-4-9-4z"/><path d="M12 13V5l9-4v12" stroke="${C}"/><path d="M12 13a2 2 0 0 0 0 0"/>`),

@@ -2,15 +2,19 @@
 // (OpenCascade via replicad). Não depende do navegador: roda no Web Worker e nos testes.
 
 import {
+  draw,
   drawCircle,
   drawPolysides,
   drawRoundedRectangle,
   drawRectangle,
   measureVolume,
+  Plane,
   type Drawing,
   type Shape3D,
 } from "replicad";
-import type { Feature, FeatureExtrusao, FeatureRevolucao, Perfil } from "../model";
+import type { Feature, FeatureEsboco, FeatureExtrusao, FeatureRevolucao, Perfil, Vec3 } from "../model";
+import { aninhamento, encontrarLacos, mapaPontos, type Laco } from "../esboco/geometria";
+import { paraMundo, referencial } from "../esboco/referencial";
 
 export interface ErroFeature {
   id: string;
@@ -22,6 +26,8 @@ export interface MalhaPeca {
   normais: Float32Array;
   triangulos: Uint32Array;
   arestas: Float32Array; // pares de pontos (x,y,z) formando segmentos
+  /** Faces B-Rep: trincas (início, quantidade, id) em índices de `triangulos`. */
+  faces: Uint32Array;
 }
 
 export interface ResultadoRegeneracao {
@@ -41,6 +47,74 @@ function desenharPerfil(p: Perfil): Drawing {
     case "poligono":
       return drawPolysides(p.diametro / 2, Math.max(3, Math.round(p.lados)));
   }
+}
+
+// ---------- perfis a partir de esboço ----------
+
+function desenhoDoLaco(l: Laco): Drawing {
+  if (l.tipo === "circulo") return drawCircle(l.r).translate(l.c.x, l.c.y);
+  const ts = l.trechos;
+  const ini = ts[0].a;
+  const pen = draw([ini.x, ini.y]);
+  ts.forEach((t, i) => {
+    // o último trecho termina exatamente no início (pontos coincidentes podem diferir no 1e-9)
+    const b = i === ts.length - 1 ? ini : t.b;
+    if (t.tipo === "linha") pen.lineTo([b.x, b.y]);
+    else if (t.tipo === "arco") pen.threePointsArcTo([b.x, b.y], [t.meio.x, t.meio.y]);
+    else pen.cubicBezierCurveTo([b.x, b.y], [t.c1.x, t.c1.y], [t.c2.x, t.c2.y]);
+  });
+  return pen.close();
+}
+
+/** Contornos do esboço → região plana: externos somam, internos viram furos (ilhas voltam a somar). */
+export function desenhoDoEsboco(esb: FeatureEsboco): Drawing {
+  const lacos = encontrarLacos(esb);
+  const prof = aninhamento(lacos);
+  let res: Drawing | null = null;
+  const niveis = [...new Set(prof)].sort((a, b) => a - b);
+  for (const n of niveis) {
+    lacos.forEach((l, i) => {
+      if (prof[i] !== n) return;
+      const d = desenhoDoLaco(l);
+      res = n % 2 === 0 ? (res ? res.fuse(d) : d) : res!.cut(d);
+    });
+  }
+  return res!;
+}
+
+function planoDoEsboco(esb: FeatureEsboco): Plane {
+  const r = referencial(esb.suporte);
+  return new Plane(r.origem, r.x, r.normal);
+}
+
+function esbocoDe(f: FeatureExtrusao | FeatureRevolucao, anteriores: Map<string, FeatureEsboco>): FeatureEsboco {
+  const e = anteriores.get(f.esboco!);
+  if (!e) throw new Error("O esboço desta feature não existe, está suprimido ou vem depois dela na árvore.");
+  return e;
+}
+
+function extrudarEsboco(f: FeatureExtrusao, esb: FeatureEsboco): Shape3D {
+  if (f.profundidade === 0) throw new Error("Profundidade não pode ser zero.");
+  const sk = desenhoDoEsboco(esb).sketchOnPlane(planoDoEsboco(esb)) as unknown as { extrude(d: number): Shape3D };
+  return sk.extrude(f.profundidade);
+}
+
+function revolverEsboco(f: FeatureRevolucao, esb: FeatureEsboco): Shape3D {
+  const r = referencial(esb.suporte);
+  // eixo: primeira linha de construção do esboço; sem ela, o eixo vertical (V) do esboço
+  const pts = mapaPontos(esb);
+  const lc = esb.geos.find((g) => g.tipo === "linha" && g.construcao);
+  let origem: Vec3 = r.origem, dir: Vec3 = r.y;
+  if (lc && lc.tipo === "linha") {
+    const a = pts.get(lc.p1)!, b = pts.get(lc.p2)!;
+    origem = paraMundo(r, a.x, a.y);
+    const pb = paraMundo(r, b.x, b.y);
+    dir = [pb[0] - origem[0], pb[1] - origem[1], pb[2] - origem[2]];
+  }
+  const sk = desenhoDoEsboco(esb).sketchOnPlane(planoDoEsboco(esb)) as unknown as {
+    revolve(e: Vec3, o: { origin: Vec3; angle: number }): Shape3D;
+  };
+  return sk.revolve(dir, { origin: origem, angle: Math.min(360, Math.max(1, f.angulo)) });
 }
 
 function solidoExtrusao(f: FeatureExtrusao): Shape3D {
@@ -68,14 +142,20 @@ function solidoRevolucao(f: FeatureRevolucao): Shape3D {
 export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   let peca: Shape3D | null = null;
+  const esbocos = new Map<string, FeatureEsboco>();
 
   for (const f of features) {
     if (f.suprimida) continue;
     try {
       switch (f.tipo) {
+        case "esboco":
+          esbocos.set(f.id, f); // não gera sólido; fica disponível para as features seguintes
+          break;
         case "extrusao":
         case "revolucao": {
-          const novo = f.tipo === "extrusao" ? solidoExtrusao(f) : solidoRevolucao(f);
+          const novo = f.esboco
+            ? f.tipo === "extrusao" ? extrudarEsboco(f, esbocoDe(f, esbocos)) : revolverEsboco(f, esbocoDe(f, esbocos))
+            : f.tipo === "extrusao" ? solidoExtrusao(f) : solidoRevolucao(f);
           if (f.operacao === "adicionar") {
             peca = peca ? peca.fuse(novo) : novo;
           } else {
@@ -119,6 +199,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
       normais: Float32Array.from(m.normals),
       triangulos: Uint32Array.from(m.triangles),
       arestas: Float32Array.from(a.lines),
+      faces: Uint32Array.from(m.faceGroups.flatMap((g) => [g.start, g.count, g.faceId])),
     },
     erros,
     volume,

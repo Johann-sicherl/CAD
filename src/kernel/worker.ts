@@ -43,7 +43,7 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
       const m = resultado.malha;
       enviar(
         { tipo: "regenerado", seq: p.seq, resultado, ms },
-        m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer] : [],
+        m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer] : [],
       );
     } else {
       enviar({ tipo: "exportado", seq: p.seq, blob: exportar(p.formato) });
