@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#15191e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icone.svg" type="image/svg+xml" />
+    <title>CAD Tablet</title>
+  </head>
+  <body>
+    <header class="barra-topo">
+      <div class="marca"><span class="logo">◆</span> CAD Tablet</div>
+      <input id="nome-doc" class="nome-doc" aria-label="Nome da peça" />
+      <div class="acoes">
+        <button id="btn-desfazer" title="Desfazer">↶</button>
+        <button id="btn-refazer" title="Refazer">↷</button>
+        <span class="sep"></span>
+        <button id="btn-novo">Nova</button>
+        <button id="btn-abrir">Abrir</button>
+        <button id="btn-salvar">Salvar</button>
+        <button id="btn-step" class="destaque">STEP</button>
+        <button id="btn-stl">STL</button>
+      </div>
+    </header>
+
+    <main class="area">
+      <aside class="lateral">
+        <section class="ferramentas">
+          <button data-nova="extrusao" data-op="adicionar"><span class="ic">⬆</span>Extrusão</button>
+          <button data-nova="extrusao" data-op="cortar"><span class="ic">⬇</span>Corte</button>
+          <button data-nova="revolucao" data-op="adicionar"><span class="ic">⟳</span>Revolução</button>
+          <button data-nova="filete"><span class="ic">◜</span>Filete</button>
+          <button data-nova="chanfro"><span class="ic">◸</span>Chanfro</button>
+        </section>
+        <h2 class="titulo-secao">Árvore de features</h2>
+        <ol id="arvore" class="arvore"></ol>
+      </aside>
+
+      <section class="viewport-wrap">
+        <div id="viewport" class="viewport"></div>
+        <div class="vistas">
+          <button data-vista="iso">Iso</button>
+          <button data-vista="frente">Frente</button>
+          <button data-vista="topo">Topo</button>
+          <button data-vista="direita">Direita</button>
+          <button id="btn-enquadrar">Enquadrar</button>
+        </div>
+        <div id="carregando" class="carregando">Carregando kernel geométrico…</div>
+      </section>
+
+      <aside id="propriedades" class="propriedades vazio">
+        <p class="dica">Toque numa feature da árvore para editar suas cotas.</p>
+      </aside>
+    </main>
+
+    <footer class="status">
+      <span id="st-kernel">Kernel: iniciando</span>
+      <span id="st-volume"></span>
+      <span id="st-tempo"></span>
+    </footer>
+
+    <input type="file" id="arquivo" accept=".cadt,.json" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

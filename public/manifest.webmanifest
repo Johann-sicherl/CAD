@@ -1,0 +1,14 @@
+{
+  "name": "CAD Tablet",
+  "short_name": "CAD",
+  "description": "CAD paramétrico simplificado para tablet",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#15191e",
+  "theme_color": "#15191e",
+  "icons": [
+    { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
