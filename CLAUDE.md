@@ -27,8 +27,12 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - PWA (manifest + `public/sw.js`), deploy automático no GitHub Pages via `.github/workflows/deploy.yml`
 - Unidade: **mm** (sistema MMGS)
 
-Comandos: `npm run dev` · `npm run check` (tsc) · `npm run teste` (kernel em Node) · `npm run build`.
-Antes de cada commit: `npm run check && npm run teste && npm run build` devem passar.
+Gerenciador de pacotes: **pnpm** (não usar npm; segurança em `pnpm-workspace.yaml`:
+scripts de instalação bloqueados exceto `onlyBuiltDependencies`, `minimumReleaseAge` de 3 dias).
+Nova dependência só com justificativa, de projeto conhecido, e revisando o `pnpm-lock.yaml`.
+
+Comandos: `pnpm dev` · `pnpm check` (tsc) · `pnpm teste` (kernel em Node) · `pnpm build`.
+Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 
 ## Decisões de produto (definidas pelo Johann)
 
@@ -59,7 +63,7 @@ Antes de cada commit: `npm run check && npm run teste && npm run build` devem pa
    flange de aresta; dobra por esboço; tabela material/espessura com fator K e raio de dobra;
    alívios de dobra e de canto; planificação e exportação **DXF** para corte.
 
-Fase atual: **iniciar a Fase 1**.
+Fase atual: Fase 1 entregue (interface nova); próxima: **Fase 2**.
 
 ## Observações técnicas
 

@@ -19,13 +19,31 @@ Projeto próprio e independente: o fluxo de trabalho (esboço → feature → á
 
 ## Rodar no computador
 
+Requer Node 22+ e o gerenciador de pacotes **pnpm** (`corepack enable` instala a versão
+fixada em `package.json`).
+
 ```bash
-npm install
-npm run dev        # abre em http://localhost:5173 (e na rede local, para testar no tablet)
-npm run check      # verificação de tipos
-npm run teste      # testa o kernel em Node (volumes da peça exemplo)
-npm run build      # gera a versão de produção em dist/
+pnpm install       # instala exatamente as versões travadas em pnpm-lock.yaml
+pnpm dev           # abre em http://localhost:5173 (e na rede local, para testar no tablet)
+pnpm check         # verificação de tipos
+pnpm teste         # testa o kernel em Node (volumes da peça exemplo)
+pnpm build         # gera a versão de produção em dist/
 ```
+
+## Dependências
+
+Usamos **pnpm** em vez de npm por segurança contra pacotes maliciosos
+(configuração em `pnpm-workspace.yaml`):
+
+- **Scripts de instalação bloqueados**: só os pacotes listados em `onlyBuiltDependencies`
+  (hoje apenas o `esbuild`) podem executar código durante a instalação.
+- **Versões novas demais são recusadas**: `minimumReleaseAge` exige que uma versão tenha
+  pelo menos 3 dias de publicada; pacotes comprometidos costumam ser removidos antes disso.
+- **Versões travadas**: `pnpm-lock.yaml` fixa versão e hash de cada pacote; o deploy usa
+  `pnpm install --frozen-lockfile`, que falha se algo não bater.
+
+Regras: poucas dependências, só de projetos conhecidos; revisar mudanças no `pnpm-lock.yaml`;
+rodar `pnpm audit` de vez em quando.
 
 ## Publicar no tablet (GitHub Pages)
 
@@ -44,7 +62,9 @@ src/
   kernel/cliente.ts      ponte UI ↔ worker
   viewport.ts            visualização 3D (Three.js) e gestos de toque
   propriedades.ts        painel de edição das cotas
-  main.ts                interface, histórico, arquivos
+  comandos.ts            abas Features / Sketch / Sheet Metal e seus comandos
+  icones.ts              ícones SVG próprios
+  main.ts                interface, árvore, histórico, arquivos
 scripts/teste-kernel.ts  teste do kernel em Node
 ```
 
