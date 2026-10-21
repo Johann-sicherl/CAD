@@ -1,0 +1,76 @@
+// Definição das abas de comando (Features / Sketch / Sheet Metal) e dos seus botões.
+// Comandos com `fase` ainda não existem: aparecem desabilitados e avisam quando chegam.
+
+import type { NomeIcone } from "./icones";
+
+export type IdAba = "features" | "sketch" | "chapa";
+
+export interface Comando {
+  id: string;
+  rotulo: string;
+  icone: NomeIcone;
+  dica: string;
+  /** Fase do roteiro em que o comando será implementado (ausente = já disponível). */
+  fase?: number;
+  /** Comandos da mesma aba são separados em grupos por este campo. */
+  grupo: number;
+}
+
+export interface Aba {
+  id: IdAba;
+  rotulo: string;
+  comandos: Comando[];
+}
+
+export const ABAS: Aba[] = [
+  {
+    id: "features",
+    rotulo: "Features",
+    comandos: [
+      { id: "extrusao", rotulo: "Extrusão", icone: "extrusao", dica: "Adiciona material extrudando um perfil", grupo: 0 },
+      { id: "revolucao", rotulo: "Revolução", icone: "revolucao", dica: "Adiciona material girando um perfil em torno de um eixo", grupo: 0 },
+      { id: "corte", rotulo: "Corte extrudado", icone: "corte", dica: "Remove material extrudando um perfil", grupo: 1 },
+      { id: "corte-revolucao", rotulo: "Corte revolução", icone: "corteRevolucao", dica: "Remove material girando um perfil", grupo: 1 },
+      { id: "filete", rotulo: "Filete", icone: "filete", dica: "Arredonda arestas", grupo: 2 },
+      { id: "chanfro", rotulo: "Chanfro", icone: "chanfro", dica: "Chanfra arestas", grupo: 2 },
+      { id: "padrao-linear", rotulo: "Padrão linear", icone: "padraoLinear", dica: "Repete features em linha", grupo: 3, fase: 3 },
+      { id: "padrao-circular", rotulo: "Padrão circular", icone: "padraoCircular", dica: "Repete features em torno de um eixo", grupo: 3, fase: 3 },
+      { id: "espelhar", rotulo: "Espelhar", icone: "espelhar", dica: "Espelha features em relação a um plano", grupo: 3, fase: 3 },
+      { id: "casca", rotulo: "Casca", icone: "casca", dica: "Esvazia o sólido com espessura constante", grupo: 4, fase: 3 },
+      { id: "nervura", rotulo: "Nervura", icone: "nervura", dica: "Cria uma nervura a partir de um esboço aberto", grupo: 4, fase: 3 },
+      { id: "furo", rotulo: "Furo assistido", icone: "furo", dica: "Furos passantes, escareados, rebaixados e roscados", grupo: 4, fase: 3 },
+    ],
+  },
+  {
+    id: "sketch",
+    rotulo: "Sketch",
+    comandos: [
+      { id: "esboco", rotulo: "Esboço", icone: "esboco", dica: "Abre um esboço num plano ou face", grupo: 0, fase: 2 },
+      { id: "linha", rotulo: "Linha", icone: "linha", dica: "Linha por dois pontos", grupo: 1, fase: 2 },
+      { id: "retangulo", rotulo: "Retângulo", icone: "retangulo", dica: "Retângulo por cantos opostos", grupo: 1, fase: 2 },
+      { id: "circulo", rotulo: "Círculo", icone: "circulo", dica: "Círculo por centro e raio", grupo: 1, fase: 2 },
+      { id: "arco", rotulo: "Arco", icone: "arco", dica: "Arco por três pontos", grupo: 1, fase: 2 },
+      { id: "rasgo", rotulo: "Rasgo", icone: "rasgo", dica: "Rasgo reto (oblongo)", grupo: 1, fase: 2 },
+      { id: "poligono", rotulo: "Polígono", icone: "poligono", dica: "Polígono regular", grupo: 1, fase: 2 },
+      { id: "spline", rotulo: "Spline", icone: "spline", dica: "Curva suave por pontos", grupo: 1, fase: 2 },
+      { id: "aparar", rotulo: "Aparar", icone: "aparar", dica: "Apaga trechos entre interseções", grupo: 2, fase: 2 },
+      { id: "offset", rotulo: "Offset", icone: "offset", dica: "Copia entidades a uma distância", grupo: 2, fase: 2 },
+      { id: "espelhar-esboco", rotulo: "Espelhar", icone: "espelharEsboco", dica: "Espelha entidades em torno de uma linha", grupo: 2, fase: 2 },
+      { id: "cota", rotulo: "Cota", icone: "cota", dica: "Cota inteligente (linear, radial, angular)", grupo: 3, fase: 2 },
+      { id: "relacao", rotulo: "Relação", icone: "relacao", dica: "Coincidente, horizontal, paralelo, tangente…", grupo: 3, fase: 2 },
+    ],
+  },
+  {
+    id: "chapa",
+    rotulo: "Sheet Metal",
+    comandos: [
+      { id: "flange-base", rotulo: "Flange base", icone: "flangeBase", dica: "Chapa a partir de um esboço fechado", grupo: 0, fase: 4 },
+      { id: "flange-aresta", rotulo: "Flange de aresta", icone: "flangeAresta", dica: "Dobra uma aba a partir de uma aresta", grupo: 0, fase: 4 },
+      { id: "dobra", rotulo: "Dobra por esboço", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha", grupo: 0, fase: 4 },
+      { id: "alivio", rotulo: "Alívios", icone: "alivio", dica: "Alívios de dobra e de canto", grupo: 1, fase: 4 },
+      { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, fator K e raio", grupo: 1, fase: 4 },
+      { id: "planificar", rotulo: "Planificar", icone: "planificar", dica: "Mostra a chapa planificada", grupo: 2, fase: 4 },
+      { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Planificado em DXF para corte", grupo: 2, fase: 4 },
+    ],
+  },
+];

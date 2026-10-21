@@ -3,51 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#15191e" />
+    <meta name="theme-color" content="#eef1f4" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icone.svg" type="image/svg+xml" />
     <title>CAD Tablet</title>
   </head>
   <body>
+    <!-- 1. barra superior: menu de arquivo + ações rápidas + nome da peça -->
     <header class="barra-topo">
-      <div class="marca"><span class="logo">◆</span> CAD Tablet</div>
-      <input id="nome-doc" class="nome-doc" aria-label="Nome da peça" />
-      <div class="acoes">
-        <button id="btn-desfazer" title="Desfazer">↶</button>
-        <button id="btn-refazer" title="Refazer">↷</button>
+      <div class="marca"><img src="icone.svg" alt="" class="logo" /> CAD Tablet</div>
+      <div class="menu-wrap">
+        <button id="btn-menu" class="btn-ic" aria-haspopup="true" aria-expanded="false" title="Arquivo"></button>
+        <div id="menu-arquivo" class="menu" role="menu" hidden>
+          <button data-acao="novo" role="menuitem"></button>
+          <button data-acao="abrir" role="menuitem"></button>
+          <button data-acao="salvar" role="menuitem"></button>
+          <hr />
+          <button data-acao="step" role="menuitem"></button>
+          <button data-acao="stl" role="menuitem"></button>
+        </div>
+      </div>
+      <div class="rapidas">
+        <button data-acao="novo" class="btn-ic" title="Nova peça"></button>
+        <button data-acao="abrir" class="btn-ic" title="Abrir (.cadt)"></button>
+        <button data-acao="salvar" class="btn-ic" title="Salvar (.cadt)"></button>
         <span class="sep"></span>
-        <button id="btn-novo">Nova</button>
-        <button id="btn-abrir">Abrir</button>
-        <button id="btn-salvar">Salvar</button>
-        <button id="btn-step" class="destaque">STEP</button>
-        <button id="btn-stl">STL</button>
+        <button id="btn-desfazer" class="btn-ic" title="Desfazer (Ctrl+Z)"></button>
+        <button id="btn-refazer" class="btn-ic" title="Refazer (Ctrl+Y)"></button>
+      </div>
+      <input id="nome-doc" class="nome-doc" aria-label="Nome da peça" />
+      <div class="exportar">
+        <button data-acao="step" class="destaque">STEP</button>
+        <button data-acao="stl">STL</button>
       </div>
     </header>
 
+    <!-- 2. linha de ícones da aba ativa · 3. abas -->
+    <nav class="comandos">
+      <div id="faixa-comandos" class="faixa-comandos" role="toolbar"></div>
+      <div id="abas" class="abas" role="tablist"></div>
+    </nav>
+
     <main class="area">
-      <aside class="lateral">
-        <section class="ferramentas">
-          <button data-nova="extrusao" data-op="adicionar"><span class="ic">⬆</span>Extrusão</button>
-          <button data-nova="extrusao" data-op="cortar"><span class="ic">⬇</span>Corte</button>
-          <button data-nova="revolucao" data-op="adicionar"><span class="ic">⟳</span>Revolução</button>
-          <button data-nova="filete"><span class="ic">◜</span>Filete</button>
-          <button data-nova="chanfro"><span class="ic">◸</span>Chanfro</button>
-        </section>
-        <h2 class="titulo-secao">Árvore de features</h2>
+      <aside class="lateral" aria-label="Árvore do modelo">
         <ol id="arvore" class="arvore"></ol>
       </aside>
 
       <section class="viewport-wrap">
         <div id="viewport" class="viewport"></div>
-        <div class="vistas">
-          <button data-vista="iso">Iso</button>
-          <button data-vista="frente">Frente</button>
-          <button data-vista="topo">Topo</button>
-          <button data-vista="direita">Direita</button>
-          <button id="btn-enquadrar">Enquadrar</button>
-        </div>
+        <div id="barra-vistas" class="barra-vistas" role="toolbar" aria-label="Vistas"></div>
         <div id="carregando" class="carregando">Carregando kernel geométrico…</div>
+        <div id="aviso" class="aviso" role="status" hidden></div>
       </section>
 
       <aside id="propriedades" class="propriedades vazio">
@@ -56,9 +63,11 @@
     </main>
 
     <footer class="status">
+      <span id="st-estado" class="st-estado">Editando peça</span>
       <span id="st-kernel">Kernel: iniciando</span>
       <span id="st-volume"></span>
       <span id="st-tempo"></span>
+      <span class="st-dir" title="Sistema de unidades">MMGS (mm, g, s)</span>
     </footer>
 
     <input type="file" id="arquivo" accept=".cadt,.json" hidden />

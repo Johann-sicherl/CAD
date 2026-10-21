@@ -2,14 +2,14 @@
 // Campos numéricos têm botões − / + grandes, mais fáceis de acertar com o dedo.
 
 import type { Feature, Perfil } from "./model";
-import { ROTULO_TIPO } from "./model";
+import { NOME_PLANO, ROTULO_TIPO } from "./model";
 
 type Campo =
   | { tipo: "num"; caminho: string; rotulo: string; unidade?: string; passo?: number; min?: number }
   | { tipo: "sel"; caminho: string; rotulo: string; opcoes: [string, string][] }
   | { tipo: "titulo"; rotulo: string };
 
-const PLANOS: [string, string][] = [["XY", "Planta (XY)"], ["XZ", "Frontal (XZ)"], ["YZ", "Lateral (YZ)"]];
+const PLANOS: [string, string][] = (["XZ", "XY", "YZ"] as const).map((p) => [p, `Plano ${NOME_PLANO[p]} (${p})`]);
 
 function camposDe(f: Feature): Campo[] {
   switch (f.tipo) {

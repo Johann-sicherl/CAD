@@ -3,6 +3,9 @@
 
 export type Plano = "XY" | "XZ" | "YZ";
 
+/** Planos de referência com nomes de vista (Z para cima). */
+export const NOME_PLANO: Record<Plano, string> = { XZ: "Frontal", XY: "Superior", YZ: "Lateral" };
+
 export type Perfil =
   | { tipo: "retangulo"; largura: number; altura: number; raioCanto: number }
   | { tipo: "circulo"; diametro: number }
