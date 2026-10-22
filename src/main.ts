@@ -999,16 +999,19 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
   for (const f of doc.features) if ("esboco" in f && f.esboco) filhos.add(f.esboco);
   const limite = doc.retrocesso ?? doc.features.length;
 
-  const itemFeature = (f: Feature, i: number, filho: boolean) => {
+  const itemFeature = (f: Feature, i: number, nivel: number, seta: boolean | null) => {
+    const filho = nivel > 0;
     const li = document.createElement("li");
     li.className = "item";
     li.classList.toggle("filho", filho);
+    li.style.setProperty("--nivel", String(nivel));
     li.classList.toggle("ativo", f.id === idSelecionado() || f.id === comando?.f.id);
     li.classList.toggle("suprimida", f.suprimida);
     li.classList.toggle("retrocedida", i >= limite);
     li.classList.toggle("com-erro", errosPorFeature.has(f.id));
     li.classList.toggle("editando", f.id === editor?.esb.id);
     li.innerHTML = `
+      ${seta === null ? `<span class="item-seta vazia"></span>` : `<button class="item-seta" aria-expanded="${seta}" aria-label="${seta ? "Recolher" : "Mostrar elementos usados"}">${seta ? "▾" : "▸"}</button>`}
       <span class="item-ic">${ICONES[iconeFeature(f)]}</span>
       <span class="item-texto"><strong></strong><small></small></span>
       ${mini || filho ? "" : `<span class="item-mover"><button data-mover="-1" aria-label="Subir">▲</button><button data-mover="1" aria-label="Descer">▼</button></span>`}`;
@@ -1018,6 +1021,11 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     li.querySelector("small")!.textContent = `${ROTULO_TIPO[f.tipo]}${opr}${f.id === editor?.esb.id ? " · editando" : ""}${ms && ms > 300 ? ` · ${(ms / 1000).toFixed(1)} s` : ""}`;
     li.title = errosPorFeature.get(f.id) ?? "";
     li.onclick = (ev) => {
+      if ((ev.target as HTMLElement).closest(".item-seta")) {
+        if (expandidos.has(f.id)) expandidos.delete(f.id);
+        else expandidos.add(f.id);
+        return renderizarArvore();
+      }
       const mover = (ev.target as HTMLElement).closest<HTMLElement>("[data-mover]");
       if (mover) return moverFeature(i, Number(mover.dataset.mover));
       if (comando?.campo && comando.campo.aceita.includes("plano") && f.tipo === "planoRef") return adicionarAoCampo({ tipo: "plano", id: f.id });
@@ -1040,19 +1048,120 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     return li;
   };
 
+  /** Recurso na árvore, com seta para mostrar os elementos usados para criá-lo. */
+  const adicionar = (f: Feature, i: number, nivel: number) => {
+    const u = elementosUsados(f);
+    const tem = u.esbocos.length + u.recursos.length + u.refs.length > 0;
+    // esboço filho selecionado ou em edição: abre o pai para ele ficar visível
+    const aberto = expandidos.has(f.id) || u.esbocos.some((e) => e.id === idSelecionado() || e.id === editor?.esb.id);
+    lista.appendChild(itemFeature(f, i, nivel, tem ? aberto : null));
+    if (!tem || !aberto) return;
+    for (const e of u.esbocos) adicionar(e, doc.features.indexOf(e), nivel + 1);
+    for (const x of u.recursos) lista.appendChild(itemUsado({ tipo: "recurso", id: x.id }, 0, nivel + 1));
+    const contagem = new Map<string, number>();
+    for (const ref of u.refs) {
+      const k = contagem.get(ref.tipo) ?? 0;
+      contagem.set(ref.tipo, k + 1);
+      lista.appendChild(itemUsado(ref, k, nivel + 1));
+    }
+  };
+
+  /** Elemento usado (face, aresta, plano, recurso…): toque destaca/seleciona. */
+  const itemUsado = (ref: Referencia, k: number, nivel: number) => {
+    const li = document.createElement("li");
+    li.className = "item filho usado";
+    li.style.setProperty("--nivel", String(nivel));
+    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
+      ? doc.features.find((x) => x.id === (ref as { id: string }).id) : undefined;
+    const icone: NomeIcone = alvo ? iconeFeature(alvo)
+      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca" } as const)[ref.tipo];
+    li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
+    li.querySelector("strong")!.textContent = rotuloRef(ref, k);
+    li.querySelector("small")!.textContent = descricaoUsado(ref);
+    li.onclick = () => {
+      if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
+      if (ref.tipo === "face" || ref.tipo === "aresta" || ref.tipo === "vertice") {
+        selecao = null;
+        selPeca = [ref];
+        renderizarArvore();
+        atualizarStatus();
+        atualizarDestaques();
+        if (!entidadeDeRef(ref)) avisar("Esse elemento não existe mais na peça atual.");
+      } else if (ref.tipo === "plano" && (ref.id === "XY" || ref.id === "XZ" || ref.id === "YZ")) {
+        limparSelPeca();
+        selecionar({ tipo: "ref", id: ref.id });
+      } else if (alvo) {
+        limparSelPeca();
+        selecionar({ tipo: "feature", id: alvo.id });
+      }
+    };
+    return li;
+  };
+
   doc.features.forEach((f, i) => {
     if (i === limite) lista.appendChild(barraRetrocesso());
     if (f.tipo === "esboco" && filhos.has(f.id)) return; // aparece dentro do recurso
-    lista.appendChild(itemFeature(f, i, false));
-    if ("esboco" in f && f.esboco) {
-      const e = doc.features.find((x) => x.id === f.esboco);
-      if (e) lista.appendChild(itemFeature(e, doc.features.indexOf(e), true));
-    }
+    adicionar(f, i, 0);
   });
   if (limite >= doc.features.length && doc.features.length) lista.appendChild(barraRetrocesso());
 
   if (!doc.features.length) {
     lista.insertAdjacentHTML("beforeend", `<li class="dica">Nenhum recurso ainda. Selecione um plano e toque Esboço (aba Sketch).</li>`);
+  }
+}
+
+/** Recursos da árvore expandidos (seta ▾): mostram os elementos usados para criá-los. */
+const expandidos = new Set<string>();
+
+/**
+ * Elementos usados para criar o recurso: esboço(s) absorvido(s), recursos de padrão/espelho e
+ * referências escolhidas (faces, arestas, vértices, planos, eixos). Esboço: o plano/face de apoio.
+ */
+function elementosUsados(f: Feature): { esbocos: FeatureEsboco[]; recursos: Feature[]; refs: Referencia[] } {
+  const esbocos: FeatureEsboco[] = [];
+  if ("esboco" in f && f.esboco) {
+    const e = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
+    if (e) esbocos.push(e);
+  }
+  const recursos = "recursos" in f ? f.recursos.map((id) => doc.features.find((x) => x.id === id)).filter((x): x is Feature => !!x) : [];
+  const refs: Referencia[] = [];
+  if (f.tipo === "esboco") {
+    const s = f.suporte;
+    if (s.tipo === "plano") refs.push({ tipo: "plano", id: s.plano });
+    else if (s.tipo === "planoRef") refs.push({ tipo: "plano", id: s.id });
+    // face: guardada como plano no momento da criação (sem assinatura da face)
+  } else {
+    const ehRef = (v: unknown): v is Referencia => {
+      const o = v as Record<string, unknown>;
+      if (!o || typeof o !== "object" || typeof o.tipo !== "string") return false;
+      if (o.tipo === "face" || o.tipo === "aresta") return typeof o.ass === "object";
+      if (o.tipo === "vertice") return Array.isArray(o.p);
+      if (o.tipo === "linhaEsboco") return typeof o.geo === "string";
+      return ["plano", "eixo", "esboco", "recurso"].includes(o.tipo) && typeof o.id === "string";
+    };
+    const varrer = (v: unknown) => {
+      if (ehRef(v)) {
+        if (!refs.some((r) => mesmaRef(r, v))) refs.push(v);
+        return;
+      }
+      if (Array.isArray(v)) v.forEach(varrer);
+      else if (v && typeof v === "object") Object.values(v).forEach(varrer);
+    };
+    varrer(f);
+  }
+  return { esbocos, recursos, refs };
+}
+
+function descricaoUsado(r: Referencia): string {
+  switch (r.tipo) {
+    case "face": return `Face (${({ plano: "plana", cilindro: "cilíndrica", cone: "cônica", esfera: "esférica", outra: "curva" } as const)[r.ass.geom]})`;
+    case "aresta": return `Aresta (${({ linha: "reta", circulo: "circular", outra: "curva" } as const)[r.ass.geom]})`;
+    case "vertice": return "Vértice";
+    case "plano": return "Plano";
+    case "eixo": return "Eixo";
+    case "linhaEsboco": return "Linha do esboço";
+    case "esboco": return "Esboço";
+    case "recurso": return "Recurso";
   }
 }
 

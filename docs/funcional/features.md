@@ -307,7 +307,7 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 | Pai/filho | lista de referências do recurso; **excluir o pai** abre "Confirmar exclusão" com os filhos (excluídos junto, padrão) e os absorvidos (esboço, opcional) | 🟡 (exclusão ✅) |
 | Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | 🟡 (menu de contexto ✅) |
 | **Instant3D** | arrastar faces/cotas com alças no viewport | F3 |
-| Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1) | ✅ |
+| Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1); **seta ▸/▾** mostra os elementos usados: esboço absorvido, recursos (padrões/espelho), faces/arestas/vértices/planos/eixos escolhidos e o plano do esboço; toque destaca/seleciona; recolhido por padrão | ✅ |
 | **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
 | Configurações / tabela de projeto | variações da peça | ⏸ |
 | **Material** | biblioteca (aço, alumínio, inox…), densidade → massa | ✅ |
