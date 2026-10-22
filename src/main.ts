@@ -2598,4 +2598,8 @@ renderizarTudo();
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  // service worker terminou de guardar o app inteiro: avisa uma vez que já funciona sem internet
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (e.data?.tipo === "offline-pronto") avisar("JLSCAD pronto para usar sem internet neste aparelho.");
+  });
 }

@@ -104,3 +104,6 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
 - `vite.config.ts` usa `base: "/CAD/"` em build/preview (GitHub Pages).
+- Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
+  (plugin `offline` em `vite.config.ts`); o service worker baixa tudo na instalação. Não editar a
+  versão do cache à mão.
