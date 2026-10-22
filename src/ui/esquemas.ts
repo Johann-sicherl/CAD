@@ -99,7 +99,7 @@ function extrusao(corte: boolean, d: DadosEsquema): Esquema<FeatureExtrusao> {
         titulo: "Perfil",
         campos: [
           { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [...d.esbocosAntes, ["", "Perfil rápido (sem esboço)"]] },
-          { t: "sel", rot: "Plano", cam: "plano", opcoes: [["XZ", "Plano Frontal"], ["XY", "Plano Superior"], ["YZ", "Plano Lateral"]], vis: (f) => !comEsboco(f) },
+          { t: "sel", rot: "Plano", cam: "plano", opcoes: [["XY", "Plano Frontal"], ["XZ", "Plano Superior"], ["YZ", "Plano Lateral"]], vis: (f) => !comEsboco(f) },
           { t: "num", rot: "Deslocamento do plano", cam: "deslocamento", un: "mm", vis: (f) => !comEsboco(f) },
           { t: "sel", rot: "Forma", cam: "perfil.tipo", opcoes: [["retangulo", "Retângulo"], ["circulo", "Círculo"], ["poligono", "Polígono"]], vis: (f) => !comEsboco(f),
             aoMudar: (f, v) => {
@@ -174,7 +174,7 @@ function revolucao(corte: boolean, d: DadosEsquema): Esquema<FeatureRevolucao> {
               else if (v !== "modelo" && f.esboco) f.eixo = { tipo: "linhaEsboco", esboco: f.esboco, geo: v };
             } },
           { t: "refs", rot: "…ou aresta/eixo do modelo", cam: "eixo", aceita: ["aresta", "eixo", "face"], multiplo: false, vis: com },
-          { t: "sel", rot: "Plano do perfil", cam: "plano", opcoes: [["XZ", "Plano Frontal"], ["XY", "Plano Superior"], ["YZ", "Plano Lateral"]], vis: (f) => !com(f) },
+          { t: "sel", rot: "Plano do perfil", cam: "plano", opcoes: [["XY", "Plano Frontal"], ["XZ", "Plano Superior"], ["YZ", "Plano Lateral"]], vis: (f) => !com(f) },
           { t: "num", rot: "Raio interno", cam: "raioInterno", un: "mm", min: 0, vis: (f) => !com(f) },
           { t: "num", rot: "Largura radial", cam: "largura", un: "mm", min: 0.01, vis: (f) => !com(f) },
           { t: "num", rot: "Altura", cam: "altura", un: "mm", min: 0.01, vis: (f) => !com(f) },

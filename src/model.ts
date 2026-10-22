@@ -4,8 +4,9 @@
 
 export type Plano = "XY" | "XZ" | "YZ";
 
-/** Planos de referência com nomes de vista (Z para cima). */
-export const NOME_PLANO: Record<Plano, string> = { XZ: "Frontal", XY: "Superior", YZ: "Lateral" };
+/** Planos de referência com nomes de vista (Y para cima). */
+/** Y para cima (como nos CADs profissionais): Frontal = XY, Superior = XZ, Lateral = YZ. */
+export const NOME_PLANO: Record<Plano, string> = { XY: "Frontal", XZ: "Superior", YZ: "Lateral" };
 
 export type Vec3 = [number, number, number];
 
@@ -341,7 +342,8 @@ export interface Variavel {
 
 export interface Documento {
   formato: "jlscad";
-  versao: 1 | 2;
+  /** 3: Y para cima. Até a 2 o modelo era Z para cima (migrado ao abrir). */
+  versao: 1 | 2 | 3;
   nome: string;
   features: Feature[];
   /** Material da peça (chave de MATERIAIS). */
@@ -382,30 +384,30 @@ export function novoId(): string {
 }
 
 export function documentoVazio(): Documento {
-  return { formato: "jlscad", versao: 2, nome: "Peça1", features: [] };
+  return { formato: "jlscad", versao: 3, nome: "Peça1", features: [] };
 }
 
 export function documentoExemplo(): Documento {
   return {
     formato: "jlscad",
-    versao: 2,
+    versao: 3,
     nome: "Peça exemplo",
     features: [
       {
         id: novoId(), nome: "Base", tipo: "extrusao", suprimida: false,
-        operacao: "adicionar", plano: "XY", deslocamento: 0, centroU: 0, centroV: 0,
+        operacao: "adicionar", plano: "XZ", deslocamento: 0, centroU: 0, centroV: 0,
         perfil: { tipo: "retangulo", largura: 80, altura: 50, raioCanto: 0 },
         profundidade: 12,
       },
       {
         id: novoId(), nome: "Ressalto", tipo: "extrusao", suprimida: false,
-        operacao: "adicionar", plano: "XY", deslocamento: 12, centroU: 0, centroV: 0,
+        operacao: "adicionar", plano: "XZ", deslocamento: 12, centroU: 0, centroV: 0,
         perfil: { tipo: "circulo", diametro: 30 },
         profundidade: 18,
       },
       {
         id: novoId(), nome: "Furo central", tipo: "extrusao", suprimida: false,
-        operacao: "cortar", plano: "XY", deslocamento: 30, centroU: 0, centroV: 0,
+        operacao: "cortar", plano: "XZ", deslocamento: 30, centroU: 0, centroV: 0,
         perfil: { tipo: "circulo", diametro: 14 },
         profundidade: 30, inverter: true,
       },
@@ -429,7 +431,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
     case "extrusao":
       return {
         ...base, tipo, nome: `Extrusão${indice}`, operacao: "adicionar",
-        plano: "XY", deslocamento: 0, centroU: 0, centroV: 0,
+        plano: "XZ", deslocamento: 0, centroU: 0, centroV: 0,
         perfil: { tipo: "retangulo", largura: 40, altura: 40, raioCanto: 0 },
         profundidade: 10,
         de: { tipo: "plano", dist: 0, inverter: false },
@@ -441,7 +443,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
     case "revolucao":
       return {
         ...base, tipo, nome: `Revolução${indice}`, operacao: "adicionar",
-        plano: "XZ", raioInterno: 10, largura: 10, altura: 20, angulo: 360,
+        plano: "XY", raioInterno: 10, largura: 10, altura: 20, angulo: 360,
         direcao2: { ativa: false, angulo: 90 }, fino: FINO_PADRAO(),
       };
     case "filete":
@@ -503,6 +505,7 @@ export function validarDocumento(dados: unknown): Documento {
     throw new Error("Arquivo não é um projeto JLSCAD válido.");
   }
   d.formato = "jlscad";
+  if ((d.versao ?? 1) < 3) migrarParaYParaCima(d);
   for (const f of d.features) {
     if (f.tipo === "extrusao") {
       // versão 1: profundidade negativa = sentido oposto
@@ -522,6 +525,28 @@ export function validarDocumento(dados: unknown): Documento {
       f.itens ??= [];
     }
   }
-  d.versao = 2;
+  d.versao = 3;
   return d;
+}
+
+/**
+ * Arquivos até a versão 2 eram Z para cima. Gira o modelo −90° em X — (x, y, z) → (x, z, −y) —
+ * e troca os planos XY ↔ XZ: as bases dos planos coincidem exatamente, então os esboços (2D)
+ * continuam iguais e a peça só passa a ficar "de pé" com Y para cima.
+ */
+function migrarParaYParaCima(d: Documento) {
+  const plano = (p: unknown) => (p === "XY" ? "XZ" : p === "XZ" ? "XY" : p);
+  const ehVec3 = (v: unknown): v is number[] => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
+  const visitar = (o: unknown): unknown => {
+    if (ehVec3(o)) return [o[0], o[2], -o[1]];
+    if (Array.isArray(o)) return o.map(visitar);
+    if (!o || typeof o !== "object") return o;
+    const r = o as Record<string, unknown>;
+    for (const [k, v] of Object.entries(r)) r[k] = visitar(v);
+    if (typeof r.plano === "string") r.plano = plano(r.plano);
+    if (r.tipo === "plano" && typeof r.id === "string") r.id = plano(r.id);
+    if (r.tipo === "eixo" && (r.id === "Y" || r.id === "Z")) r.id = r.id === "Y" ? "Z" : "Y";
+    return r;
+  };
+  d.features = d.features.map((f) => visitar(f) as Feature);
 }
