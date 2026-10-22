@@ -153,6 +153,48 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade(`perfil aberto → erro "${sol.erros[0]?.mensagem}"`, /aberto/.test(sol.erros[0]?.mensagem ?? ""));
 }
 
+// 10. Ferramentas da Fase 3: retângulo pelo centro, filete/chanfro de esboço, círculo perimetral,
+//     arco tangente, estender, padrões e girar
+{
+  const e = plano();
+  const c = op.ponto(e, { x: 0, y: 0 }, ORIGEM);
+  const ls = op.retanguloCentro(e, c, { x: 20, y: 10 });
+  const r = solver.resolver(e);
+  verdade("retângulo pelo centro resolve", r.ok && r.conflitantes.length === 0);
+  const canto = (ls[1] as { p1: string }).p1;
+  verdade("filete de esboço no canto", !!op.fileteEsboco(e, canto, 3, true));
+  verdade("chanfro de esboço no canto oposto", !!op.chanfroEsboco(e, (ls[3] as { p1: string }).p1, 2));
+  const r2 = solver.resolver(e);
+  verdade(`filete/chanfro resolvem (${r2.definicao})`, r2.ok && r2.conflitantes.length === 0);
+  const sol = regenerar([e, extrusao(e, 1)]);
+  confere("área com filete r3 e chanfro 2", sol.volume ?? 0, 40 * 20 - (9 - (Math.PI * 9) / 4) - 2);
+
+  const e2 = plano();
+  const ci = op.circulo3Pontos(e2, { x: 10, y: 0 }, { x: 0, y: 10 }, { x: -10, y: 0 });
+  confere("círculo perimetral: raio", ci?.r ?? 0, 10);
+  const l = op.linha(e2, op.ponto(e2, { x: 30, y: 0 }), op.ponto(e2, { x: 40, y: 0 }));
+  const at = op.arcoTangente(e2, l.p2, { x: 40, y: 20 });
+  confere("arco tangente: raio", at?.r ?? 0, 10);
+  verdade("arco tangente resolve", solver.resolver(e2).conflitantes.length === 0);
+
+  const e3 = plano();
+  const h = op.linha(e3, op.ponto(e3, { x: 0, y: 0 }), op.ponto(e3, { x: 5, y: 0 }));
+  op.linha(e3, op.ponto(e3, { x: 20, y: -5 }), op.ponto(e3, { x: 20, y: 5 }));
+  op.estender(e3, h.id, { x: 5, y: 0 });
+  const p2 = e3.pontos.find((p) => p.id === h.p2)!;
+  confere("estender até a linha vertical", p2.x, 20);
+
+  const e4 = plano();
+  const cc = op.circulo(e4, op.ponto(e4, { x: 20, y: 0 }), 2);
+  op.padraoCircularEsboco(e4, [cc.id], { x: 0, y: 0 }, 6, 360);
+  verdade("padrão circular de esboço: 6 círculos", e4.geos.filter((g) => g.tipo === "circulo").length === 6);
+  op.padraoLinearEsboco(e4, [cc.id], 3, 10, 90);
+  verdade("padrão linear de esboço: +2", e4.geos.filter((g) => g.tipo === "circulo").length === 8);
+  op.transformar(e4, [cc.id], op.girar({ x: 0, y: 0 }, 90), false);
+  const centro = e4.pontos.find((p) => p.id === (cc as { c: string }).c)!;
+  verdade("girar 90° move o centro para (0; 20)", Math.abs(centro.x) < 1e-9 && Math.abs(centro.y - 20) < 1e-9);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

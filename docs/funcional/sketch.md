@@ -17,7 +17,7 @@ Status: ✅ existe · 🟡 parcial · F3/F4/F5 fase · ⏸ fora do escopo.
 | Esboço 3D | — | ⏸ |
 | Barra de status | coordenadas X/Y do cursor, estado (Sub/Totalmente/Superdefinido) ✅ | 🟡 |
 | Cores | azul = livre ✅, preto = definido ✅, vermelho = conflito ✅, construção tracejada ✅ | ✅ |
-| Contornos sombreados | regiões fechadas preenchidas (mostra o que vira perfil) | F3 |
+| Contornos sombreados | regiões fechadas preenchidas (mostra o que vira perfil) | ✅ |
 | Grade e encaixe | exibir grade, espaçamento maior/menor, escala automática, encaixar na grade | F3 |
 | Encaixes rápidos | ponto ✅, ponto médio ✅, sobre curva ✅, H/V ✅; centro, quadrante, interseção, tangente, perpendicular, paralelo, comprimento | 🟡 |
 | Linhas de inferência | pontilhadas alinhando com pontos existentes (H/V a distância) | F3 |
@@ -39,27 +39,27 @@ Todos os painéis de entidade têm, além dos campos abaixo:
   o cursor ao último ponto (F3)
 - Variantes: **Linha de centro** (construção) ✅ via opção · **Linha de ponto médio** F3
 
-### Retângulo — ✅ (canto) / F3 (demais)
+### Retângulo — ✅ (canto, centro, 3 pontos inclinado)
 - **Tipo**: De canto ✅ · Central · 3 pontos de canto · 3 pontos central · Paralelogramo
 - **Opções**: Para construção ✅ · **Adicionar linhas de construção**: dos cantos / dos pontos médios
 - **Parâmetros**: X/Y de cada um dos 4 cantos e do centro
 
-### Rasgo (Slot) — ✅ (reto) / F3 (demais)
+### Rasgo (Slot) — ✅ (reto, reto pelo centro) / demais pendentes
 - **Tipo**: Reto ✅ · Reto pelo centro · Em arco 3 pontos · Em arco pelo centro
 - **Opções**: Adicionar cotas · **Cota**: centro a centro / total · Para construção ✅
 - **Parâmetros**: centro X/Y, comprimento, largura, ângulo
 
-### Círculo — ✅ (centro) / F3 (perimetral)
+### Círculo — ✅ (centro, perimetral)
 - **Tipo**: Pelo centro ✅ · Perimetral (3 pontos)
 - **Parâmetros**: centro X/Y, raio
 
-### Arco — ✅ (3 pontos) / F3 (demais)
+### Arco — ✅ (3 pontos, centro-pontas, tangente)
 - **Tipo**: Centro-pontas · Tangente · 3 pontos ✅
 - **Parâmetros**: centro X/Y, início X/Y, fim X/Y, raio, ângulo
 
 ### Polígono — ✅
 - **Opções**: Para construção ✅
-- **Parâmetros**: nº de lados ✅ · **Círculo inscrito / circunscrito** (hoje inscrito; F3 ambos) ·
+- **Parâmetros**: nº de lados ✅ · **Círculo inscrito / circunscrito** ✅ ambos ·
   centro X/Y · diâmetro · ângulo · botão **Novo polígono**
 
 ### Spline — ✅ (passagem por pontos)
@@ -73,7 +73,7 @@ Todos os painéis de entidade têm, além dos campos abaixo:
 ### Elipse, elipse parcial, parábola, cônica — ⏸ (elipse F3 se necessário)
 Parâmetros: centro, raios maior/menor, ângulos; cônica: rho.
 
-### Ponto — F3 (necessário para o Furo assistido)
+### Ponto — ✅
 Parâmetros: X/Y.
 
 ### Texto do esboço — ⏸
@@ -81,10 +81,10 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 
 ## 3. Ferramentas
 
-### Filete de esboço — F3
+### Filete de esboço — ✅
 - Entidades a filetar (cantos/vértices) · raio · **Manter cantos com restrição** ·
   **Cotar cada filete** · filetes iguais
-### Chanfro de esboço — F3
+### Chanfro de esboço — ✅ (distância igual)
 - Ângulo-distância · Distância-distância · Distâncias iguais; D1, D2, ângulo
 
 ### Offset de entidades — ✅ (básico)
@@ -105,10 +105,10 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
   **Aparar o mais próximo** ✅
 - **Manter entidades aparadas como construção** F3 · Ignorar aparar geometria de construção F3
 
-### Estender entidades — F3
+### Estender entidades — ✅
 ### Dividir entidades (ponto de divisão) — F3
 
-### Mover / Copiar / Girar / Dimensionar / Esticar — F3
+### Mover / Copiar / Girar / Dimensionar / Esticar — ✅ mover, copiar, girar; demais pendentes
 - Entidades · **Manter relações** · Copiar
 - Mover/Copiar: De-Para (ponto base) / X-Y (ΔX, ΔY), repetir
 - Girar: centro de rotação, ângulo
@@ -120,12 +120,12 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
   (linha ou eixo) · relações de simetria ✅
 - Espelhamento dinâmico (desenhar e espelhar ao mesmo tempo) ⏸
 
-### Padrão linear de esboço — F3
+### Padrão linear de esboço — ✅
 - **Direção 1/2**: inverter, espaçamento, **cota de espaçamento X/Y**, nº de instâncias,
   exibir contagem, ângulo, **fixar direção do eixo X**
 - Entidades a padronizar · Instâncias a pular
 
-### Padrão circular de esboço — F3
+### Padrão circular de esboço — ✅
 - Centro (X/Y ou ponto), inverter, ângulo, **espaçamento igual**, nº de instâncias,
   raio, ângulo do arco, cotar raio/ângulo
 - Entidades · Instâncias a pular
@@ -164,7 +164,7 @@ Outros tipos — F3/⏸: horizontal/vertical dedicadas, linha de base, cadeia, c
 chanfro.
 
 ### Diálogo "Modificar" (ao criar e ao editar) — 🟡
-- Valor ✅ · aceita **expressão** ✅ (`20/2`) · **variável global** / equação (F3)
+- Valor ✅ · aceita **expressão** ✅ (`20/2`) · **variável global** / equação ✅ (`=nome`)
 - ✓ salvar ✅ · ✕ cancelar ✅ (Esc) · **Reconstruir** · setas ± com incremento · inverter sentido ·
   marcar para desenho
 

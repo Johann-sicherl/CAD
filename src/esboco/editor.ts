@@ -18,17 +18,34 @@ import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
-  | "aparar" | "offset" | "espelhar" | "cota";
+  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
-  rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", offset: "Offset",
+  rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", estender: "Estender",
+  fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota",
 };
 
+export type TipoRetangulo = "canto" | "centro" | "3pontos";
+export type TipoCirculo = "centro" | "perimetro";
+export type TipoArco = "3pontos" | "centro" | "tangente";
+export type TipoRasgo = "reto" | "centro";
+
 /** Instrução curta mostrada no painel para cada etapa da ferramenta. */
-function instrucao(f: Ferramenta, n: number): string {
+function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
+  if (ed) {
+    if (f === "retangulo" && ed.tipoRetangulo === "centro") return n ? "Toque um canto." : "Toque o centro.";
+    if (f === "retangulo" && ed.tipoRetangulo === "3pontos") return ["Toque o 1º canto.", "Toque o 2º canto (define o lado e o ângulo).", "Toque para definir a largura."][n] ?? "";
+    if (f === "circulo" && ed.tipoCirculo === "perimetro") return ["Toque o 1º ponto do contorno.", "Toque o 2º ponto.", "Toque o 3º ponto."][n] ?? "";
+    if (f === "arco" && ed.tipoArco === "centro") return ["Toque o centro.", "Toque o início do arco.", "Toque o fim do arco."][n] ?? "";
+    if (f === "arco" && ed.tipoArco === "tangente") return n ? "Toque o fim do arco." : "Toque a ponta de uma linha ou arco existente.";
+    if (f === "rasgo" && ed.tipoRasgo === "centro") return ["Toque o centro do rasgo.", "Toque o centro de uma ponta.", "Toque para definir a largura."][n] ?? "";
+  }
   switch (f) {
+    case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
+    case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
+    case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre.";
     case "ponto": return "Toque para cada ponto (posições de furo, referências).";
     case "linha": return n ? "Próximo ponto. Toque de novo no último ponto (ou Esc) para terminar." : "Toque o ponto inicial (ou arraste de um ponto ao outro).";
@@ -84,6 +101,14 @@ export class EditorEsboco {
   selecao = new Set<string>();
   construcao = false;
   lados = 6;
+  tipoRetangulo: TipoRetangulo = "canto";
+  tipoCirculo: TipoCirculo = "centro";
+  tipoArco: TipoArco = "3pontos";
+  tipoRasgo: TipoRasgo = "reto";
+  poligonoCircunscrito = false;
+  raioFilete = 3;
+  cotarFilete = true;
+  distChanfro = 2;
   distOffset = 5;
   /** Sem caneta detectada o dedo desenha; ao primeiro toque de caneta isso desliga. */
   dedoDesenha = true;
@@ -176,7 +201,7 @@ export class EditorEsboco {
   }
 
   get instrucao(): string {
-    return instrucao(this.ferramenta, this.ferramenta === "cota" ? this.cotaEntidades.length : this.cliques.length);
+    return instrucao(this.ferramenta, this.ferramenta === "cota" ? this.cotaEntidades.length : this.cliques.length, this);
   }
 
   // ---------- solver ----------
@@ -308,7 +333,7 @@ export class EditorEsboco {
   }
 
   private ferramentaUsaEncaixe() {
-    return !["selecionar", "aparar", "offset", "espelhar", "cota"].includes(this.ferramenta);
+    return !["selecionar", "aparar", "estender", "fileteEsboco", "chanfroEsboco", "offset", "espelhar", "cota"].includes(this.ferramenta);
   }
 
   private aoMover(e: PointerEvent) {
@@ -422,6 +447,22 @@ export class EditorEsboco {
     const esb = this.esb;
     const c = this.cliques;
 
+    if (f === "fileteEsboco" || f === "chanfroEsboco") {
+      const alvo = this.achar(enc.p, tol);
+      if (alvo?.tipo !== "ponto") return this.h.avisar("Toque o ponto do canto.");
+      const ok = f === "fileteEsboco"
+        ? op.fileteEsboco(esb, alvo.id, this.raioFilete, this.cotarFilete)
+        : op.chanfroEsboco(esb, alvo.id, this.distChanfro);
+      if (!ok) return this.h.avisar("Esse ponto não é um canto entre duas linhas (ou o tamanho é grande demais).");
+      this.resolver(true);
+      return;
+    }
+    if (f === "estender") {
+      const alvo = this.achar(enc.p, tol);
+      if (alvo?.tipo === "geo" && op.estender(esb, alvo.id, enc.p)) this.resolver(true);
+      else this.h.avisar("Nada para encontrar nessa direção.");
+      return;
+    }
     if (f === "aparar") {
       const alvo = this.achar(enc.p, tol);
       if (alvo?.tipo === "geo" && alvo.id !== EIXO_H && alvo.id !== EIXO_V && op.aparar(esb, alvo.id, enc.p)) this.resolver(true);
@@ -486,9 +527,24 @@ export class EditorEsboco {
         // primeiro clique: se ele cair num ponto existente, a linha parte dele
         break;
       case "retangulo":
-        if (c.length === 2) { op.retangulo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), cons); pronto = true; }
+        if (this.tipoRetangulo === "3pontos") {
+          if (c.length === 3) { op.retangulo3Pontos(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
+        } else if (c.length === 2) {
+          if (this.tipoRetangulo === "centro") op.retanguloCentro(esb, this.pontoDo(c[0]), c[1].p, cons);
+          else op.retangulo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), cons);
+          pronto = true;
+        }
         break;
       case "circulo":
+        if (this.tipoCirculo === "perimetro") {
+          if (c.length === 3) {
+            const ci = op.circulo3Pontos(esb, c[0].p, c[1].p, c[2].p, cons);
+            if (!ci) this.h.avisar("Pontos alinhados: não formam círculo.");
+            else for (const k of c) if (k.ponto) op.restringir(esb, { tipo: "coincidente", a: k.ponto, b: ci.id });
+            pronto = true;
+          }
+          break;
+        }
         if (c.length === 2) {
           const ci = op.circulo(esb, this.pontoDo(c[0]), Math.max(1e-3, dist(c[0].p, c[1].p)), cons);
           if (c[1].ponto || c[1].geo) {
@@ -499,6 +555,23 @@ export class EditorEsboco {
         }
         break;
       case "arco":
+        if (this.tipoArco === "tangente") {
+          if (c.length === 1 && !(c[0].ponto && op.tangenteNaPonta(esb, c[0].ponto))) {
+            this.cliques = [];
+            this.h.avisar("O arco tangente começa na ponta de uma linha ou arco existente.");
+            this.redesenhar();
+            return;
+          }
+          if (c.length === 2) {
+            if (!op.arcoTangente(esb, c[0].ponto!, c[1].p, cons)) this.h.avisar("Não foi possível fazer o arco tangente até esse ponto.");
+            pronto = true;
+          }
+          break;
+        }
+        if (this.tipoArco === "centro") {
+          if (c.length === 3) { op.arcoCentro(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
+          break;
+        }
         if (c.length === 3) {
           const a = this.pontoDo(c[0]), b = this.pontoDo(c[1]);
           if (!op.arcoTresPontos(esb, a, b, c[2].p, cons)) this.h.avisar("Pontos alinhados: não formam arco.");
@@ -506,6 +579,13 @@ export class EditorEsboco {
         }
         break;
       case "rasgo":
+        if (c.length === 3 && this.tipoRasgo === "centro") {
+          const p0 = c[0].p, p1 = c[1].p;
+          const r = distPontoSegmento(c[2].p, { x: 2 * p0.x - p1.x, y: 2 * p0.y - p1.y }, p1).d;
+          if (r > 1e-6 && dist(p0, p1) > 1e-6) op.rasgoCentro(esb, this.pontoDo(c[0]), p1, r, cons);
+          pronto = true;
+          break;
+        }
         if (c.length === 3) {
           const r = distPontoSegmento(c[2].p, c[0].p, c[1].p).d;
           if (r > 1e-6 && dist(c[0].p, c[1].p) > 1e-6) {
@@ -520,7 +600,8 @@ export class EditorEsboco {
         break;
       case "poligono":
         if (c.length === 2) {
-          op.poligono(esb, this.pontoDo(c[0]), c[1].p, this.lados, cons);
+          if (this.poligonoCircunscrito) op.poligonoCircunscrito(esb, this.pontoDo(c[0]), c[1].p, this.lados, cons);
+          else op.poligono(esb, this.pontoDo(c[0]), c[1].p, this.lados, cons);
           pronto = true;
         }
         break;
@@ -871,6 +952,25 @@ export class EditorEsboco {
     this.aplicarRelacoes(rs);
   }
 
+  /** Centro para girar/padrão circular: ponto selecionado ou a origem. */
+  private centroSelecao(): P2 {
+    const pts = mapaPontos(this.esb);
+    const pid = [...this.selecao].find((id) => pts.has(id));
+    return pid ? pts.get(pid)! : { x: 0, y: 0 };
+  }
+
+  transformarSelecao(oque: "mover" | "copiar" | "girar" | "girarCopia" | "padraoLinear" | "padraoCircular", v: { dx?: number; dy?: number; angulo?: number; n?: number; esp?: number }) {
+    const geos = this.geosSelecionadas();
+    if (!geos.length) return this.h.avisar("Selecione as entidades primeiro.");
+    let novas: string[] = [];
+    if (oque === "mover" || oque === "copiar") novas = op.transformar(this.esb, geos, op.transladar({ x: v.dx ?? 0, y: v.dy ?? 0 }), oque === "copiar");
+    else if (oque === "girar" || oque === "girarCopia") novas = op.transformar(this.esb, geos, op.girar(this.centroSelecao(), v.angulo ?? 0), oque === "girarCopia");
+    else if (oque === "padraoLinear") novas = op.padraoLinearEsboco(this.esb, geos, v.n ?? 2, v.esp ?? 10, v.angulo ?? 0);
+    else novas = op.padraoCircularEsboco(this.esb, geos, this.centroSelecao(), v.n ?? 2, v.angulo ?? 360);
+    this.selecao = new Set(novas);
+    this.resolver(true);
+  }
+
   excluirSelecao() {
     const ids = [...this.selecao].filter((id) => id !== ORIGEM && id !== EIXO_H && id !== EIXO_V);
     if (!ids.length) return;
@@ -963,12 +1063,44 @@ export class EditorEsboco {
         if (c.length) segs.push(c[0], cur);
         break;
       case "retangulo":
-        if (c.length) poli([c[0], { x: cur.x, y: c[0].y }, cur, { x: c[0].x, y: cur.y }], true);
+        if (this.tipoRetangulo === "centro" && c.length) {
+          const d = sub(cur, c[0]);
+          poli([sub(c[0], d), { x: c[0].x + d.x, y: c[0].y - d.y }, cur, { x: c[0].x - d.x, y: c[0].y + d.y }], true);
+        } else if (this.tipoRetangulo === "3pontos") {
+          if (c.length === 1) segs.push(c[0], cur);
+          if (c.length === 2) {
+            const u = sub(c[1], c[0]);
+            const l = Math.hypot(u.x, u.y) || 1;
+            const n = { x: -u.y / l, y: u.x / l };
+            const h = (cur.x - c[1].x) * n.x + (cur.y - c[1].y) * n.y;
+            poli([c[0], c[1], soma(c[1], mult(n, h)), soma(c[0], mult(n, h))], true);
+          }
+        } else if (c.length) poli([c[0], { x: cur.x, y: c[0].y }, cur, { x: c[0].x, y: cur.y }], true);
         break;
       case "circulo":
-        if (c.length) circ(c[0], dist(c[0], cur));
+        if (this.tipoCirculo === "perimetro") {
+          if (c.length === 1) segs.push(c[0], cur);
+          const ctr = c.length === 2 ? centroTresPontos(c[0], c[1], cur) : null;
+          if (ctr) circ(ctr, dist(ctr, cur));
+        } else if (c.length) circ(c[0], dist(c[0], cur));
         break;
       case "arco":
+        if (this.tipoArco === "centro") {
+          if (c.length === 1) segs.push(c[0], cur);
+          if (c.length === 2) {
+            const r = dist(c[0], c[1]);
+            let a0 = angulo(c[0], c[1]), a1 = angulo(c[0], cur);
+            const cr = (c[1].x - c[0].x) * (cur.y - c[0].y) - (c[1].y - c[0].y) * (cur.x - c[0].x);
+            if (cr < 0) [a0, a1] = [a1, a0];
+            while (a1 < a0) a1 += 2 * Math.PI;
+            circ(c[0], r, a0, a1);
+          }
+          break;
+        }
+        if (this.tipoArco === "tangente") {
+          if (c.length === 1) segs.push(c[0], cur);
+          break;
+        }
         if (c.length === 1) segs.push(c[0], cur);
         if (c.length === 2) {
           const ctr = centroTresPontos(c[0], cur, c[1]);
@@ -985,6 +1117,8 @@ export class EditorEsboco {
       case "rasgo":
         if (c.length === 1) segs.push(c[0], cur);
         if (c.length === 2) {
+          const [e0, e1] = this.tipoRasgo === "centro" ? [{ x: 2 * c[0].x - c[1].x, y: 2 * c[0].y - c[1].y }, c[1]] : [c[0], c[1]];
+          c.splice(0, 2, e0, e1);
           const r = distPontoSegmento(cur, c[0], c[1]).d;
           const u = sub(c[1], c[0]);
           const l = Math.hypot(u.x, u.y) || 1;
@@ -997,8 +1131,9 @@ export class EditorEsboco {
         break;
       case "poligono":
         if (c.length) {
-          const r = dist(c[0], cur), a0 = angulo(c[0], cur);
           const n = Math.max(3, Math.round(this.lados));
+          const r = dist(c[0], cur) / (this.poligonoCircunscrito ? Math.cos(Math.PI / n) : 1);
+          const a0 = angulo(c[0], cur) + (this.poligonoCircunscrito ? Math.PI / n : 0);
           poli(Array.from({ length: n }, (_, i) => polar(c[0], r, a0 + (i * 2 * Math.PI) / n)), true);
         }
         break;

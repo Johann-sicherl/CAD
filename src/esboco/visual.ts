@@ -9,7 +9,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import type { FeatureEsboco } from "../model";
 import { ehCota } from "../model";
 import { desenharCota } from "./cotas";
-import { amostrar, EIXO_H, EIXO_V, mapaPontos, ORIGEM, type P2 } from "./geometria";
+import { amostrar, aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, type P2 } from "./geometria";
 import type { Referencial } from "./referencial";
 
 export const CORES = {
@@ -89,6 +89,29 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
         : o.conflitantes?.has(c.id) ? CORES.conflito
         : c.referencia ? CORES.referencia : CORES.cota;
       adicionar({ cor, largura: 1.2, tracejado: false }, d.segmentos);
+    }
+  }
+
+  // contornos fechados sombreados: mostram o que vira perfil (furos ficam sem preenchimento)
+  if (o.editando) {
+    try {
+      const lacos = encontrarLacos(esb);
+      const prof = aninhamento(lacos);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x7fa9dc, transparent: true, opacity: 0.16, depthTest: false, side: THREE.DoubleSide });
+      lacos.forEach((l, i) => {
+        if (prof[i] % 2) return;
+        const forma = new THREE.Shape(l.poligono.map((p) => new THREE.Vector2(p.x, p.y)));
+        lacos.forEach((h, j) => {
+          if (prof[j] === prof[i] + 1 && pontoNoPoligono(h.poligono[0], l.poligono)) {
+            forma.holes.push(new THREE.Path(h.poligono.map((p) => new THREE.Vector2(p.x, p.y))));
+          }
+        });
+        const m = new THREE.Mesh(new THREE.ShapeGeometry(forma), mat);
+        m.renderOrder = 19;
+        grupo.add(m);
+      });
+    } catch {
+      /* esboço ainda aberto: sem sombreado */
     }
   }
 

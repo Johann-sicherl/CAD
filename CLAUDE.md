@@ -84,9 +84,11 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
    análises de inclinação, espessura, zebra e curvatura, tempo de reconstrução por recurso.
    Medir, propriedades de massa e vista de seção podem ser antecipados se forem úteis antes.
 
-Fase atual: Fases 1 e 2 entregues; próxima: **Fase 3** (features).
-Limitação conhecida da Fase 2: esboço em face guarda o plano da face no momento da criação
-(não acompanha a face se a peça mudar) — referência topológica fica para depois.
+Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); próxima: **Fase 4**
+(Sheet Metal). Pendentes da Fase 3: varredura, loft, filete variável/de face, furo avançado.
+Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
+Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
+a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.
 
 ## Observações técnicas
 

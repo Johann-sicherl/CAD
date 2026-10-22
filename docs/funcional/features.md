@@ -7,7 +7,7 @@ Status: ✅ existe · 🟡 parcial · F3/F4/F5 fase · ⏸ fora do escopo.
 
 ## 1. Extrusão (Boss-Extrude / Ressalto-Base extrudado) — 🟡
 
-Hoje: esboço como perfil + profundidade (negativo inverte). Resto: **F3**.
+✅ De, Direção 1/2, todas as condições finais (exceto as marcadas ⏸), inclinação, recurso fino e contornos selecionados.
 
 Seleção inicial: se nada estiver selecionado, pede um **esboço** (ou plano/face para criar um).
 
@@ -61,7 +61,7 @@ Igual à Extrusão, mais:
 
 ## 3. Revolução / Corte por revolução (Revolved Boss/Cut) — 🟡
 
-Hoje: eixo = 1ª linha de construção (ou eixo V) + ângulo. Resto: **F3**.
+✅ eixo (linha, aresta, eixo de referência), ângulo, plano médio, Direção 2 e recurso fino.
 
 **Caixa "Eixo de revolução"**: linha de centro do esboço, aresta, eixo de referência
 **Caixa "Direção 1"**
@@ -111,7 +111,7 @@ opções (mesclar tangentes, fechar, aparar pela direção 1), recurso fino, cur
 
 ## 7. Filete (Fillet) — 🟡
 
-Hoje: raio constante em **todas** as arestas. Seleção de arestas e o resto: **F3**.
+✅ arestas/faces/recursos selecionados, propagação tangente, múltiplos raios, assimétrico. Raio variável e filete de face: pendentes.
 
 Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 
@@ -135,7 +135,7 @@ Abas do painel: **Manual** · **Assistente** (sugere/organiza filetes — ⏸)
 
 ## 8. Chanfro (Chamfer) — 🟡
 
-Hoje: distância igual em **todas** as arestas. Resto: **F3**.
+✅ distância-distância, ângulo-distância, assimétrico, inverter, só nas arestas escolhidas.
 
 **Caixa "Tipo de chanfro"**: Ângulo-distância · Distância-distância · Vértice · Deslocamento de face · Face-face
 **Itens a chanfrar**: arestas/faces/vértices, propagação tangente, pré-visualização
@@ -147,7 +147,7 @@ Hoje: distância igual em **todas** as arestas. Resto: **F3**.
 - Face-face: conjuntos de faces, linha de retenção / largura de corda
 **Opções**: selecionar através das faces, manter recursos
 
-## 9. Furo assistido (Hole Wizard) — F3
+## 9. Furo assistido (Hole Wizard) — ✅ (simples, rebaixado, escareado, roscado ISO; avançado pendente)
 
 Abas: **Tipo** · **Posições**
 
@@ -180,12 +180,12 @@ Abas: **Tipo** · **Posições**
   (cego, nº de voltas, até a seleção); especificação (tipo, tamanho, Ø, passo, cortar/extrudar,
   espelhar perfil, girar); rosca à direita/esquerda, múltiplas entradas — F3 (final)
 
-## 10. Casca (Shell) — F3
+## 10. Casca (Shell) — ✅
 
 **Parâmetros**: espessura · **faces a remover** (lista) · Casca para fora · mostrar pré-visualização
 **Configurações de múltiplas espessuras**: espessura por face (lista de faces + valor)
 
-## 11. Nervura (Rib) — F3
+## 11. Nervura (Rib) — ✅
 
 Perfil: esboço aberto (linha/arcos)
 **Parâmetros**
@@ -196,7 +196,7 @@ Perfil: esboço aberto (linha/arcos)
 - Tipo (normal ao esboço): Linear · Natural
 **Contornos selecionados**
 
-## 12. Inclinação (Draft) — F3
+## 12. Inclinação (Draft) — ✅ (plano neutro)
 
 Abas: Manual · Assistente (⏸)
 **Tipo**: Plano neutro · Linha de partição · Inclinação em degrau (degraus cônicos / perpendiculares)
@@ -222,7 +222,7 @@ Abas: Manual · Assistente (⏸)
 
 ## 14. Padrões
 
-### Padrão linear (Linear Pattern) — F3
+### Padrão linear (Linear Pattern) — ✅
 **Direção 1**
 - Referência de direção (aresta, cota, eixo, linha), **inverter**
 - Modo: **Espaçamento e instâncias** · **Até a referência** (geometria de referência,
@@ -236,14 +236,14 @@ Abas: Manual · Assistente (⏸)
   pré-visualização completa/parcial
 **Instâncias a variar**: incremento de cotas por direção; modificar instância individual
 
-### Padrão circular (Circular Pattern) — F3
+### Padrão circular (Circular Pattern) — ✅
 **Direção 1**: eixo (eixo, aresta circular, face cilíndrica, cota angular), inverter ·
   **Espaçamento das instâncias** (ângulo entre elas) ou **Espaçamento igual** (ângulo total) ·
   nº de instâncias
 **Direção 2**: simétrica
 **Recursos e faces · Corpos · Instâncias a pular · Opções · Instâncias a variar** (como no linear)
 
-### Espelhar (Mirror) — F3
+### Espelhar (Mirror) — ✅
 **Face/plano de espelho**
 **Recursos a espelhar** · **Faces a espelhar** · **Corpos a espelhar** (mesclar sólidos, costurar superfícies)
 **Opções**: padrão de geometria, propagar propriedades visuais, pré-visualização completa/parcial
@@ -257,7 +257,7 @@ Abas: Manual · Assistente (⏸)
   espaçamento, ângulo de escalonamento, margens, semente (círculo, quadrado, losango, polígono)
 - Padrão variável: tabela de variações
 
-## 15. Geometria de referência — F3
+## 15. Geometria de referência — ✅ plano e eixo; demais pendentes
 
 ### Plano
 - **Primeira / Segunda / Terceira referência**: cada uma com seleção + restrição:
@@ -277,7 +277,7 @@ ou posição/rotação numéricas
 Centro de arco · Centro da face · Interseção · Projeção · No ponto ·
 Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pontos)
 
-### Centro de massa · Caixa delimitadora (melhor ajuste / plano personalizado) — F5 (com Avaliar)
+### Centro de massa · Caixa delimitadora — 🟡 (mostrados em Avaliar → Massa)
 
 ## 16. Curvas — F3 (hélice) / ⏸ (demais)
 
@@ -292,16 +292,16 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 
 | Função | Campos / comportamento | Fase |
 |---|---|---|
-| **Barra de retrocesso** | arrastar na árvore; inserir recursos no meio; rolar para frente/trás | F3 |
+| **Barra de retrocesso** | arrastar na árvore; inserir recursos no meio; rolar para frente/trás | ✅ |
 | Reordenar recursos | arrastar na árvore (✅ hoje com ▲▼) | 🟡 |
 | Suprimir / Reativar | por recurso (✅) e por configuração (⏸) | 🟡 |
 | Pai/filho | lista de referências do recurso | F3 |
-| Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | F3 |
+| Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | 🟡 (menu de contexto ✅) |
 | **Instant3D** | arrastar faces/cotas com alças no viewport | F3 |
-| Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1) | F3 |
-| **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | F3 |
+| Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1) | ✅ |
+| **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
 | Configurações / tabela de projeto | variações da peça | ⏸ |
-| **Material** | biblioteca (aço, alumínio, inox…), densidade → massa | F5 |
+| **Material** | biblioteca (aço, alumínio, inox…), densidade → massa | ✅ |
 | Aparência | cor por peça/recurso/face | F3 |
 | Propriedades personalizadas | código, descrição, material, massa | ⏸ |
 | Erros de reconstrução | ✕ vermelho / ⚠ amarelo na árvore, "O que está errado" | 🟡 |

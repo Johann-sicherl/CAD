@@ -80,9 +80,32 @@ export function renderizarPainelEsboco(
   // ferramenta
   painel.append(el("h3", "prop-titulo", ROTULO_FERRAMENTA[ed.ferramenta]));
   painel.append(el("p", "dica", ed.instrucao));
+  const tipo = (rot: string, valor: string, ops: [string, string][], mudar: (v: string) => void) => {
+    const l = el("label", "campo");
+    l.append(el("span", "campo-rotulo", rot));
+    const s = el("select");
+    for (const [v, r] of ops) s.add(new Option(r, v));
+    s.value = valor;
+    s.onchange = () => {
+      mudar(s.value);
+      ed.definirFerramenta(ed.ferramenta);
+    };
+    l.append(s);
+    painel.append(l);
+  };
+  if (ed.ferramenta === "retangulo") tipo("Tipo", ed.tipoRetangulo, [["canto", "De canto"], ["centro", "Pelo centro"], ["3pontos", "3 pontos (inclinado)"]], (v) => (ed.tipoRetangulo = v as never));
+  if (ed.ferramenta === "circulo") tipo("Tipo", ed.tipoCirculo, [["centro", "Pelo centro"], ["perimetro", "Perimetral (3 pontos)"]], (v) => (ed.tipoCirculo = v as never));
+  if (ed.ferramenta === "arco") tipo("Tipo", ed.tipoArco, [["3pontos", "3 pontos"], ["centro", "Centro-pontas"], ["tangente", "Tangente"]], (v) => (ed.tipoArco = v as never));
+  if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto (pontas)"], ["centro", "Reto pelo centro"]], (v) => (ed.tipoRasgo = v as never));
   if (ed.ferramenta === "poligono") {
     painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => (ed.lados = Math.max(3, Math.min(64, Math.round(v))))));
+    tipo("Círculo de construção", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Inscrito (vértices no círculo)"], ["circ", "Circunscrito (lados tangentes)"]], (v) => (ed.poligonoCircunscrito = v === "circ"));
   }
+  if (ed.ferramenta === "fileteEsboco") {
+    painel.append(campoNumero("Raio", ed.raioFilete, "mm", (v) => (ed.raioFilete = Math.abs(v))));
+    painel.append(interruptor("Cotar cada filete", ed.cotarFilete, (v) => (ed.cotarFilete = v)));
+  }
+  if (ed.ferramenta === "chanfroEsboco") painel.append(campoNumero("Distância", ed.distChanfro, "mm", (v) => (ed.distChanfro = Math.abs(v))));
   if (ed.ferramenta === "offset") {
     painel.append(campoNumero("Distância", ed.distOffset, "mm", (v) => (ed.distOffset = Math.abs(v))));
     const linha = el("div", "prop-rodape");
@@ -108,6 +131,28 @@ export function renderizarPainelEsboco(
     const excluiveis = sel.filter((id) => id !== ORIGEM && id !== EIXO_H && id !== EIXO_V);
     if (excluiveis.length) acoes.append(botao("Excluir", () => ed.excluirSelecao(), "perigo"));
     painel.append(acoes);
+
+    // transformar a seleção (mover, copiar, girar, padrões)
+    if (ed.geosSelecionadas().length) {
+      const det = el("details", "transformar");
+      det.append(el("summary", "", "Mover, copiar, girar, padrões"));
+      const v = { dx: 10, dy: 0, angulo: 90, n: 3, esp: 20, total: 360, angLin: 0 };
+      const linha = (...bs: HTMLElement[]) => {
+        const d = el("div", "prop-rodape");
+        d.append(...bs);
+        det.append(d);
+      };
+      det.append(campoNumero("ΔX", v.dx, "mm", (x) => (v.dx = x)), campoNumero("ΔY", v.dy, "mm", (x) => (v.dy = x)));
+      linha(botao("Mover", () => ed.transformarSelecao("mover", v)), botao("Copiar", () => ed.transformarSelecao("copiar", v)));
+      det.append(campoNumero("Ângulo (centro: ponto selecionado ou origem)", v.angulo, "°", (x) => (v.angulo = x)));
+      linha(botao("Girar", () => ed.transformarSelecao("girar", v)), botao("Girar cópia", () => ed.transformarSelecao("girarCopia", v)));
+      det.append(campoNumero("Nº de instâncias", v.n, "", (x) => (v.n = x)), campoNumero("Espaçamento", v.esp, "mm", (x) => (v.esp = x)),
+        campoNumero("Direção (ângulo)", v.angLin, "°", (x) => (v.angLin = x)));
+      linha(botao("Padrão linear", () => ed.transformarSelecao("padraoLinear", { n: v.n, esp: v.esp, angulo: v.angLin })));
+      det.append(campoNumero("Ângulo total (circular)", v.total, "°", (x) => (v.total = x)));
+      linha(botao("Padrão circular", () => ed.transformarSelecao("padraoCircular", { n: v.n, angulo: v.total })));
+      painel.append(det);
+    }
 
     // cota selecionada: valor e tipo
     const cotas = esb.restricoes.filter((r) => ed.selecao.has(r.id) && ehCota(r));

@@ -20,6 +20,18 @@ Arquivos:
 | Sheet Metal (chapa metálica) | [chapa.md](chapa.md) |
 | Avaliar (medições, propriedades de massa, análises) | [avaliar.md](avaliar.md) |
 
+## Estado da implementação (22/10/2026)
+
+- **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
+  nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
+  equações/variáveis globais, material. Pendentes: varredura, loft, filete variável/de face,
+  furo avançado, combinar/excluir corpo, rosca cosmética, Instant3D.
+- **Sketch** ✅ Fase 2 + ponto, variantes de retângulo/círculo/arco/rasgo/polígono, filete e chanfro
+  de esboço, estender, mover/copiar/girar, padrões de esboço, contornos sombreados.
+- **Avaliar** ✅ medir, massa, vista de seção, verificar, inclinação, espessura, zebra, curvatura,
+  desempenho. Pendente: propriedades de seção.
+- **Sheet Metal**: Fase 4 (ainda não começou).
+
 Legenda de status em cada campo/comando:
 
 - ✅ já existe no app
