@@ -28,6 +28,8 @@ jobs:
       - run: pnpm check
       - run: pnpm teste
       - run: pnpm build
+        env:
+          BASE_PATH: /CAD/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

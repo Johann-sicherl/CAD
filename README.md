@@ -60,12 +60,20 @@ Usamos **pnpm** em vez de npm por segurança contra pacotes maliciosos
 Regras: poucas dependências, só de projetos conhecidos; revisar mudanças no `pnpm-lock.yaml`;
 rodar `pnpm audit` de vez em quando.
 
-## Publicar no tablet (GitHub Pages)
+## Publicar (Cloudflare Pages — principal)
 
-1. No GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**
-2. Cada `push` na branch `main` publica automaticamente em
-   `https://johann-sicherl.github.io/CAD/`
-3. No tablet, abra esse endereço no Chrome → menu ⋮ → **Adicionar à tela inicial**
+1. Cloudflare → **Workers & Pages → Create → Pages → Connect to Git** → repositório `CAD`
+2. Build: comando `pnpm build`, pasta de saída `dist`, variável `NODE_VERSION = 22`
+   (sem `BASE_PATH`: o site fica na raiz)
+3. Cada `push` na branch `main` publica sozinho em `https://<projeto>.pages.dev`
+4. No aparelho: abra o endereço no Chrome → ⋮ → **Instalar app** (funciona offline)
+
+`public/_headers` liga o isolamento de origem (COOP/COEP), requisito do kernel com várias threads.
+
+## Publicar (GitHub Pages — alternativo)
+
+**Settings → Pages → Source: GitHub Actions**; cada `push` no `main` publica em
+`https://johann-sicherl.github.io/CAD/` (build com `BASE_PATH=/CAD/`).
 
 ## Estrutura
 
