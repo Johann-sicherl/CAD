@@ -59,7 +59,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "aparar": return "Toque o trecho a apagar (entre interseções).";
     case "offset": return "Toque uma entidade: a cadeia ligada a ela é copiada à distância indicada.";
     case "espelhar": return "Toque a linha de espelho (linha do esboço ou eixo).";
-    case "cota": return n === 0 ? "Toque uma entidade (ou duas) e depois onde fica o número." : n === 1 ? "Toque outra entidade, ou onde fica o número." : "Toque onde fica o número.";
+    case "cota": return n === 0 ? "Toque uma entidade (ou duas) e depois onde fica o número. Arestas e vértices da peça também valem." : n === 1 ? "Toque outra entidade (do esboço ou da peça), ou onde fica o número." : "Toque onde fica o número.";
   }
 }
 
@@ -769,8 +769,16 @@ export class EditorEsboco {
   // ---------- cotas ----------
 
   private cliqueCota(p: P2, tol: number, _tipo: string) {
-    const alvo = this.achar(p, tol);
     const ents = this.cotaEntidades;
+    let alvo = this.achar(p, tol);
+    if (!alvo && ents.length < 2) {
+      // aresta/vértice da peça: vira referência do modelo e entra na cota
+      const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice", "aresta"]);
+      if (m) {
+        const g = criarExterna(this.esb, m.proj, m.ref);
+        alvo = g.tipo === "ponto" ? { tipo: "ponto", id: g.p } : { tipo: "geo", id: g.id };
+      }
+    }
     if (alvo && ents.length < 2 && !ents.includes(alvo.id)) {
       ents.push(alvo.id);
       this.selecao = new Set(ents);
@@ -1335,6 +1343,7 @@ export class EditorEsboco {
     // cursor sobre outra entidade: o próximo toque a escolhe, não posiciona a cota
     const alvo = this.achar(this.cursor.p, this.tolMm(this.tela?.tipo ?? "mouse"));
     if (alvo && !this.cotaEntidades.includes(alvo.id) && this.cotaEntidades.length < 2) return null;
+    if (!alvo && this.cotaEntidades.length < 2 && this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice", "aresta"])) return null;
     return this.novaCota(this.cotaEntidades, this.cursor.p);
   }
 

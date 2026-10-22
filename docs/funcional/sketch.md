@@ -149,6 +149,8 @@ esperado × encontrado — hoje o erro aparece na feature ✅)
 ## 4. Cotas
 
 ### Cota inteligente — ✅
+- Aceita **arestas e vértices da peça** (viram referência do modelo, em roxo) ✅ — ex.: centro do
+  círculo até a aresta da face onde está o esboço.
 - **Distanciador automático** ✅: enquanto posiciona, a cota segue o cursor (prévia) e a linha de
   cota vai sozinha para a distância padrão da geometria; mais longe encaixa em múltiplos dessa
   distância (cotas paralelas igualmente espaçadas); entre as linhas de chamada o número fica
