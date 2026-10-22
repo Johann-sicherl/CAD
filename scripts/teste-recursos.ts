@@ -125,6 +125,11 @@ const bloco = ext(base, 10);
   confere("chanfro assimétrico 1×2", regenerar([...feats, chA]).volume, 8000 - 4 * 1 * 10);
   const casca = { ...(novaFeature("casca", 1) as any), espessura: 1, faces: [topo] };
   confere("casca 1 sem o topo", regenerar([...feats, casca]).volume, 8000 - 38 * 18 * 9);
+  const fechada = { ...casca, faces: [] };
+  confere("casca fechada 1 (oca, sem faces)", regenerar([...feats, fechada]).volume, 8000 - 38 * 18 * 8);
+  confere("casca fechada 1 para fora", regenerar([...feats, { ...fechada, paraFora: true }]).volume,
+    // caixa 42×22×12 com arestas e cantos arredondados (r = 1) menos a original
+    40 * 20 * 10 + 2 * (40 * 20 + 40 * 10 + 20 * 10) + Math.PI * (40 + 20 + 10) + (4 / 3) * Math.PI - 8000);
   const lados = [face(feats, [1, 0, 0], [20, 0, 5]), face(feats, [-1, 0, 0], [-20, 0, 5])];
   const incl = { ...(novaFeature("inclinacao", 1) as any), angulo: 3, faces: lados, planoNeutro: { tipo: "plano", id: "XY" } };
   const vd = regenerar([...feats, incl]);

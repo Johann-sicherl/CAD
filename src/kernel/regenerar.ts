@@ -9,6 +9,7 @@ import {
   drawRoundedRectangle,
   drawRectangle,
   makeBox,
+  makeOffset,
   measureVolume,
   Plane,
   type Drawing,
@@ -752,6 +753,22 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
         if (r.tipo !== "face") throw new Error("Selecione faces.");
         return acharFace(peca, r.ass);
       });
+      if (!faces.length) {
+        // casca fechada: oca por dentro, parede de espessura constante em toda a volta
+        // (sólido deslocado para dentro e subtraído; "para fora" desloca para fora e tira o original)
+        type ComSolidos = { solids: Shape3D[] };
+        const solidos = (peca as unknown as ComSolidos).solids;
+        if (!solidos.length) throw new Error("A casca precisa de um sólido.");
+        let res: Shape3D | null = null;
+        for (const s of solidos) {
+          const desloc = makeOffset(s as unknown as Face, f.paraFora ? f.espessura : -f.espessura) as Shape3D;
+          const parte = f.paraFora ? desloc.cut(s.clone()) : s.clone().cut(desloc);
+          res = res ? res.fuse(parte) : parte;
+        }
+        if (!res || !(measureVolume(res) > 0)) throw new Error("Não foi possível fazer a casca (espessura grande demais para a peça?).");
+        ctx.peca = res;
+        return;
+      }
       type Ff = { inList(l: Face[]): Ff };
       const t = f.paraFora ? -f.espessura : f.espessura;
       ctx.peca = peca.shell(t, (fi) => (fi as unknown as Ff).inList(faces) as never);

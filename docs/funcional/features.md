@@ -183,6 +183,8 @@ Abas: **Tipo** · **Posições**
 ## 10. Casca (Shell) — ✅
 
 **Parâmetros**: espessura · **faces a remover** (lista) · Casca para fora · mostrar pré-visualização
+- Sem faces selecionadas = **casca fechada**: peça oca por dentro, parede de espessura constante
+  (ver com Vista de seção) ✅. Para fora: a parede cresce para fora e o volume original vira o vazio ✅.
 **Configurações de múltiplas espessuras**: espessura por face (lista de faces + valor)
 
 ## 11. Nervura (Rib) — ✅

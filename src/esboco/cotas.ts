@@ -103,7 +103,7 @@ function seta(ponta: P2, dir: P2, tam: number): P2[] {
 export function textoPadrao(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): P2 {
   const pts = mapaPontos(esb);
   const geos = new Map(esb.geos.map((g) => [g.id, g]));
-  const afast = 28 * mmPx;
+  const afast = 26 * mmPx; // = PASSO_COTA_PX
   if (c.tipo === "raio" || c.tipo === "diametro") {
     const g = geos.get(c.a);
     if (!g || (g.tipo !== "circulo" && g.tipo !== "arco")) return { x: 0, y: 0 };
@@ -206,4 +206,63 @@ export function desenharCota(c: CotaEsboco, esb: FeatureEsboco, mmPx: number): D
     seg.push(...seta(A, sub(A, B), s), ...seta(B, sub(B, A), s));
   }
   return { segmentos: seg, texto: T };
+}
+
+/** Espaçamento automático entre a geometria e a cota (e entre cotas empilhadas), em pixels. */
+export const PASSO_COTA_PX = 26;
+
+/**
+ * "Distanciador" automático: ajusta onde o número da cota fica a partir de onde o usuário
+ * apontou. A linha de cota vai para a distância padrão da geometria (1 passo) e, mais longe,
+ * encaixa em múltiplos do passo, deixando cotas paralelas igualmente espaçadas; dentro das
+ * linhas de chamada o número fica centrado. Longe dos encaixes a posição é livre.
+ */
+export function ajustarTextoCota(c: CotaEsboco, esb: FeatureEsboco, local: P2, mmPx: number): P2 {
+  const passo = PASSO_COTA_PX * mmPx;
+  /** Afastamento com sinal → encaixado (mínimo 1 passo; perto de um múltiplo, gruda nele). */
+  const encaixar = (off: number): number => {
+    const s = off < 0 ? -1 : 1;
+    const a = Math.abs(off);
+    if (a <= passo) return s * passo;
+    const k = Math.round(a / passo);
+    return Math.abs(a - k * passo) < passo * 0.3 ? s * k * passo : off;
+  };
+  const pts = mapaPontos(esb);
+  const geos = new Map(esb.geos.map((g) => [g.id, g]));
+
+  if (c.tipo === "raio" || c.tipo === "diametro") {
+    const g = geos.get(c.a);
+    if (!g || (g.tipo !== "circulo" && g.tipo !== "arco")) return local;
+    const ctr = pts.get(g.c)!;
+    const r = raioDe(g, pts);
+    const d = dist(ctr, local);
+    if (d <= r) return local; // texto por dentro: livre
+    return polar(ctr, r + encaixar(d - r), angulo(ctr, local));
+  }
+  if (c.tipo === "angulo") return local;
+
+  const e = extremosLineares(c, esb);
+  if (!e) return local;
+  const [P, Q] = e;
+  if (c.tipo === "distanciaH" || c.tipo === "distanciaV") {
+    const eixo = c.tipo === "distanciaH" ? "y" : "x"; // direção do afastamento
+    const ao = eixo === "x" ? "y" : "x"; // direção da cota
+    const max = Math.max(P[eixo], Q[eixo]), min = Math.min(P[eixo], Q[eixo]);
+    const out = { ...local };
+    if (local[eixo] >= max) out[eixo] = max + encaixar(local[eixo] - max);
+    else if (local[eixo] <= min) out[eixo] = min + encaixar(local[eixo] - min);
+    const lo = Math.min(P[ao], Q[ao]), hi = Math.max(P[ao], Q[ao]);
+    if (local[ao] > lo && local[ao] < hi) out[ao] = (lo + hi) / 2;
+    return out;
+  }
+  // alinhada (comprimento de linha, ponto-ponto, ponto-linha, linha-linha)
+  const u = sub(Q, P);
+  const l = Math.hypot(u.x, u.y);
+  if (l < 1e-9) return local;
+  const t = { x: u.x / l, y: u.y / l };
+  const n = { x: -t.y, y: t.x };
+  const off = esc2(sub(local, P), n);
+  const ao = esc2(sub(local, P), t);
+  const aoAjustado = ao > 0 && ao < l ? l / 2 : ao;
+  return soma(P, soma(mult(t, aoAjustado), mult(n, encaixar(off))));
 }

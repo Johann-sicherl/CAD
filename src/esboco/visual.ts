@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { FeatureEsboco } from "../model";
+import type { CotaEsboco, FeatureEsboco } from "../model";
 import { ehCota } from "../model";
 import { desenharCota } from "./cotas";
 import { amostrar, aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, type P2 } from "./geometria";
@@ -37,6 +37,8 @@ export interface OpcoesCamada {
   previa?: { segmentos: P2[]; pontos: P2[] };
   marcador?: P2 | null;
   mostrarEixos?: boolean;
+  /** Cota sendo posicionada (segue o cursor). */
+  cotaPrevia?: CotaEsboco | null;
 }
 
 type Traco = { cor: number; largura: number; tracejado: boolean };
@@ -118,6 +120,10 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
     }
   }
 
+  if (o.cotaPrevia) {
+    const d = desenharCota(o.cotaPrevia, esb, o.mmPx);
+    if (d) adicionar({ cor: CORES.previa, largura: 1.2, tracejado: false }, d.segmentos);
+  }
   if (o.previa?.segmentos.length) adicionar({ cor: CORES.previa, largura: 1.6, tracejado: true }, o.previa.segmentos);
 
   for (const { t, pos } of tracos.values()) {

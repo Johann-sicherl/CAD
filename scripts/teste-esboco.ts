@@ -10,6 +10,7 @@ import * as op from "../src/esboco/operacoes";
 import { encontrarLacos, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
 import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
+import { ajustarTextoCota, PASSO_COTA_PX } from "../src/esboco/cotas";
 
 const require = createRequire(import.meta.url);
 const OC = await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") });
@@ -228,6 +229,22 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("vértice vira ponto", v.tipo === "ponto");
   podarExternas(e, new Set());
   verdade("podar: vértice sem uso removido, aresta usada fica", !e.geos.some((g) => g.id === v.id) && e.geos.some((g) => g.id === ext.id));
+}
+
+// 12. Distanciador automático das cotas (mmPx = 0,1 → passo de 2,6 mm)
+{
+  const e = plano();
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 40, y: 0 }));
+  const c = { id: "c", tipo: "distancia" as const, a: l.id, valor: 40 };
+  const passo = PASSO_COTA_PX * 0.1;
+  const perto = ajustarTextoCota(c, e, { x: 12, y: 0.8 }, 0.1);
+  confere("cota perto da linha vai para 1 passo", perto.y, passo);
+  confere("texto centrado na linha", perto.x, 20);
+  confere("perto de 2 passos encaixa", ajustarTextoCota(c, e, { x: 30, y: -2 * passo - 0.3 }, 0.1).y, -2 * passo);
+  confere("longe dos encaixes fica livre", ajustarTextoCota(c, e, { x: 30, y: 2.5 * passo }, 0.1).y, 2.5 * passo);
+  const ci = op.circulo(e, op.ponto(e, { x: 100, y: 0 }), 10);
+  const d = ajustarTextoCota({ id: "d", tipo: "diametro", a: ci.id, valor: 20 }, e, { x: 111, y: 0 }, 0.1);
+  confere("diâmetro: 1 passo fora do círculo", d.x, 110 + passo);
 }
 
 if (falhas) {

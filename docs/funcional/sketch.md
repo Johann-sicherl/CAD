@@ -149,6 +149,10 @@ esperado × encontrado — hoje o erro aparece na feature ✅)
 ## 4. Cotas
 
 ### Cota inteligente — ✅
+- **Distanciador automático** ✅: enquanto posiciona, a cota segue o cursor (prévia) e a linha de
+  cota vai sozinha para a distância padrão da geometria; mais longe encaixa em múltiplos dessa
+  distância (cotas paralelas igualmente espaçadas); entre as linhas de chamada o número fica
+  centrado. O mesmo vale ao arrastar uma cota existente.
 O tipo depende do que se seleciona e de **onde se solta o número**:
 
 | Seleção | Cota | Status |

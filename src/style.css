@@ -432,6 +432,7 @@ button svg { width: 22px; height: 22px; flex: none; }
 }
 .cota-rotulo.selecionado { color: #f08c00; outline: 1.5px solid #f08c00; }
 .cota-rotulo.conflito { color: var(--erro); }
+.cota-rotulo.previa { color: #6c7a89; border: 1px dashed #9aa6b2; pointer-events: none !important; }
 .cota-rotulo.referencia { color: #8a96a3; }
 .relacao {
   min-width: 20px;

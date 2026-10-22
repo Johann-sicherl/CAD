@@ -261,7 +261,7 @@ function casca(): Esquema<FeatureCasca> {
       titulo: "Parâmetros",
       campos: [
         { t: "num", rot: "Espessura", cam: "espessura", un: "mm", min: 0.001, passo: 0.5 },
-        { t: "refs", rot: "Faces a remover", cam: "faces", aceita: ["face"], multiplo: true, dica: "Toque nas faces a abrir (nenhuma = casca fechada)" },
+        { t: "refs", rot: "Faces a remover", cam: "faces", aceita: ["face"], multiplo: true, dica: "Toque nas faces a abrir. Nenhuma = casca fechada: peça oca por dentro (veja com Vista de seção)" },
         { t: "check", rot: "Casca para fora", cam: "paraFora" },
       ],
     }],

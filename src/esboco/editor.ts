@@ -6,7 +6,7 @@ import type * as THREE from "three";
 import type { CotaEsboco, FeatureEsboco, GeoEsboco, Referencia, RestricaoEsboco } from "../model";
 import { ehCota, novoId } from "../model";
 import type { TipoEntidade, Viewport } from "../viewport";
-import { desenharCota, medirCota, textoCota } from "./cotas";
+import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
   angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
@@ -831,7 +831,11 @@ export class EditorEsboco {
         c = { ...base, tipo: "distancia", a, b };
       }
     }
-    if (c) c.valor = medirCota(c, this.esb);
+    if (c) {
+      c.valor = medirCota(c, this.esb);
+      // distanciador automático: a cota vai para a distância padrão da geometria
+      c.texto = ajustarTextoCota(c, this.esb, local, this.mmPxDesenho || this.h.viewport.mmPorPixel(this.ref));
+    }
     return c;
   }
 
@@ -1305,6 +1309,7 @@ export class EditorEsboco {
     this.mmPxDesenho = vp.mmPorPixel(this.ref);
     const { w, h } = vp.tamanho();
     const marcador = this.cursor && (this.cursor.ponto || this.cursor.geo || this.cursor.meio) ? this.cursor.p : null;
+    this.cotaPrevia = this.previaCota();
     this.camada = construirCamada(this.esb, {
       ref: this.ref,
       mmPx: this.mmPxDesenho,
@@ -1316,10 +1321,21 @@ export class EditorEsboco {
       previa: this.ferramentaUsaEncaixe() ? this.previa() : undefined,
       marcador,
       mostrarEixos: true,
+      cotaPrevia: this.cotaPrevia,
     });
     vp.grupoEsboco.add(this.camada);
     this.montarOverlay();
     vp.pedirRender();
+  }
+
+  /** Cota em andamento seguindo o cursor (já com o distanciador aplicado). */
+  private cotaPrevia: CotaEsboco | null = null;
+  private previaCota(): CotaEsboco | null {
+    if (this.ferramenta !== "cota" || !this.cotaEntidades.length || !this.cursor) return null;
+    // cursor sobre outra entidade: o próximo toque a escolhe, não posiciona a cota
+    const alvo = this.achar(this.cursor.p, this.tolMm(this.tela?.tipo ?? "mouse"));
+    if (alvo && !this.cotaEntidades.includes(alvo.id) && this.cotaEntidades.length < 2) return null;
+    return this.novaCota(this.cotaEntidades, this.cursor.p);
   }
 
   // ---------- rótulos HTML: cotas, relações, dica do cursor, lupa ----------
@@ -1396,6 +1412,17 @@ export class EditorEsboco {
       }
     }
 
+    if (this.cotaPrevia) {
+      const d = desenharCota(this.cotaPrevia, this.esb, this.mmPxDesenho);
+      if (d) {
+        const el = document.createElement("div");
+        el.className = "cota-rotulo previa";
+        el.textContent = textoCota(this.cotaPrevia);
+        ov.appendChild(el);
+        this.rotulos.push({ el, p: d.texto });
+      }
+    }
+
     // dica do cursor: encaixe ou medida em andamento
     const cur = this.cursor;
     if (cur && this.ferramentaUsaEncaixe()) {
@@ -1433,7 +1460,7 @@ export class EditorEsboco {
       if (!ini.moveu) return;
       const p = this.noPlano(e);
       if (!p) return;
-      c.texto = p;
+      c.texto = ajustarTextoCota(c, this.esb, p, this.mmPxDesenho);
       this.redesenhar();
     };
     el.onpointerup = () => {
