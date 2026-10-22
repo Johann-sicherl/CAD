@@ -28,7 +28,9 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
 - Modelo: lista de features serializada em JSON (`.jlscad`; abre `.cadt` antigos), em `src/model.ts`
-- PWA (manifest + `public/sw.js`), deploy automático no GitHub Pages via `.github/workflows/deploy.yml`
+- PWA (manifest + `public/sw.js`). Hospedagem principal: **Cloudflare Pages** (site na raiz, cabeçalhos
+  COOP/COEP em `public/_headers` → `crossOriginIsolated`, requisito do kernel com várias threads).
+  O GitHub Actions (`.github/workflows/deploy.yml`) roda check/teste/build e publica também no GitHub Pages.
 - Unidade: **mm** (sistema MMGS)
 
 Gerenciador de pacotes: **pnpm** (não usar npm; segurança em `pnpm-workspace.yaml`:
@@ -105,7 +107,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 - Erros do OpenCascade chegam como `WebAssembly.Exception` sem texto: traduzir para mensagem útil
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
-- `vite.config.ts` usa `base: "/CAD/"` em build/preview (GitHub Pages).
+- `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/CAD/`.
 - Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
   (plugin `offline` em `vite.config.ts`); o service worker baixa tudo na instalação. Não editar a
   versão do cache à mão.

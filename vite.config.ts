@@ -29,12 +29,16 @@ function offline(): Plugin {
   };
 }
 
-// base = nome do repositório, para funcionar no GitHub Pages (johann-sicherl.github.io/CAD/)
+// base: "/" no Cloudflare Pages (site na raiz); o workflow do GitHub Pages passa BASE_PATH=/CAD/
+// (johann-sicherl.github.io/CAD/).
 export default defineConfig(({ command, isPreview }) => ({
-  base: command === "build" || isPreview ? "/CAD/" : "/",
+  base: command === "build" || isPreview ? process.env.BASE_PATH || "/" : "/",
   plugins: [offline()],
   worker: { format: "es" },
   optimizeDeps: { exclude: ["replicad-opencascadejs"] },
   server: { host: true }, // permite abrir no tablet pela rede local durante o desenvolvimento
+  // mesmos cabeçalhos do public/_headers (Cloudflare): isolamento de origem → SharedArrayBuffer,
+  // necessário para o kernel com várias threads
+  preview: { headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" } },
   build: { target: "es2022", chunkSizeWarningLimit: 4000 },
 }));
