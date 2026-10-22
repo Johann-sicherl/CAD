@@ -24,6 +24,7 @@ import type {
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
+import { RastreadorFaces } from "./facesRecurso";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
   propagarTangente, topologia, type Topologia,
@@ -56,6 +57,8 @@ export interface ResultadoRegeneracao {
   topologia: Topologia | null;
   referencias: InfoReferencia[];
   tempos: { id: string; ms: number }[];
+  /** Faces da peça final (índices de `topologia.faces`) de cada recurso: destaque na árvore. */
+  facesPorRecurso: Record<string, number[]>;
 }
 
 // ---------- vetores ----------
@@ -657,12 +660,15 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
+  const rastreador = new RastreadorFaces();
 
   for (const f of features) {
     if (f.suprimida) continue;
     const t0 = performance.now();
     try {
+      const antes = ctx.peca;
       regenerarFeature(f, ctx);
+      rastreador.registrar(f.id, antes, ctx.peca);
     } catch (e) {
       // A feature com falha é ignorada e a regeneração continua com a peça anterior,
       // como um CAD faz ao marcar a feature em vermelho na árvore.
@@ -680,7 +686,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
 
   const peca = ctx.peca;
   ultimaPeca = peca;
-  if (!peca) return { malha: null, erros, volume: null, topologia: null, referencias: ctx.refsSaida, tempos };
+  if (!peca) return { malha: null, erros, volume: null, topologia: null, referencias: ctx.refsSaida, tempos, facesPorRecurso: {} };
 
   const m = peca.mesh({ tolerance: tolerancia, angularTolerance: 15 });
   const a = peca.meshEdges({ tolerance: tolerancia, angularTolerance: 15 });
@@ -704,6 +710,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
     topologia: topologia(peca).topo,
     referencias: ctx.refsSaida,
     tempos,
+    facesPorRecurso: rastreador.atribuir(peca),
   };
 }
 

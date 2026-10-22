@@ -247,6 +247,13 @@ Abas: Manual · Assistente (⏸)
 **Direção 2**: simétrica
 **Recursos e faces · Corpos · Instâncias a pular · Opções · Instâncias a variar** (como no linear)
 
+**Pré-seleção (padrões e espelhar)** ✅: recursos selecionados na árvore antes do comando (vários
+com Ctrl/Shift) entram direto na lista; plano/face, eixo ou aresta pré-selecionados vão para o
+plano de espelho / direção / eixo. Com o comando aberto, tocar um recurso na árvore o põe ou tira
+da lista sem ativar a caixa. A barra de contexto do recurso tem Espelhar / Padrão linear / circular.
+Também usam pré-seleção: revolução (eixo), inclinação (plano neutro), plano (2 planos → médio;
+plano + aresta → ângulo), eixo (2 planos, 2 vértices) e Medir.
+
 ### Espelhar (Mirror) — ✅
 **Face/plano de espelho**
 **Recursos a espelhar** · **Faces a espelhar** · **Corpos a espelhar** (mesclar sólidos, costurar superfícies)
@@ -304,6 +311,7 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 | **Barra de retrocesso** | arrastar na árvore; inserir recursos no meio; rolar para frente/trás | ✅ |
 | Reordenar recursos | arrastar na árvore (✅ hoje com ▲▼) | 🟡 |
 | Suprimir / Reativar | por recurso (✅) e por configuração (⏸) | 🟡 |
+| **Destaque do recurso** | selecionar um recurso na árvore pinta as faces dele na peça (outro tom); esboço selecionado destaca o recurso que o consome | ✅ |
 | Pai/filho | lista de referências do recurso; **excluir o pai** abre "Confirmar exclusão" com os filhos (excluídos junto, padrão) e os absorvidos (esboço, opcional) | 🟡 (exclusão ✅) |
 | Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | 🟡 (menu de contexto ✅) |
 | **Instant3D** | arrastar faces/cotas com alças no viewport | F3 |

@@ -52,6 +52,8 @@ export interface Entidade {
 
 const COR_SELECAO = 0x1f78d1;
 const COR_REALCE = 0x7fb8ef;
+/** Faces do recurso selecionado na árvore: outro tom, para ver onde ele está na peça. */
+const COR_RECURSO = 0x2bb3a3;
 
 /** Face plana tocada na peça: ponto e normal para iniciar um esboço nela. */
 export interface FacePlana {
@@ -626,14 +628,18 @@ export class Viewport {
   }
 
   /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
-  destacarEntidades(sel: Entidade[], realce: Entidade | null = null) {
+  destacarEntidades(sel: Entidade[], realce: Entidade | null = null, doRecurso: Entidade[] = []) {
     for (const o of [...this.grupoDestaque.children]) {
       this.grupoDestaque.remove(o);
       (o as THREE.Mesh).geometry?.dispose();
       ((o as THREE.Mesh).material as THREE.Material)?.dispose();
     }
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
-    const itens = [...sel.map((e) => ({ e, cor: COR_SELECAO })), ...(realce ? [{ e: realce, cor: COR_REALCE }] : [])];
+    const itens = [
+      ...doRecurso.map((e) => ({ e, cor: COR_RECURSO })),
+      ...sel.map((e) => ({ e, cor: COR_SELECAO })),
+      ...(realce ? [{ e: realce, cor: COR_REALCE }] : []),
+    ];
     const { w, h } = this.tamanho();
     for (const { e, cor } of itens) {
       if (e.tipo === "face" && solido) {

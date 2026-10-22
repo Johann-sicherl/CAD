@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import {
-  novaFeature, novoEsboco, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
+  documentoExemplo, novaFeature, novoEsboco, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
 import { regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
@@ -269,6 +269,16 @@ const bloco = ext(base, 10);
   const ok4 = doc.features.length === 2 && doc.retrocesso === undefined && !Object.keys(doc.equacoes).length;
   if (!ok4) falhas++;
   console.log(`${ok4 ? "ok  " : "FALHA"} excluir: sobra base, retrocesso e equações ajustados`);
+}
+
+// ---------- faces de cada recurso (destaque na árvore) ----------
+{
+  const d = documentoExemplo();
+  const r = regenerar(d.features);
+  const n = d.features.map((f) => r.facesPorRecurso[f.id]?.length ?? 0);
+  const ok = n[0] === 6 && n[1] === 2 && n[2] === 1;
+  if (!ok) falhas++;
+  console.log(`${ok ? "ok  " : "FALHA"} faces por recurso (base 6, ressalto 2, furo 1): ${n.join(", ")}`);
 }
 
 if (falhas) {

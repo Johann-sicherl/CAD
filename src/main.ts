@@ -79,6 +79,19 @@ type FerramentaAvaliar =
 let aberto = false;
 let doc: Documento = documentoVazio();
 let selecao: Selecao = null;
+/** Outros itens da seleção múltipla da árvore (Ctrl/Shift); `selecao` é o último tocado. */
+let selExtras: NonNullable<Selecao>[] = [];
+function definirSel(s: Selecao) {
+  selecao = s;
+  selExtras = [];
+}
+/** Todos os itens selecionados na árvore, na ordem em que foram tocados. */
+function selArvore(): NonNullable<Selecao>[] {
+  const existe = (s: NonNullable<Selecao>) => s.tipo === "ref" || doc.features.some((f) => f.id === s.id);
+  const lista = selExtras.filter(existe);
+  if (selecao && existe(selecao)) lista.push(selecao);
+  return lista;
+}
 /** Faces/arestas/vértices selecionados no modelo (pré-seleção para comandos). */
 let selPeca: Referencia[] = [];
 /** Ponto tocado na última face selecionada (posição inicial de furo). */
@@ -86,6 +99,8 @@ let pontoTocado: Vec3 | null = null;
 let errosPorFeature = new Map<string, string>();
 let tempos: { id: string; ms: number }[] = [];
 let referenciasKernel: InfoReferencia[] = [];
+/** Faces da peça final de cada recurso (destaque ao selecionar na árvore). */
+let facesPorRecurso: Record<string, number[]> = {};
 const historico: string[] = [];
 const refazer: string[] = [];
 let primeiraRegeneracao = true;
@@ -153,6 +168,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   errosPorFeature = new Map(r.erros.map((e) => [e.id, e.mensagem]));
   tempos = r.tempos;
   referenciasKernel = r.referencias;
+  facesPorRecurso = r.facesPorRecurso ?? {};
   planosResolvidos.clear();
   for (const ri of r.referencias) if (ri.tipo === "plano") planosResolvidos.set(ri.id, ri.ref);
   $("st-volume").textContent =
@@ -219,7 +235,7 @@ function alterou(final: boolean) {
 
 function restaurar(json: string) {
   doc = JSON.parse(json);
-  if (selecao?.tipo === "feature" && !doc.features.some((f) => f.id === idSelecionado())) selecao = null;
+  if (selecao?.tipo === "feature" && !doc.features.some((f) => f.id === idSelecionado())) definirSel(null);
   if (comando) fecharComando();
   if (editor) {
     const e = doc.features.find((f): f is FeatureEsboco => f.id === editor!.esb.id && f.tipo === "esboco");
@@ -345,15 +361,30 @@ function criarRecurso(id: string) {
   if (!tipo) return;
   if (tipo === "furo") return iniciarFuro();
   const f = novaFeature(tipo, nomeNovo(tipo));
-  const sel = featureSelecionada();
+  // pré-seleção: itens da árvore (Ctrl/Shift soma) e geometria tocada no modelo
+  const naArvore = selArvore();
+  const featsSel = naArvore.flatMap((s) => (s.tipo === "feature" ? doc.features.filter((x) => x.id === s.id) : []));
+  const esbocoSel = featsSel.find((x): x is FeatureEsboco => x.tipo === "esboco");
+  const sel = esbocoSel ?? featureSelecionada();
   const faces = selPeca.filter((r) => r.tipo === "face");
   const itens = selPeca.filter((r) => r.tipo === "face" || r.tipo === "aresta");
-  const planoSel: Referencia | undefined = faces[0] ?? (selecao?.tipo === "ref" && selecao.id !== "origem" ? { tipo: "plano", id: selecao.id } : sel?.tipo === "planoRef" ? { tipo: "plano", id: sel.id } : undefined);
+  const planosArvore: Referencia[] = naArvore.flatMap((s): Referencia[] =>
+    s.tipo === "ref" ? (s.id === "origem" ? [] : [{ tipo: "plano", id: s.id }])
+      : featsSel.some((x) => x.id === s.id && x.tipo === "planoRef") ? [{ tipo: "plano", id: s.id }] : []);
+  const eixosArvore: Referencia[] = featsSel.filter((x) => x.tipo === "eixoRef").map((x) => ({ tipo: "eixo", id: x.id }));
+  const facesPlanas = faces.filter((r) => r.tipo === "face" && r.ass.geom === "plano");
+  const planoSel: Referencia | undefined = planosArvore[0] ?? facesPlanas[0] ?? faces[0];
+  const repetir = featsSel.filter((x) => REPETIVEIS.includes(x.tipo)).map((x) => x.id);
   switch (f.tipo) {
     case "extrusao":
     case "revolucao": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
       if (perfil) f.esboco = perfil.id;
+      if (f.tipo === "revolucao") {
+        // eixo pré-selecionado: eixo de referência na árvore ou aresta do modelo
+        const ax = eixosArvore[0] ?? selPeca.find((r) => r.tipo === "aresta");
+        if (ax) f.eixo = ax;
+      }
       if (id === "corte" || id === "corte-revolucao") {
         f.operacao = "cortar";
         f.nome = f.tipo === "extrusao" ? `Corte${nomeNovo("extrusao")}` : `CorteRevolução${nomeNovo("revolucao")}`;
@@ -376,8 +407,9 @@ function criarRecurso(id: string) {
       f.faces = faces;
       break;
     case "inclinacao":
+      // plano neutro: plano escolhido na árvore; faces: as tocadas no modelo
       f.faces = faces;
-      f.planoNeutro = { tipo: "plano", id: "XY" };
+      f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XY" };
       break;
     case "nervura": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
@@ -387,23 +419,45 @@ function criarRecurso(id: string) {
     case "padraoLinear":
     case "padraoCircular":
     case "espelhar":
-      if (sel && sel.tipo !== "esboco") f.recursos = [sel.id];
+      // recursos já selecionados entram direto na lista (vários com Ctrl/Shift)
+      f.recursos = repetir;
       if (f.tipo === "padraoLinear") {
-        const ar = selPeca.find((r) => r.tipo === "aresta");
-        if (ar) f.dir1.ref = ar;
+        const dir = selPeca.find((r) => r.tipo === "aresta") ?? eixosArvore[0] ?? planosArvore[0];
+        if (dir) f.dir1.ref = dir;
       }
       if (f.tipo === "padraoCircular") {
-        const ax = selPeca.find((r) => r.tipo === "aresta" || r.tipo === "face");
+        const ax = eixosArvore[0] ?? selPeca.find((r) => r.tipo === "aresta" || r.tipo === "face");
         if (ax) f.eixo = ax;
       }
       if (f.tipo === "espelhar") f.plano = planoSel ?? { tipo: "plano", id: "YZ" };
       break;
-    case "planoRef":
-      f.ref1 = planoSel ?? { tipo: "plano", id: "XY" };
+    case "planoRef": {
+      const planos = [...planosArvore, ...facesPlanas];
+      f.ref1 = planos[0] ?? { tipo: "plano", id: "XY" };
+      // dois planos: plano médio; plano + aresta/eixo: em ângulo
+      const linha = selPeca.find((r) => r.tipo === "aresta") ?? eixosArvore[0];
+      if (planos.length >= 2) {
+        f.modo = "medio";
+        f.ref2 = planos[1];
+      } else if (linha) {
+        f.modo = "angulo";
+        f.ref2 = linha;
+      }
       break;
+    }
     case "eixoRef": {
-      const r = selPeca[0];
-      if (r) {
+      const planos = [...planosArvore, ...facesPlanas];
+      const vertices = selPeca.filter((x) => x.tipo === "vertice");
+      const r = selPeca.find((x) => x.tipo !== "vertice" && !(x.tipo === "face" && x.ass.geom === "plano"));
+      if (planos.length >= 2) {
+        f.modo = "doisPlanos";
+        f.ref1 = planos[0];
+        f.ref2 = planos[1];
+      } else if (vertices.length >= 2) {
+        f.modo = "doisPontos";
+        f.ref1 = vertices[0];
+        f.ref2 = vertices[1];
+      } else if (r) {
         f.ref1 = r;
         if (r.tipo === "face") f.modo = r.ass.geom === "cilindro" ? "cilindro" : "aresta";
       }
@@ -413,6 +467,28 @@ function criarRecurso(id: string) {
   limparSelPeca();
   inserirFeature(f);
   abrirComando(f, true);
+}
+
+/** Tipos de recurso que padrões e espelhar sabem repetir. */
+const REPETIVEIS: Feature["tipo"][] = ["extrusao", "revolucao", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"];
+
+/**
+ * Com um padrão/espelhar aberto, tocar um recurso (anterior) na árvore o põe ou tira da lista
+ * "Recursos", sem precisar ativar a caixa — como nos CADs profissionais.
+ */
+function alternarRecursoNoComando(x: Feature): boolean {
+  const c = comando;
+  if (!c || editor || !("recursos" in c.f) || x.id === c.f.id) return false;
+  if (!REPETIVEIS.includes(x.tipo) || doc.features.indexOf(x) > doc.features.indexOf(c.f)) return false;
+  const lista = c.f.recursos;
+  const i = lista.indexOf(x.id);
+  if (i >= 0) lista.splice(i, 1);
+  else lista.push(x.id);
+  salvarAutosave();
+  regenerar(80);
+  renderizarComando();
+  renderizarArvore();
+  return true;
 }
 
 // ---------- painel de comando ----------
@@ -472,7 +548,7 @@ function abrirComando(f: Feature, novo: boolean) {
     }
     if (comando.campo) break;
   }
-  selecao = { tipo: "feature", id: f.id };
+  definirSel({ tipo: "feature", id: f.id });
   mostrarPainel("comando");
   renderizarComando();
   regenerar();
@@ -525,7 +601,7 @@ function confirmarComando() {
   fecharComando();
   registrarPasso();
   salvarAutosave();
-  selecao = { tipo: "feature", id: f.id };
+  definirSel({ tipo: "feature", id: f.id });
   renderizarTudo();
   regenerar();
 }
@@ -535,7 +611,7 @@ function cancelarComando() {
   doc = JSON.parse(comando.snapshot);
   const novo = comando.novo;
   fecharComando();
-  if (novo) selecao = null;
+  if (novo) definirSel(null);
   salvarAutosave();
   renderizarTudo();
   regenerar();
@@ -651,12 +727,21 @@ function refsDestacadas(): Referencia[] {
 function atualizarDestaques(realce: Referencia | null = null) {
   const refs = refsDestacadas();
   const ents = refs.map(entidadeDeRef).filter((e): e is Entidade => !!e);
-  viewport.destacarEntidades(ents, realce ? entidadeDeRef(realce) : null);
+  viewport.destacarEntidades(ents, realce ? entidadeDeRef(realce) : null, facesDosSelecionados());
   // planos de referência usados pelo comando aparecem destacados
   const planoUsado = refs.find((r): r is Extract<Referencia, { tipo: "plano" }> => r.tipo === "plano");
   const principal = planoUsado && ["XY", "XZ", "YZ"].includes(planoUsado.id) ? (planoUsado.id as Plano) : null;
   viewport.destacarReferencia(principal ?? (selecao?.tipo === "ref" ? selecao.id : null));
   mostrarReferenciasExtras(planoUsado && !principal ? planoUsado.id : undefined);
+}
+
+/** Faces dos recursos selecionados na árvore (fora de comandos): mostram onde eles estão. */
+function facesDosSelecionados(): Entidade[] {
+  if (comando || editor) return [];
+  const ids = new Set(selArvore().filter((s) => s.tipo === "feature").map((s) => s.id));
+  // esboço selecionado: destaca o recurso que o consome
+  for (const f of doc.features) if ("esboco" in f && f.esboco && ids.has(f.esboco)) ids.add(f.id);
+  return [...ids].flatMap((id) => (facesPorRecurso[id] ?? []).map((indice) => ({ tipo: "face" as const, indice })));
 }
 
 function mostrarReferenciasExtras(destaque?: string) {
@@ -728,22 +813,23 @@ function instalarToqueCurto() {
     const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
     if (!ent && refViewport) {
       // plano/eixo de referência: seleciona como na árvore (Esboço, Normal a, Ocultar…)
-      limparSelPeca();
+      const somar = e.ctrlKey || e.shiftKey || e.metaKey;
+      if (!somar) limparSelPeca();
       if (refViewport.id === "XY" || refViewport.id === "XZ" || refViewport.id === "YZ") {
         const id = refViewport.id;
-        selecionar({ tipo: "ref", id });
+        selecionar({ tipo: "ref", id }, somar);
         mostrarBarra(acoesDaReferencia(id), e.clientX, e.clientY);
       } else {
         const f = doc.features.find((x) => x.id === refViewport.id);
         if (!f) return;
-        selecionar({ tipo: "feature", id: f.id });
+        selecionar({ tipo: "feature", id: f.id }, somar);
         mostrarBarra(acoesDaFeature(f), e.clientX, e.clientY);
       }
       return;
     }
     if (!ent) {
       limparSelPeca();
-      selecao = null;
+      definirSel(null);
       renderizarTudo();
       return;
     }
@@ -753,7 +839,7 @@ function instalarToqueCurto() {
     const i = selPeca.findIndex((x) => mesmaRef(x, r));
     if (i >= 0) selPeca.splice(i, 1);
     else selPeca = soma ? [...selPeca, r] : [r];
-    selecao = null;
+    if (!soma) definirSel(null); // Ctrl/Shift: mantém o que foi escolhido na árvore
     renderizarArvore();
     atualizarStatus();
     atualizarDestaques();
@@ -803,7 +889,7 @@ viewport.canvas().addEventListener("pointermove", (e) => {
     quadroRealce = 0;
     const filtro = comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS;
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
-    viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent);
+    viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados());
     const ref = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
     viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
   });
@@ -856,6 +942,14 @@ function acoesDaFeature(f: Feature): AcaoContexto[] {
     if (e) out.push({ rotulo: "Editar esboço", icone: "esboco", acao: () => void editarEsboco(e) });
   }
   if (f.tipo === "planoRef") out.push({ rotulo: "Esboço", icone: "esboco", acao: () => void suporteEscolhido({ tipo: "planoRef", id: f.id }, null) });
+  if (REPETIVEIS.includes(f.tipo)) {
+    // atalhos: o recurso (e os outros selecionados com Ctrl/Shift) já entram na lista
+    out.push(
+      { rotulo: "Espelhar", icone: "espelhar", acao: () => criarRecurso("espelhar") },
+      { rotulo: "Padrão linear", icone: "padraoLinear", acao: () => criarRecurso("padrao-linear") },
+      { rotulo: "Padrão circular", icone: "padraoCircular", acao: () => criarRecurso("padrao-circular") },
+    );
+  }
   if (f.tipo === "planoRef" || f.tipo === "eixoRef") {
     const oculto = prefs.refsOcultas.includes(f.id);
     out.push({
@@ -970,7 +1064,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
   for (const id of REFERENCIAS) {
     const li = document.createElement("li");
     li.className = "item ref";
-    li.classList.toggle("ativo", selecao?.tipo === "ref" && selecao.id === id);
+    li.classList.toggle("ativo", selArvore().some((s) => s.tipo === "ref" && s.id === id));
     li.classList.toggle("oculta", !prefs.refsVisiveis[id]);
     const vis = prefs.refsVisiveis[id];
     li.innerHTML = `
@@ -983,6 +1077,8 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       if (aguardando) return void suporteEscolhido({ tipo: "plano", plano: id, deslocamento: 0 }, null);
       if (comando?.campo && comando.campo.aceita.includes("plano")) return adicionarAoCampo({ tipo: "plano", id });
       if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
+      const somar = ev.ctrlKey || ev.shiftKey || ev.metaKey;
+      if (somar) return selecionar({ tipo: "ref", id }, true);
       limparSelPeca();
       selecionar(selecao?.tipo === "ref" && selecao.id === id ? null : { tipo: "ref", id });
       if (selecao) mostrarBarraNoItem(li, acoesDaReferencia(id));
@@ -1005,7 +1101,8 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     li.className = "item";
     li.classList.toggle("filho", filho);
     li.style.setProperty("--nivel", String(nivel));
-    li.classList.toggle("ativo", f.id === idSelecionado() || f.id === comando?.f.id);
+    li.classList.toggle("ativo", selArvore().some((s) => s.tipo === "feature" && s.id === f.id) || f.id === comando?.f.id
+      || (!!comando && "recursos" in comando.f && comando.f.recursos.includes(f.id)));
     li.classList.toggle("suprimida", f.suprimida);
     li.classList.toggle("retrocedida", i >= limite);
     li.classList.toggle("com-erro", errosPorFeature.has(f.id));
@@ -1031,7 +1128,9 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       if (comando?.campo && comando.campo.aceita.includes("plano") && f.tipo === "planoRef") return adicionarAoCampo({ tipo: "plano", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("eixo") && f.tipo === "eixoRef") return adicionarAoCampo({ tipo: "eixo", id: f.id });
       if (aguardando && f.tipo === "planoRef") return void suporteEscolhido({ tipo: "planoRef", id: f.id }, null);
+      if (comando && alternarRecursoNoComando(f)) return;
       if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro recurso.");
+      if (ev.ctrlKey || ev.shiftKey || ev.metaKey) return selecionar({ tipo: "feature", id: f.id }, true);
       limparSelPeca();
       selecionar(f.id === idSelecionado() ? null : { tipo: "feature", id: f.id });
       if (selecao) mostrarBarraNoItem(li, acoesDaFeature(f));
@@ -1081,7 +1180,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     li.onclick = () => {
       if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
       if (ref.tipo === "face" || ref.tipo === "aresta" || ref.tipo === "vertice") {
-        selecao = null;
+        definirSel(null);
         selPeca = [ref];
         renderizarArvore();
         atualizarStatus();
@@ -1246,7 +1345,7 @@ function excluirFeature(f: Feature) {
     if (comando && ids.has(comando.f.id)) fecharComando();
     if (editor && ids.has(editor.esb.id)) sairEsboco();
     excluirRecursos(doc, ids);
-    selecao = null;
+    definirSel(null);
     alterou(true);
     renderizarTudo();
     avisar(ids.size > 1 ? `${ids.size} recursos excluídos.` : `${f.nome} excluído.`);
@@ -1278,8 +1377,19 @@ function moverFeature(i: number, delta: number) {
   alterou(true);
 }
 
-function selecionar(s: Selecao) {
-  selecao = s;
+/**
+ * Seleção na árvore. Com `somar` (Ctrl/Shift) o item entra ou sai de uma seleção múltipla —
+ * comandos como padrões e espelhar pegam os recursos já selecionados.
+ */
+function selecionar(s: Selecao, somar = false) {
+  if (somar && s) {
+    const lista = selArvore();
+    const i = lista.findIndex((x) => x.tipo === s.tipo && x.id === s.id);
+    if (i >= 0) lista.splice(i, 1);
+    else lista.push(s);
+    selecao = lista.pop() ?? null;
+    selExtras = lista;
+  } else definirSel(s);
   renderizarTudo();
 }
 
@@ -1405,7 +1515,7 @@ async function suporteEscolhido(suporte: SuporteEsboco, pontoTocado: Vec3 | null
   if (para === "furo") return criarFuro(suporte, pontoTocado);
   const esb = novoEsboco(nomeNovo("esboco"), suporte);
   inserirFeature(esb);
-  selecao = { tipo: "feature", id: esb.id };
+  definirSel({ tipo: "feature", id: esb.id });
   alterou(true);
   await editarEsboco(esb, ferramenta);
 }
@@ -1429,7 +1539,7 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
   limparEsbocos();
   esconderBarraContexto();
   limparSelPeca();
-  selecao = { tipo: "feature", id: esb.id };
+  definirSel({ tipo: "feature", id: esb.id });
   snapshotEsboco = JSON.stringify(doc);
   const host: Hospedeiro = {
     viewport,
@@ -1475,7 +1585,7 @@ function sairEsboco() {
   editor = null;
   snapshotEsboco = null;
   instalarToqueCurto();
-  selecao = { tipo: "feature", id };
+  definirSel({ tipo: "feature", id });
   mostrarPainel("arvore");
   renderizarAbas();
   renderizarTudo();
@@ -1578,9 +1688,15 @@ function comandoAvaliar(id: string) {
   switch (id) {
     case "medir":
       if (avaliacao?.tipo === "medir") return fecharAvaliacao();
-      fecharAvaliacao();
-      avaliacao = { tipo: "medir", refs: [] };
-      abrirJanela("Medir", "<p class='dica'>Toque faces, arestas ou vértices (até dois). Toque no vazio para limpar.</p>");
+      {
+        // entidades já selecionadas no modelo entram na medição (até duas)
+        const pre = selPeca.slice(0, 2);
+        fecharAvaliacao();
+        avaliacao = { tipo: "medir", refs: pre };
+        limparSelPeca();
+        abrirJanela("Medir", "<p class='dica'>Toque faces, arestas ou vértices (até dois). Toque no vazio para limpar.</p>");
+        if (pre.length) void atualizarMedida();
+      }
       break;
     case "massa":
       return void mostrarMassa();
@@ -2162,7 +2278,7 @@ function abrirDocumento(d: Documento) {
   fecharJanela();
   doc = d;
   aberto = true;
-  selecao = null;
+  definirSel(null);
   selPeca = [];
   historico.length = 0;
   refazer.length = 0;
@@ -2185,7 +2301,7 @@ function fecharDocumento() {
   fecharJanela();
   aberto = false;
   doc = documentoVazio();
-  selecao = null;
+  definirSel(null);
   selPeca = [];
   historico.length = 0;
   refazer.length = 0;
