@@ -340,7 +340,7 @@ export interface Variavel {
 }
 
 export interface Documento {
-  formato: "cad-tablet";
+  formato: "jlscad";
   versao: 1 | 2;
   nome: string;
   features: Feature[];
@@ -382,12 +382,12 @@ export function novoId(): string {
 }
 
 export function documentoVazio(): Documento {
-  return { formato: "cad-tablet", versao: 2, nome: "Peça1", features: [] };
+  return { formato: "jlscad", versao: 2, nome: "Peça1", features: [] };
 }
 
 export function documentoExemplo(): Documento {
   return {
-    formato: "cad-tablet",
+    formato: "jlscad",
     versao: 2,
     nome: "Peça exemplo",
     features: [
@@ -498,9 +498,11 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
 /** Lê arquivos antigos e completa campos novos com valores padrão. */
 export function validarDocumento(dados: unknown): Documento {
   const d = dados as Documento;
-  if (!d || d.formato !== "cad-tablet" || !Array.isArray(d.features)) {
-    throw new Error("Arquivo não é um projeto CAD Tablet válido.");
+  // "cad-tablet": arquivos .cadt do nome antigo do programa
+  if (!d || (d.formato !== "jlscad" && (d.formato as string) !== "cad-tablet") || !Array.isArray(d.features)) {
+    throw new Error("Arquivo não é um projeto JLSCAD válido.");
   }
+  d.formato = "jlscad";
   for (const f of d.features) {
     if (f.tipo === "extrusao") {
       // versão 1: profundidade negativa = sentido oposto

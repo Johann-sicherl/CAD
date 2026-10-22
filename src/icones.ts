@@ -1,4 +1,4 @@
-// Ícones próprios do CAD Tablet: SVG 24×24 desenhados à mão, traço em currentColor.
+// Ícones próprios do JLSCAD: SVG 24×24 desenhados à mão, traço em currentColor.
 // Formas genéricas (setas, sólidos, perfis); nenhum ícone de terceiros.
 
 const C = "#2f7fd0"; // cor de destaque usada em partes do ícone (o "novo" de cada comando)
@@ -15,6 +15,10 @@ export const ICONES = {
   desfazer: svg(`<path d="M9 7 5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-3"/>`),
   refazer: svg(`<path d="m15 7 4 4-4 4"/><path d="M19 11h-9a5 5 0 0 0 0 10h3"/>`),
   menu: svg(`<path d="M4 7h16M4 12h16M4 17h16"/>`),
+  celular: svg(`<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M10.5 18.5h3" stroke="${C}"/>`),
+  tablet: svg(`<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M11 17h2" stroke="${C}"/><path d="m17 8 2.5-2.5" stroke="${C}"/>`),
+  computador: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/><path d="M14 9.5l2 2-1 .2.8 1.6-.8.4-.8-1.6-.7.7z" stroke="${C}"/>`),
+  arvore: svg(`<path d="M5 4v16M5 8h5M5 14h5"/><rect x="11" y="6" width="8" height="4" rx="1" stroke="${C}"/><rect x="11" y="12" width="8" height="4" rx="1" stroke="${C}"/>`),
   fechar: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="m9.5 11.5 5 5M14.5 11.5l-5 5" stroke="${C}"/>`),
 
   // ---------- Features ----------

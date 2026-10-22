@@ -1,7 +1,7 @@
 {
-  "name": "CAD Tablet",
-  "short_name": "CAD",
-  "description": "CAD paramétrico simplificado para tablet",
+  "name": "JLSCAD",
+  "short_name": "JLSCAD",
+  "description": "CAD paramétrico para celular, tablet e computador",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

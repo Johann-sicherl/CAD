@@ -264,7 +264,7 @@ const bloco = ext(base, 10);
   const ok3 = abs.length === 1 && abs[0].id === e1.id;
   if (!ok3) falhas++;
   console.log(`${ok3 ? "ok  " : "FALHA"} esboço absorvido pela extrusão`);
-  const doc = { formato: "cad-tablet", versao: 2, nome: "t", features: [...feats], retrocesso: 5, equacoes: { [`${x2.id}.profundidade`]: "=2" } } as any;
+  const doc = { formato: "jlscad", versao: 2, nome: "t", features: [...feats], retrocesso: 5, equacoes: { [`${x2.id}.profundidade`]: "=2" } } as any;
   excluirRecursos(doc, new Set([pl.id, ...f1]));
   const ok4 = doc.features.length === 2 && doc.retrocesso === undefined && !Object.keys(doc.equacoes).length;
   if (!ok4) falhas++;

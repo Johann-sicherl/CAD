@@ -1,4 +1,4 @@
-# CAD Tablet — contexto para o Claude
+# JLSCAD — contexto para o Claude
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
@@ -25,7 +25,7 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Esboço (`src/esboco/`): solver PlaneGCS via `@salusoft89/planegcs` (WASM, LGPL) na thread da UI
   (resposta imediata ao arrastar); geometria/operações puras e testadas em `scripts/teste-esboco.ts`
 - Visualização: Three.js (`src/viewport.ts`), Z para cima, render só quando algo muda
-- Modelo: lista de features serializada em JSON (`.cadt`), em `src/model.ts`
+- Modelo: lista de features serializada em JSON (`.jlscad`; abre `.cadt` antigos), em `src/model.ts`
 - PWA (manifest + `public/sw.js`), deploy automático no GitHub Pages via `.github/workflows/deploy.yml`
 - Unidade: **mm** (sistema MMGS)
 
@@ -42,6 +42,11 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   (sem perspectiva/ponto de fuga).
 - **Início limpo:** o app abre sem documento (só Novo/Abrir e recentes); **Novo** abre a janela de
   escolha do ambiente (por enquanto só **Peça**).
+- **Nome:** **JLSCAD**; arquivo de projeto **`.jlscad`** (abre também `.cadt` do nome antigo).
+- **Perfil de dispositivo** escolhido na janela inicial (Celular / Tablet / Computador; trocar em
+  Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
+  sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
+  Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
 - **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado), com o mouse dos CADs

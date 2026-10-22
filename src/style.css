@@ -396,10 +396,7 @@ button svg { width: 22px; height: 22px; flex: none; }
 #st-kernel[data-estado="erro"] { color: var(--erro); }
 .st-dir { margin-left: auto; }
 
-/* ---------- telas largas: ações rápidas no topo; estreitas: menu ---------- */
-@media (min-width: 901px) {
-  .menu-wrap { display: none; }
-}
+/* ---------- menu sempre visível; telas estreitas escondem as ações rápidas ---------- */
 
 /* ---------- tablet em retrato ---------- */
 @media (max-width: 900px) {
@@ -793,3 +790,80 @@ body.sem-documento .area { grid-template-columns: minmax(0, 1fr); }
 .excluir-opcao { display: flex; align-items: center; gap: 10px; min-height: var(--toque); font-size: 14px; }
 .excluir-opcao input { width: 22px; height: 22px; }
 .dialogo-excluir button.perigo { background: var(--erro); border-color: var(--erro); color: #fff; font-weight: 600; }
+
+/* ---------- perfis de dispositivo (escolhidos na janela inicial) ---------- */
+#btn-lateral { display: none; }
+.ti-dispositivo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--texto-2);
+  font-size: 13px;
+}
+.ti-dispositivo:empty { display: none; }
+.ti-dispositivo svg { width: 20px; height: 20px; }
+.ambiente { position: relative; }
+.ambiente .sugerido {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--acento-suave);
+  color: var(--acento);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+}
+.dispositivos { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+
+/* computador: mouse e teclado — alvos compactos, mais espaço para o modelo */
+body.disp-computador { --toque: 34px; font-size: 14px; }
+body.disp-computador .cmd { min-width: 58px; height: 54px; font-size: 11.5px; gap: 2px; }
+body.disp-computador .cmd svg { width: 24px; height: 24px; }
+body.disp-computador .arvore .item { min-height: 36px; }
+body.disp-computador .arvore .item.filho { min-height: 30px; }
+body.disp-computador .aba { min-height: 32px; }
+body.disp-computador .area { grid-template-columns: 270px 1fr; }
+body.disp-computador button svg { width: 20px; height: 20px; }
+
+/* celular: tela pequena — ícones sem texto, árvore e painéis numa gaveta sobre o modelo */
+body.disp-celular #btn-lateral { display: inline-grid; }
+body.disp-celular .marca,
+body.disp-celular .rapidas button[data-acao],
+body.disp-celular .rapidas .sep,
+body.disp-celular .exportar,
+body.disp-celular #st-tempo,
+body.disp-celular #st-material,
+body.disp-celular #st-kernel { display: none; }
+body.disp-celular .cmd { min-width: 48px; height: 48px; padding: 2px; }
+body.disp-celular .cmd > span { display: none; }
+body.disp-celular .cmd svg { width: 26px; height: 26px; }
+body.disp-celular .aba { padding: 0 12px; font-size: 13px; }
+body.disp-celular .area { grid-template-columns: minmax(0, 1fr); position: relative; }
+body.disp-celular .viewport-wrap { grid-column: 1; grid-row: 1; }
+body.disp-celular .lateral {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(88vw, 360px);
+  box-shadow: var(--sombra);
+  transform: translateX(-105%);
+  transition: transform 0.18s ease-out;
+}
+body.disp-celular.lateral-aberta .lateral { transform: none; }
+body.disp-celular .barra-vistas {
+  left: 58px; /* deixa livre o botão da árvore flutuante */
+  right: 8px;
+  transform: none;
+  justify-content: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+body.disp-celular .barra-vistas .btn-ic { min-width: 40px; }
+body.disp-celular #canto-confirmacao { top: 64px; }
+body.disp-celular .status { font-size: 12px; }

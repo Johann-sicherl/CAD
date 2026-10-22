@@ -1,4 +1,4 @@
-# CAD Tablet
+# JLSCAD
 
 CAD paramétrico simplificado, feito para rodar no navegador de um tablet Android
 (e instalável como app pela opção "Adicionar à tela inicial" do Chrome).
@@ -28,7 +28,7 @@ Projeto próprio e independente: o fluxo de trabalho (esboço → feature → á
 - Features: **Extrusão**, **Corte**, **Revolução**, **Filete** e **Chanfro**
 - Perfis: retângulo (com raio de canto), círculo e polígono regular, nos planos XY / XZ / YZ
 - **Desfazer / refazer** e salvamento automático no navegador
-- **Salvar / abrir** projeto (`.cadt`, JSON) e **exportar STEP e STL**
+- **Salvar / abrir** projeto (`.jlscad`, JSON; abre também `.cadt` antigos) e **exportar STEP e STL**
 - Viewport com gestos de toque: 1 dedo orbita, 2 dedos fazem zoom e pan, toque duplo enquadra
 - Funciona offline depois da primeira visita (service worker)
 
@@ -71,7 +71,7 @@ rodar `pnpm audit` de vez em quando.
 
 ```
 src/
-  model.ts               tipos das features e do documento (formato .cadt)
+  model.ts               tipos das features e do documento (formato .jlscad)
   kernel/regenerar.ts    árvore de features → sólido B-Rep → malha (testável em Node)
   kernel/worker.ts       Web Worker que carrega o OpenCascade (.wasm)
   kernel/cliente.ts      ponte UI ↔ worker

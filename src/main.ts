@@ -37,8 +37,18 @@ import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 
-const CHAVE_AUTOSAVE = "cad-tablet:documento";
-const CHAVE_PREFS = "cad-tablet:interface";
+const CHAVE_AUTOSAVE = "jlscad:documento";
+const CHAVE_PREFS = "jlscad:interface";
+// nome antigo do programa: traz o que estava guardado neste aparelho
+try {
+  for (const k of ["documento", "interface"]) {
+    const antigo = localStorage.getItem(`cad-tablet:${k}`);
+    if (antigo && !localStorage.getItem(`jlscad:${k}`)) localStorage.setItem(`jlscad:${k}`, antigo);
+    localStorage.removeItem(`cad-tablet:${k}`);
+  }
+} catch {
+  /* armazenamento indisponível */
+}
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 // ---------- preferências de interface (só deste aparelho) ----------
@@ -47,7 +57,10 @@ interface Prefs {
   estilo: EstiloExibicao;
   refsVisiveis: Record<IdReferencia, boolean>;
   refsOcultas: string[]; // planos/eixos de referência criados pelo usuário e ocultos
+  /** Escolhido na janela inicial: adapta a interface só para esse tipo de operador. */
+  dispositivo?: Dispositivo;
 }
+type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
   aba: "features",
   estilo: "sombreado-arestas",
@@ -551,6 +564,8 @@ function abrirComando(f: Feature, novo: boolean) {
   definirSel({ tipo: "feature", id: f.id });
   mostrarPainel("comando");
   renderizarComando();
+  // celular: comando começa pedindo geometria → modelo livre para tocar
+  if (comando.campo) recolherGavetaParaSelecionar();
   regenerar();
   atualizarStatus();
   renderizarArvore();
@@ -574,6 +589,8 @@ function renderizarComando() {
     ativarCampo: (cam, aceita, multiplo) => {
       c.campo = cam ? { cam, aceita, multiplo } : null;
       renderizarComando();
+      // celular: campo de seleção ativo → recolhe a gaveta para tocar no modelo
+      if (cam) recolherGavetaParaSelecionar();
     },
     rotuloRef,
     realcarRef: (r) => atualizarDestaques(r),
@@ -632,6 +649,8 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   $("arvore-mini").hidden = true;
   $("canto-confirmacao").hidden = !emComando;
   if (!emComando) $("painel-comando").innerHTML = "";
+  // celular: o painel do comando abre a gaveta; esboço e árvore deixam o modelo livre
+  abrirGaveta(modo === "comando");
 }
 
 $("cc-ok").onclick = () => (editor ? sairEsboco() : avaliacao && !comando ? fecharAvaliacaoMantendo() : confirmarComando());
@@ -1554,6 +1573,8 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
     avisar,
   };
   editor = new EditorEsboco(host, esb);
+  aplicarDispositivo();
+  renderizarPainelEdicaoEsboco();
   if (ferramenta) editor.definirFerramenta(ferramenta);
   prefs.aba = "sketch";
   salvarPrefs();
@@ -2165,9 +2186,10 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
   abrir: { rotulo: "Abrir…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: {
-    rotulo: "Salvar (.cadt)",
+    rotulo: "Salvar (.jlscad)",
     icone: "salvar",
-    fazer: () => baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }), "cadt"),
+    // octet-stream: o Android não troca a extensão .jlscad por .json
+    fazer: () => baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad"),
   },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
@@ -2175,6 +2197,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
   reconstruir: { rotulo: "Reconstruir (Ctrl+B)", icone: "desempenho", fazer: () => regenerar() },
   fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
+  dispositivo: { rotulo: "Dispositivo (celular, tablet, computador)…", icone: "tablet", fazer: () => escolherDispositivo(false) },
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
 };
 
@@ -2313,6 +2336,97 @@ function fecharDocumento() {
   atualizarStatus();
 }
 
+// ---------- dispositivo: celular, tablet ou computador ----------
+
+const DISPOSITIVOS: { id: Dispositivo; rotulo: string; icone: NomeIcone; descricao: string }[] = [
+  { id: "celular", rotulo: "Celular", icone: "celular", descricao: "Tela pequena e dedo: ícones sem texto, árvore e painéis em gaveta, o dedo desenha" },
+  { id: "tablet", rotulo: "Tablet", icone: "tablet", descricao: "Caneta e dedo: a caneta desenha e o dedo navega, alvos grandes e lupa" },
+  { id: "computador", rotulo: "Computador", icone: "computador", descricao: "Mouse e teclado: botões compactos, atalhos, botão do meio gira" },
+];
+
+/** Sugestão pelo aparelho (só para marcar o cartão; quem decide é o usuário). */
+function dispositivoProvavel(): Dispositivo {
+  const toque = matchMedia("(pointer: coarse)").matches;
+  if (!toque) return "computador";
+  return Math.min(screen.width, screen.height) < 600 ? "celular" : "tablet";
+}
+
+function aplicarDispositivo() {
+  const d = prefs.dispositivo ?? "tablet";
+  for (const x of DISPOSITIVOS) document.body.classList.toggle(`disp-${x.id}`, x.id === d);
+  if (d !== "celular") document.body.classList.remove("lateral-aberta");
+  if (editor) {
+    editor.opcaoDedo = d === "tablet";
+    if (d !== "tablet") editor.dedoDesenha = true;
+  }
+}
+
+/** Janela de escolha do dispositivo (obrigatória na primeira vez). */
+function escolherDispositivo(obrigatorio: boolean) {
+  fecharMenu();
+  const fundo = document.createElement("div");
+  fundo.className = "fundo-dialogo";
+  const provavel = dispositivoProvavel();
+  let escolhido = prefs.dispositivo ?? provavel;
+  fundo.innerHTML = `
+    <div class="dialogo" role="dialog" aria-modal="true">
+      <header><strong>Onde você vai usar o JLSCAD?</strong></header>
+      <div class="ambientes dispositivos"></div>
+      <p class="dialogo-nota">A interface se adapta só ao aparelho escolhido. Dá para trocar depois no menu (Ferramentas → Dispositivo).</p>
+      <footer>${obrigatorio ? "" : `<button data-b="cancelar">Cancelar</button>`}<button data-b="ok" class="destaque">OK</button></footer>
+    </div>`;
+  const lista = fundo.querySelector(".dispositivos")!;
+  for (const d of DISPOSITIVOS) {
+    const b = document.createElement("button");
+    b.className = "ambiente";
+    b.setAttribute("aria-pressed", String(d.id === escolhido));
+    b.innerHTML = `${ICONES[d.icone]}<strong>${d.rotulo}</strong><small>${d.descricao}</small>${d.id === provavel ? `<em class="sugerido">sugerido</em>` : ""}`;
+    b.onclick = () => {
+      escolhido = d.id;
+      lista.querySelectorAll(".ambiente").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    };
+    b.ondblclick = () => ok();
+    lista.append(b);
+  }
+  const fechar = () => {
+    fundo.remove();
+    document.removeEventListener("keydown", teclas, true);
+  };
+  const ok = () => {
+    prefs.dispositivo = escolhido;
+    salvarPrefs();
+    fechar();
+    aplicarDispositivo();
+    atualizarAreaDeTrabalho();
+    renderizarAbas();
+    if (editor) renderizarPainelEdicaoEsboco();
+  };
+  const teclas = (e: KeyboardEvent) => {
+    if (e.key === "Enter") ok();
+    else if (e.key === "Escape" && !obrigatorio) fechar();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  fundo.querySelector<HTMLButtonElement>('[data-b="ok"]')!.onclick = ok;
+  const cancelar = fundo.querySelector<HTMLButtonElement>('[data-b="cancelar"]');
+  if (cancelar) cancelar.onclick = fechar;
+  document.addEventListener("keydown", teclas, true);
+  document.body.append(fundo);
+}
+
+/** Celular: fecha a gaveta para o usuário tocar faces/arestas; ☰ ou ✓ continuam acessíveis. */
+function recolherGavetaParaSelecionar() {
+  if (prefs.dispositivo !== "celular" || !document.body.classList.contains("lateral-aberta")) return;
+  abrirGaveta(false);
+  avisar("Toque no modelo para selecionar. O painel volta no botão da árvore (canto superior esquerdo).");
+}
+
+/** Celular: árvore/painel em gaveta sobre o modelo. */
+function abrirGaveta(aberta: boolean) {
+  document.body.classList.toggle("lateral-aberta", aberta && prefs.dispositivo === "celular");
+}
+
 /** Liga/desliga a interface de edição conforme haja documento aberto. */
 function atualizarAreaDeTrabalho() {
   document.body.classList.toggle("sem-documento", !aberto);
@@ -2322,6 +2436,9 @@ function atualizarAreaDeTrabalho() {
   $("ti-abrir").innerHTML = `${ICONES.abrir}<span>Abrir…</span>`;
   $("ti-novo").onclick = abrirDialogoNovo;
   $("ti-abrir").onclick = ACOES.abrir.fazer;
+  const disp = DISPOSITIVOS.find((d) => d.id === prefs.dispositivo);
+  $("ti-dispositivo").innerHTML = disp ? `${ICONES[disp.icone]}<span>Usando: ${disp.rotulo} · trocar</span>` : "";
+  $("ti-dispositivo").onclick = () => escolherDispositivo(false);
   const recentes = $("ti-recentes");
   recentes.innerHTML = "";
   const ultimo = carregarAutosave();
@@ -2342,7 +2459,13 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   if (!arq) return;
   try {
-    const d = validarDocumento(JSON.parse(await arq.text()));
+    let dados: unknown;
+    try {
+      dados = JSON.parse(await arq.text());
+    } catch {
+      throw new Error("Arquivo não é um projeto JLSCAD válido (.jlscad).");
+    }
+    const d = validarDocumento(dados);
     if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
   } catch (e) {
     alert((e as Error).message);
@@ -2464,7 +2587,11 @@ if (import.meta.env.DEV) {
 }
 
 // ---------- início ----------
+$("btn-lateral").innerHTML = ICONES.arvore;
+$("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("lateral-aberta"));
+aplicarDispositivo();
 atualizarAreaDeTrabalho();
+if (!prefs.dispositivo) escolherDispositivo(true);
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();

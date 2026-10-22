@@ -178,7 +178,7 @@ export function renderizarPainelEsboco(
     ed.mostrarRelacoes = v;
     ed.redesenhar();
   }));
-  painel.append(interruptor("Desenhar com o dedo (sem caneta)", ed.dedoDesenha, (v) => (ed.dedoDesenha = v)));
+  if (ed.opcaoDedo) painel.append(interruptor("Desenhar com o dedo (sem caneta)", ed.dedoDesenha, (v) => (ed.dedoDesenha = v)));
 
   const fim = el("div", "prop-rodape");
   fim.append(botao("✓ Sair do esboço", sair, "destaque"));

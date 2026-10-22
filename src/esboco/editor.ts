@@ -128,6 +128,8 @@ export class EditorEsboco {
   distOffset = 5;
   /** Sem caneta detectada o dedo desenha; ao primeiro toque de caneta isso desliga. */
   dedoDesenha = true;
+  /** Mostrar a opção "desenhar com o dedo" (só no perfil tablet, onde há caneta). */
+  opcaoDedo = true;
   mostrarRelacoes = true;
   estado: ResultadoSolver = { ok: true, gl: 0, conflitantes: [], redundantes: [], definicao: "subdefinido" };
   livres = new Set<string>();
