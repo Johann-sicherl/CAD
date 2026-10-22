@@ -1,4 +1,5 @@
-// Viewport 3D com Three.js. Gestos de toque:
+// Viewport 3D com Three.js, em projeção ortográfica (sem ponto de fuga, como nos CADs).
+// Gestos de toque:
 //   1 dedo = orbitar · 2 dedos = pinça (zoom) + arrastar (pan) · toque duplo = enquadrar
 // Inclui planos de referência (Frontal, Superior, Lateral), origem, estilos de exibição
 // e a tríade de eixos no canto inferior esquerdo (toque num eixo = olhar ao longo dele).
@@ -76,7 +77,10 @@ export class Viewport {
 
   private renderer: THREE.WebGLRenderer;
   private cena = new THREE.Scene();
-  private camera: THREE.PerspectiveCamera;
+  /** Ortográfica: `zoom` = pixels por mm (frustum em pixels da tela). */
+  private camera: THREE.OrthographicCamera;
+  /** Distância da câmera ao alvo: só precisa ficar fora da peça (não muda o tamanho na tela). */
+  private distCam = 2000;
   private controles: OrbitControls;
   private grupoPeca = new THREE.Group();
   private faces: Uint32Array = new Uint32Array();
@@ -121,7 +125,7 @@ export class Viewport {
 
     // CAD usa Z para cima
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
-    this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100000);
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 4000);
     this.camera.up.set(0, 0, 1);
 
     // registrado antes do OrbitControls: pode impedir que a navegação veja o evento
@@ -134,6 +138,8 @@ export class Viewport {
 
     this.controles = new OrbitControls(this.camera, this.renderer.domElement);
     this.controles.zoomToCursor = true; // pinça e roda do mouse aproximam onde se aponta
+    this.controles.minZoom = 1e-4;
+    this.controles.maxZoom = 1e5;
     this.modoEsboco(false);
     this.controles.enableDamping = true;
     this.controles.dampingFactor = 0.12;
@@ -166,6 +172,7 @@ export class Viewport {
     new ResizeObserver(() => this.redimensionar()).observe(container);
     this.redimensionar();
     this.definirVista("iso", false);
+    this.enquadrar(false);
     this.loop();
   }
 
@@ -380,8 +387,7 @@ export class Viewport {
     alvo.sub(n.clone().multiplyScalar(alvo.clone().sub(o).dot(n))); // projeta o alvo no plano
     const dir = n.clone();
     if (Math.abs(dir.z) > 0.999) dir.y -= 0.0001 * Math.sign(dir.z); // evita a câmera alinhada ao "para cima"
-    const dist = Math.max(this.camera.position.distanceTo(this.controles.target), 150);
-    this.moverCamera(alvo, alvo.clone().add(dir.normalize().multiplyScalar(dist)), true);
+    this.moverCamera(alvo, alvo.clone().add(dir.normalize().multiplyScalar(this.distCam)), true);
   }
 
   /** Face plana da peça sob o ponto da tela (null se não houver peça ou a face for curva). */
@@ -460,6 +466,15 @@ export class Viewport {
       meio = Math.max(20, ext * 1.15);
     }
     this.ajustarTamanhoReferencias(meio);
+    // câmera sempre fora da peça e dos planos; o far cobre a peça inteira atrás do alvo
+    const d = Math.max(2000, meio * 20);
+    if (d > this.distCam) {
+      this.distCam = d;
+      const dir = this.camera.position.clone().sub(this.controles.target).normalize();
+      this.camera.position.copy(this.controles.target).addScaledVector(dir, d);
+      this.camera.far = 2 * d;
+      this.camera.updateProjectionMatrix();
+    }
     this.precisaRender = true;
   }
 
@@ -483,6 +498,12 @@ export class Viewport {
     return s && s.visible ? s : null;
   }
 
+  /** Distância do ponto ao plano da câmera, ao longo da direção de visão. */
+  private profundidade(p: THREE.Vector3): number {
+    const dir = this.camera.getWorldDirection(new THREE.Vector3());
+    return p.clone().sub(this.camera.position).dot(dir);
+  }
+
   private paraTela(p: THREE.Vector3): { x: number; y: number; z: number } {
     const q = p.clone().project(this.camera);
     const { clientWidth: w, clientHeight: h } = this.container;
@@ -501,8 +522,9 @@ export class Viewport {
     const ray = this.raio(clientX, clientY);
     const solido = this.solido();
     const hit = solido ? ray.intersectObject(solido)[0] : undefined;
-    const limite = hit ? hit.distance * 1.002 + this.raioCena * 0.004 : Infinity;
-    const visivel = (p: THREE.Vector3) => this.estilo === "arestas" || p.distanceTo(this.camera.position) <= limite;
+    // ortográfica: a origem do raio fica no plano da câmera, então hit.distance é a profundidade
+    const limite = hit ? hit.distance + this.raioCena * 0.004 + 1e-3 : Infinity;
+    const visivel = (p: THREE.Vector3) => this.estilo === "arestas" || this.profundidade(p) <= limite;
     const v = new THREE.Vector3();
 
     if (filtro.has("vertice")) {
@@ -529,7 +551,7 @@ export class Viewport {
           const t = l2 ? Math.max(0, Math.min(1, ((mx - ta.x) * dx + (my - ta.y) * dy) / l2)) : 0;
           const d = Math.hypot(ta.x + dx * t - mx, ta.y + dy * t - my);
           if (d < dm) {
-            // ponto da aresta mais próximo do raio (correto em perspectiva) para testar se está oculto
+            // ponto da aresta mais próximo do raio, para testar se está oculto
             ray.ray.distanceSqToSegment(a, b, undefined, v);
             if (visivel(v)) { dm = d; melhor = g; }
           }
@@ -731,18 +753,16 @@ export class Viewport {
       this.raioCena = Math.max(caixa.getSize(new THREE.Vector3()).length() / 2, 5);
     }
     const dir = this.camera.position.clone().sub(this.controles.target).normalize();
-    // Usa o menor dos ângulos de visão (vertical ou horizontal): em retrato o horizontal manda
-    const meioV = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const meioH = Math.atan(Math.tan(meioV) * this.camera.aspect);
-    const dist = this.raioCena / Math.sin(Math.min(meioV, meioH)) * 1.15;
-    this.moverCamera(centro, centro.clone().add(dir.multiplyScalar(dist)), animado);
+    // a esfera da peça cabe no menor lado da tela (em retrato manda a largura)
+    const { clientWidth: w, clientHeight: h } = this.container;
+    const zoom = Math.min(w || 800, h || 600) / (2 * this.raioCena * 1.15);
+    this.moverCamera(centro, centro.clone().add(dir.multiplyScalar(this.distCam)), animado, zoom);
   }
 
   definirVista(v: Vista, animado = true) {
     const alvo = this.controles.target.clone();
-    const dist = Math.max(this.camera.position.distanceTo(alvo), 150);
     const dir = new THREE.Vector3(...DIRECOES_VISTA[v]).normalize();
-    this.moverCamera(alvo, alvo.clone().add(dir.multiplyScalar(dist)), animado);
+    this.moverCamera(alvo, alvo.clone().add(dir.multiplyScalar(this.distCam)), animado);
   }
 
   /** Olha perpendicularmente a um plano de referência. */
@@ -750,19 +770,22 @@ export class Viewport {
     this.definirVista(NORMAL_PLANO[p]);
   }
 
-  private animacao: { de: [THREE.Vector3, THREE.Vector3]; para: [THREE.Vector3, THREE.Vector3]; t0: number } | null = null;
+  private animacao: { de: [THREE.Vector3, THREE.Vector3, number]; para: [THREE.Vector3, THREE.Vector3, number]; t0: number } | null = null;
 
-  private moverCamera(alvo: THREE.Vector3, posicao: THREE.Vector3, animado: boolean) {
+  private moverCamera(alvo: THREE.Vector3, posicao: THREE.Vector3, animado: boolean, zoom = this.camera.zoom) {
     if (!animado) {
       this.controles.target.copy(alvo);
       this.camera.position.copy(posicao);
+      this.camera.zoom = zoom;
+      this.camera.updateProjectionMatrix();
       this.controles.update();
       this.precisaRender = true;
+      this.aoMudarCamera?.();
       return;
     }
     this.animacao = {
-      de: [this.controles.target.clone(), this.camera.position.clone()],
-      para: [alvo, posicao],
+      de: [this.controles.target.clone(), this.camera.position.clone(), this.camera.zoom],
+      para: [alvo, posicao, zoom],
       t0: performance.now(),
     };
   }
@@ -771,7 +794,11 @@ export class Viewport {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
+    // frustum em pixels: o zoom (px/mm) não muda ao girar o tablet
+    this.camera.left = -w / 2;
+    this.camera.right = w / 2;
+    this.camera.top = h / 2;
+    this.camera.bottom = -h / 2;
     this.camera.updateProjectionMatrix();
     this.precisaRender = true;
   }
@@ -801,6 +828,10 @@ export class Viewport {
       const k = 1 - Math.pow(1 - t, 3);
       this.controles.target.lerpVectors(this.animacao.de[0], this.animacao.para[0], k);
       this.camera.position.lerpVectors(this.animacao.de[1], this.animacao.para[1], k);
+      // zoom interpolado em escala logarítmica (aproximação uniforme)
+      this.camera.zoom = this.animacao.de[2] * Math.pow(this.animacao.para[2] / this.animacao.de[2], k);
+      this.camera.updateProjectionMatrix();
+      this.aoMudarCamera?.();
       if (t >= 1) this.animacao = null;
       this.precisaRender = true;
     }

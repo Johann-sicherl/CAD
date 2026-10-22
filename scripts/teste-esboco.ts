@@ -8,6 +8,8 @@ import { regenerar } from "../src/kernel/regenerar";
 import { SolverEsboco } from "../src/esboco/solver";
 import * as op from "../src/esboco/operacoes";
 import { encontrarLacos, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
+import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
+import { referencial } from "../src/esboco/referencial";
 
 const require = createRequire(import.meta.url);
 const OC = await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") });
@@ -193,6 +195,39 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   op.transformar(e4, [cc.id], op.girar({ x: 0, y: 0 }, 90), false);
   const centro = e4.pontos.find((p) => p.id === (cc as { c: string }).c)!;
   verdade("girar 90° move o centro para (0; 20)", Math.abs(centro.x) < 1e-9 && Math.abs(centro.y - 20) < 1e-9);
+}
+
+// 11. Referências do modelo 3D: aresta/vértice projetados no plano do esboço, fixos
+{
+  const e = plano("XY", 10);
+  const r = referencial(e.suporte);
+  const aresta = { tipo: "aresta" as const, ass: { geom: "linha" as const, a: [-40, -25, 10] as [number, number, number], b: [40, -25, 10] as [number, number, number], meio: [0, -25, 10] as [number, number, number], comprimento: 80 } };
+  const pr = projetar(aresta, r);
+  verdade("aresta reta projeta como linha", pr?.tipo === "linha");
+  const ext = criarExterna(e, pr!, aresta);
+  verdade("referência é construção e externa", !!ext.construcao && !!ext.externa);
+  // linha do esboço colinear com a aresta do modelo
+  const l = op.linha(e, op.ponto(e, { x: -10, y: -20 }), op.ponto(e, { x: 10, y: -18 }));
+  op.restringir(e, { tipo: "colinear", a: l.id, b: ext.id });
+  verdade("colinear com a aresta resolve", solver.resolver(e).conflitantes.length === 0);
+  confere("linha foi para y = −25", e.pontos.find((p) => p.id === l.p1)!.y, -25);
+  const pe = e.pontos.find((p) => p.id === (ext as { p1: string }).p1)!;
+  confere("referência não se mexe", pe.x, -40);
+  const circ = { tipo: "aresta" as const, ass: { geom: "circulo" as const, a: [20, 0, 10] as [number, number, number], b: [20, 0, 10] as [number, number, number], meio: [-10, 0, 10] as [number, number, number], comprimento: 2 * Math.PI * 10, centro: [10, 0, 10] as [number, number, number], eixo: [0, 0, 1] as [number, number, number], raio: 10 } };
+  verdade("círculo paralelo projeta como círculo", projetar(circ, r)?.tipo === "circulo");
+  const inclinado = { ...circ, ass: { ...circ.ass, eixo: [1, 0, 0] as [number, number, number] } };
+  verdade("círculo inclinado não projeta (elipse)", projetar(inclinado, r) === null);
+  // peça mudou: a aresta foi para y = −30
+  const topo = { vertices: [], arestas: [{ ...aresta.ass, a: [-40, -30, 10] as [number, number, number], b: [40, -30, 10] as [number, number, number], meio: [0, -30, 10] as [number, number, number] }] };
+  const res = atualizarExternas(e, topo, r);
+  verdade("atualizar: 1 referência mudou", res.mudaram === 1 && res.perdidas === 0);
+  solver.resolver(e);
+  confere("linha acompanhou a aresta (y = −30)", e.pontos.find((p) => p.id === l.p1)!.y, -30);
+  // referência sem uso some ao podar
+  const v = criarExterna(e, { tipo: "ponto", p: { x: 5, y: 5 } }, { tipo: "vertice", p: [5, 5, 10] });
+  verdade("vértice vira ponto", v.tipo === "ponto");
+  podarExternas(e, new Set());
+  verdade("podar: vértice sem uso removido, aresta usada fica", !e.geos.some((g) => g.id === v.id) && e.geos.some((g) => g.id === ext.id));
 }
 
 if (falhas) {

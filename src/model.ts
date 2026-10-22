@@ -75,6 +75,8 @@ export interface PontoEsboco {
 interface GeoBase {
   id: string;
   construcao?: boolean; // geometria de construção: não vira perfil (ex.: linha de centro)
+  /** Referência do modelo 3D (aresta/vértice da peça projetado no plano): fica fixa. */
+  externa?: Referencia;
 }
 
 export type GeoEsboco =

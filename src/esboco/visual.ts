@@ -9,7 +9,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import type { FeatureEsboco } from "../model";
 import { ehCota } from "../model";
 import { desenharCota } from "./cotas";
-import { amostrar, aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, type P2 } from "./geometria";
+import { amostrar, aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, type P2 } from "./geometria";
 import type { Referencial } from "./referencial";
 
 export const CORES = {
@@ -22,6 +22,7 @@ export const CORES = {
   referencia: 0x8a96a3,
   eixo: 0xa8b3be,
   previa: 0x6c7a89,
+  externa: 0x8a4fbf, // referência do modelo 3D (aresta/vértice da peça)
 };
 
 export interface OpcoesCamada {
@@ -54,9 +55,11 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
     if (!e) tracos.set(k, (e = { t, pos: [] }));
     for (const p of seg) e.pos.push(p.x, p.y, 0);
   };
+  const externos = new Set(esb.geos.filter((g) => g.externa).flatMap((g) => [g.id, ...pontosDaGeo(g)]));
   const corDe = (id: string, base = CORES.definido) => {
     if (o.selecao?.has(id)) return CORES.selecionado;
     if (o.conflitantes?.has(id)) return CORES.conflito;
+    if (externos.has(id)) return CORES.externa;
     if (!o.editando) return CORES.somenteLeitura;
     if (o.livres?.has(id)) return CORES.livre;
     return base;

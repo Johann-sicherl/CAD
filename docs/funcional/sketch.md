@@ -94,8 +94,13 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 - **Geometria de construção**: entidades base / entidades deslocadas F3
 - Pré-visualização antes de aplicar F3
 
-### Converter entidades (projetar arestas do modelo) — F3
-- Entidades a converter (arestas, faces, esboços) · Selecionar cadeia · Loops internos
+### Converter entidades (projetar arestas do modelo) — 🟡
+- ✅ Tocar aresta ou vértice da peça no esboço (Selecionar) cria a **referência do modelo**:
+  geometria de construção fixa, em roxo, projetada no plano; "Alternar construção" a torna perfil.
+- ✅ Encaixe das ferramentas de desenho em **vértice do modelo** e **sobre aresta do modelo**.
+- ✅ Ao abrir o esboço, as referências acompanham a peça atual (entidade mais parecida).
+- Pendente: faces inteiras/esboços de uma vez · Selecionar cadeia · Loops internos ·
+  círculos inclinados (projetam como elipse)
 
 ### Interseção de curvas — ⏸
 ### Segmento (dividir em N partes com pontos) — ⏸
@@ -203,7 +208,11 @@ chanfro.
 | Fixa | qualquer entidade | ✅ |
 | Perfurar (pierce) | ponto + curva fora do plano | ⏸ |
 | Mesclar pontos | 2 pontos (vira 1) | ✅ (encaixe) |
-| Em arestas do modelo / no ponto do modelo | referências externas | F3 |
+| Em arestas do modelo / no ponto do modelo | referências externas | ✅ (via referência do modelo) |
+
+### Caixinha de relações no ponteiro — ✅
+- Ao selecionar entidades (Selecionar), abre ao lado do ponteiro uma caixinha com os **símbolos**
+  das relações aplicáveis (H, V, ∥, ⊥, =, ⫽, T, ◎, ½, ⇹, ◉, ⚲); toque aplica. Some ao limpar a seleção.
 
 ### Adicionar relação (painel) — ✅ (via menu)
 - **Entidades selecionadas** (lista) ✅

@@ -74,7 +74,9 @@ type FerramentaAvaliar =
   | { tipo: "secao"; plano: Plano; desloc: number; inverter: boolean }
   | { tipo: "analise"; analise: Analise; plano: Plano };
 
-let doc: Documento = carregarAutosave() ?? documentoExemplo();
+/** Sem documento aberto o app mostra só a área de trabalho limpa (Novo / Abrir). */
+let aberto = false;
+let doc: Documento = documentoVazio();
 let selecao: Selecao = null;
 /** Faces/arestas/vértices selecionados no modelo (pré-seleção para comandos). */
 let selPeca: Referencia[] = [];
@@ -179,7 +181,7 @@ function atualizarStatus() {
   k.dataset.estado = estadoKernel;
 
   const nErros = errosPorFeature.size;
-  let estado = "Editando peça";
+  let estado = aberto ? "Editando peça" : "Nenhum documento aberto";
   if (comando) estado = `${ROTULO_TIPO[comando.f.tipo]}: ${comando.f.nome}`;
   else if (selecao?.tipo === "ref") estado = `Selecionado: ${rotuloReferencia(selecao.id)}`;
   else if (selecao?.tipo === "feature") {
@@ -196,7 +198,7 @@ function atualizarStatus() {
   st.classList.toggle("com-erro", !editor && nErros > 0);
   st.dataset.definicao = editor && editor.esb.geos.length ? editor.estado.definicao : "";
   const mat = doc.material ? MATERIAIS[doc.material] : undefined;
-  $("st-material").textContent = mat ? `${mat.nome} (${mat.densidade.toLocaleString("pt-BR")} g/cm³)` : "Material não especificado";
+  $("st-material").textContent = !aberto ? "" : mat ? `${mat.nome} (${mat.densidade.toLocaleString("pt-BR")} g/cm³)` : "Material não especificado";
 }
 
 // ---------- histórico (desfazer/refazer) ----------
@@ -1127,7 +1129,7 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
       if (!editor) return avisar("Relações: abra um esboço primeiro.");
       const ops = editor.relacoesPossiveis();
       if (!ops.length) return avisar("Selecione entidades para relacionar (ex.: duas linhas → Paralelo).");
-      abrirPopover(botao, ops.map((o) => ({ rotulo: o.rotulo, acao: o.aplicar })));
+      abrirPopover(botao, ops.map((o) => ({ rotulo: `${o.simbolo}   ${o.rotulo}`, acao: o.aplicar })));
       return;
     }
     case "construcao":
@@ -1252,7 +1254,7 @@ function renderizarPainelEdicaoEsboco() {
       alterou(true);
       atualizarStatus();
     },
-    (ancora) => abrirPopover(ancora, ed.relacoesPossiveis().map((r) => ({ rotulo: r.rotulo, acao: r.aplicar }))),
+    (ancora) => abrirPopover(ancora, ed.relacoesPossiveis().map((r) => ({ rotulo: `${r.simbolo}   ${r.rotulo}`, acao: r.aplicar }))),
   );
 }
 
@@ -1834,7 +1836,7 @@ nomeDoc.onchange = () => {
 };
 
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void }> = {
-  novo: { rotulo: "Nova peça", icone: "nova", fazer: novaPeca },
+  novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
   abrir: { rotulo: "Abrir…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: {
     rotulo: "Salvar (.cadt)",
@@ -1846,6 +1848,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
   reconstruir: { rotulo: "Reconstruir (Ctrl+B)", icone: "desempenho", fazer: () => regenerar() },
+  fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
 };
 
@@ -1890,31 +1893,131 @@ function mostrarAtalhos() {
   ]));
 }
 
-function novaPeca() {
-  if (doc.features.length && !confirm("Descartar a peça atual e começar uma nova?")) return;
+// ---------- documento: novo, abrir, fechar ----------
+
+/** Ambientes de documento. Só Peça por enquanto (chapa metálica é feita dentro da peça). */
+const AMBIENTES = [
+  { id: "peca", rotulo: "Peça", descricao: "Sólido 3D a partir de esboços e recursos", icone: "peca" as NomeIcone },
+];
+let contadorPecas = 0;
+
+function abrirDialogoNovo() {
+  const dlg = $("dialogo-novo");
+  const lista = $("dn-ambientes");
+  lista.innerHTML = "";
+  let escolhido = AMBIENTES[0].id;
+  for (const a of AMBIENTES) {
+    const b = document.createElement("button");
+    b.className = "ambiente";
+    b.setAttribute("aria-pressed", String(a.id === escolhido));
+    b.innerHTML = `${ICONES[a.icone]}<strong>${a.rotulo}</strong><small>${a.descricao}</small>`;
+    b.onclick = () => {
+      escolhido = a.id;
+      lista.querySelectorAll(".ambiente").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    };
+    b.ondblclick = () => ok();
+    lista.append(b);
+  }
+  const fechar = () => {
+    dlg.hidden = true;
+    document.removeEventListener("keydown", teclas, true);
+  };
+  const ok = () => {
+    if (aberto && doc.features.length && !confirm("Fechar a peça atual e começar uma nova? (o que não foi salvo em arquivo se perde)")) return;
+    fechar();
+    const d = documentoVazio();
+    d.nome = `Peça${++contadorPecas}`;
+    abrirDocumento(d);
+  };
+  const teclas = (e: KeyboardEvent) => {
+    if (e.key === "Escape") fechar();
+    else if (e.key === "Enter") ok();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  $("dn-ok").onclick = ok;
+  $("dn-cancelar").onclick = fechar;
+  dlg.onclick = (e) => e.target === dlg && fechar();
+  document.addEventListener("keydown", teclas, true);
+  dlg.hidden = false;
+  lista.querySelector<HTMLElement>(".ambiente")?.focus();
+}
+
+/** Mostra o documento na área de trabalho (novo, aberto de arquivo ou recuperado). */
+function abrirDocumento(d: Documento) {
   if (editor) sairEsboco();
   if (comando) fecharComando();
   fecharAvaliacao();
+  fecharJanela();
+  doc = d;
+  aberto = true;
+  selecao = null;
+  selPeca = [];
+  historico.length = 0;
+  refazer.length = 0;
+  primeiraRegeneracao = true;
+  nomeDoc.value = doc.nome;
+  aplicarMaterial();
+  atualizarAreaDeTrabalho();
+  registrarPasso();
+  salvarAutosave();
+  renderizarTudo();
+  regenerar();
+}
+
+function fecharDocumento() {
+  if (!aberto) return;
+  if (doc.features.length && !confirm("Fechar a peça? (o que não foi salvo em arquivo se perde)")) return;
+  if (editor) sairEsboco();
+  if (comando) fecharComando();
+  fecharAvaliacao();
+  fecharJanela();
+  aberto = false;
   doc = documentoVazio();
   selecao = null;
   selPeca = [];
-  nomeDoc.value = doc.nome;
-  aplicarMaterial();
-  alterou(true);
-  renderizarTudo();
+  historico.length = 0;
+  refazer.length = 0;
+  atualizarAreaDeTrabalho();
+  viewport.mostrarMalha(null);
+  limparEsbocos();
+  $("st-volume").textContent = "";
+  $("st-tempo").textContent = "";
+  atualizarStatus();
+}
+
+/** Liga/desliga a interface de edição conforme haja documento aberto. */
+function atualizarAreaDeTrabalho() {
+  document.body.classList.toggle("sem-documento", !aberto);
+  $("tela-inicial").hidden = aberto;
+  if (aberto) return;
+  $("ti-novo").innerHTML = `${ICONES.nova}<span>Novo…</span>`;
+  $("ti-abrir").innerHTML = `${ICONES.abrir}<span>Abrir…</span>`;
+  $("ti-novo").onclick = abrirDialogoNovo;
+  $("ti-abrir").onclick = ACOES.abrir.fazer;
+  const recentes = $("ti-recentes");
+  recentes.innerHTML = "";
+  const ultimo = carregarAutosave();
+  const itens: [string, string, () => void][] = [];
+  if (ultimo && ultimo.features.length) itens.push([ultimo.nome, "último documento", () => abrirDocumento(ultimo)]);
+  itens.push(["Peça exemplo", "exemplo", () => abrirDocumento(documentoExemplo())]);
+  recentes.append(Object.assign(document.createElement("h3"), { textContent: "Recentes" }));
+  for (const [nome, nota, fazer] of itens) {
+    const b = document.createElement("button");
+    b.innerHTML = `${ICONES.peca}<span></span><small>${nota}</small>`;
+    b.querySelector("span")!.textContent = nome;
+    b.onclick = fazer;
+    recentes.append(b);
+  }
 }
 
 $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   if (!arq) return;
   try {
-    doc = validarDocumento(JSON.parse(await arq.text()));
-    selecao = null;
-    primeiraRegeneracao = true;
-    nomeDoc.value = doc.nome;
-    aplicarMaterial();
-    alterou(true);
-    renderizarTudo();
+    const d = validarDocumento(JSON.parse(await arq.text()));
+    if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
   } catch (e) {
     alert((e as Error).message);
   }
@@ -1922,6 +2025,7 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
 };
 
 async function exportar(formato: "step" | "stl") {
+  if (!aberto) return;
   try {
     baixar(await kernel.exportar(formato), formato);
   } catch (e) {
@@ -1943,6 +2047,7 @@ document.addEventListener("pointermove", (e) => (cursor = { x: e.clientX, y: e.c
 
 document.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).closest("input, select, textarea")) return;
+  if (!aberto) return; // sem documento não há o que editar
   const ctrl = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
   if (ctrl && /^[1-8]$/.test(e.key)) {
@@ -1998,7 +2103,7 @@ function barraDeAtalhos() {
 
 // ---------- persistência local ----------
 function salvarAutosave() {
-  gravarJSON(CHAVE_AUTOSAVE, doc);
+  if (aberto) gravarJSON(CHAVE_AUTOSAVE, doc);
 }
 
 function carregarAutosave(): Documento | null {
@@ -2029,11 +2134,11 @@ function gravarJSON(chave: string, valor: unknown) {
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc };
+  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()) };
 }
 
 // ---------- início ----------
-registrarPasso();
+atualizarAreaDeTrabalho();
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();

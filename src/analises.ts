@@ -108,7 +108,7 @@ export function materialZebra(listras: number): THREE.ShaderMaterial {
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         vN = normalize(normalMatrix * normal);
-        vV = normalize(-mv.xyz);
+        vV = vec3(0.0, 0.0, 1.0); // projeção ortográfica: direção de visão constante
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `

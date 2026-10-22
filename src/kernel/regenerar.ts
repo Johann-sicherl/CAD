@@ -479,7 +479,7 @@ function revolucao(f: FeatureRevolucao, ctx: Ctx): Ferramenta[] {
   else {
     // sem eixo escolhido: 1ª linha de construção do esboço; sem ela, o eixo V do esboço
     const pts = mapaPontos(esb);
-    const lc = esb.geos.find((g) => g.tipo === "linha" && g.construcao);
+    const lc = esb.geos.find((g) => g.tipo === "linha" && g.construcao && !g.externa);
     if (lc && lc.tipo === "linha") {
       const a = paraMundo(r, pts.get(lc.p1)!.x, pts.get(lc.p1)!.y);
       const b = paraMundo(r, pts.get(lc.p2)!.x, pts.get(lc.p2)!.y);

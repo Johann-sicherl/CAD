@@ -38,7 +38,10 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 
 ## Decisões de produto (definidas pelo Johann)
 
-- **Tema claro** (fundo claro no viewport e painéis).
+- **Tema claro** (fundo claro no viewport e painéis). Vista sempre em **projeção ortográfica**
+  (sem perspectiva/ponto de fuga).
+- **Início limpo:** o app abre sem documento (só Novo/Abrir e recentes); **Novo** abre a janela de
+  escolha do ambiente (por enquanto só **Peça**).
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
 - **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado), com o mouse dos CADs

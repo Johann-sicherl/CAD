@@ -3,15 +3,16 @@
 // e lupa de precisão); no computador o botão esquerdo desenha, o do meio arrasta, o direito gira.
 
 import type * as THREE from "three";
-import type { CotaEsboco, FeatureEsboco, GeoEsboco, RestricaoEsboco } from "../model";
+import type { CotaEsboco, FeatureEsboco, GeoEsboco, Referencia, RestricaoEsboco } from "../model";
 import { ehCota, novoId } from "../model";
-import type { Viewport } from "../viewport";
+import type { TipoEntidade, Viewport } from "../viewport";
 import { desenharCota, medirCota, textoCota } from "./cotas";
 import {
   angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
+import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
 import type { ResultadoSolver, SolverEsboco } from "./solver";
 import { construirCamada, descartarCamada } from "./visual";
@@ -46,7 +47,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
     case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
-    case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre.";
+    case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre. Arestas e vértices da peça também podem ser tocados: viram referência (roxo) para relações e cotas.";
     case "ponto": return "Toque para cada ponto (posições de furo, referências).";
     case "linha": return n ? "Próximo ponto. Toque de novo no último ponto (ou Esc) para terminar." : "Toque o ponto inicial (ou arraste de um ponto ao outro).";
     case "retangulo": return n ? "Toque o canto oposto." : "Toque o primeiro canto.";
@@ -74,8 +75,17 @@ export interface Hospedeiro {
 }
 
 /** Resultado de um encaixe: posição e com o que ela coincide. */
+/** Aresta/vértice da peça sob o ponteiro, projetado no plano do esboço. */
+interface AlvoModelo {
+  ref: Referencia;
+  proj: ProjecaoExterna;
+  rotulo: string;
+}
+
 interface Encaixe {
   p: P2;
+  modelo?: AlvoModelo; // vértice da peça: o ponto vira a própria referência
+  sobreModelo?: AlvoModelo; // sobre uma aresta da peça
   ponto?: string; // ponto existente (ou origem)
   geo?: string; // sobre esta curva/eixo
   meio?: string; // ponto médio desta linha
@@ -92,6 +102,12 @@ type Arraste =
   | { tipo: "ponto"; id: string }
   | { tipo: "pontos"; ids: string[]; orig: P2[]; inicio: P2 }
   | { tipo: "raio"; id: string };
+
+/** Símbolos das relações (no desenho e na caixinha de relações). */
+export const SIMBOLO_RELACAO: Record<string, string> = {
+  horizontal: "H", vertical: "V", paralelo: "∥", perpendicular: "⊥", colinear: "⫽", tangente: "T",
+  igual: "=", concentrico: "◎", pontoMedio: "½", simetrico: "⇹", fixo: "⚲", coincidente: "◉",
+};
 
 const LUPA = 132;
 const ZOOM_LUPA = 2.5;
@@ -122,7 +138,11 @@ export class EditorEsboco {
   private cliques: Encaixe[] = [];
   private cursor: Encaixe | null = null;
   private cotaEntidades: string[] = [];
-  private ponteiro: { id: number; tipo: string; x0: number; y0: number; moveu: boolean; enc: Encaixe; alvo: Alvo | null; arraste: Arraste | null } | null = null;
+  private ponteiro: { id: number; tipo: string; x0: number; y0: number; moveu: boolean; enc: Encaixe; alvo: Alvo | null; modelo: AlvoModelo | null; arraste: Arraste | null } | null = null;
+  /** Última posição do ponteiro na tela (para encaixar em arestas/vértices da peça). */
+  private tela: { x: number; y: number; tipo: string } | null = null;
+  /** Caixinha de relações aberta ao lado do ponteiro. */
+  private caixaRel: { el: HTMLElement; x: number; y: number } | null = null;
   private lupa: { canvas: HTMLCanvasElement; x: number; y: number } | null = null;
   private mmPxDesenho = 0;
   private quadroPendente = 0;
@@ -157,6 +177,11 @@ export class EditorEsboco {
       cv.removeEventListener("pointerleave", sair);
     });
     vp.olharPlano(this.ref);
+    // referências do modelo acompanham a peça atual (a entidade mais parecida)
+    if (vp.topologia && esb.geos.some((g) => g.externa)) {
+      const { perdidas } = atualizarExternas(esb, vp.topologia, this.ref);
+      if (perdidas) h.avisar(`${perdidas} referência${perdidas > 1 ? "s" : ""} do modelo não ${perdidas > 1 ? "foram encontradas" : "foi encontrada"} na peça atual (ficou onde estava).`);
+    }
     this.resolver(true);
   }
 
@@ -173,6 +198,7 @@ export class EditorEsboco {
       vp.grupoEsboco.remove(this.camada);
       descartarCamada(this.camada);
     }
+    this.caixaRel = null;
     this.h.overlay.innerHTML = "";
     vp.pedirRender();
   }
@@ -195,7 +221,11 @@ export class EditorEsboco {
     this.ferramenta = f;
     this.cliques = [];
     this.cotaEntidades = [];
-    if (f !== "selecionar" && f !== "espelhar" && f !== "offset") this.selecao.clear();
+    this.fecharCaixaRelacoes();
+    if (f !== "selecionar" && f !== "espelhar" && f !== "offset") {
+      this.selecao.clear();
+      if (podarExternas(this.esb, this.selecao)) this.resolver(false);
+    }
     this.redesenhar();
     this.h.atualizarInterface();
   }
@@ -208,6 +238,7 @@ export class EditorEsboco {
 
   /** Resolve, atualiza estado/definição e redesenha. `final` grava passo de desfazer. */
   resolver(final: boolean, notificar = true) {
+    podarExternas(this.esb, this.selecao);
     this.estado = this.h.solver.resolver(this.esb);
     this.conflito = new Set(this.estado.conflitantes);
     for (const r of this.esb.restricoes) if (this.conflito.has(r.id)) op.referencias(r).forEach((x) => this.conflito.add(x));
@@ -264,6 +295,8 @@ export class EditorEsboco {
       if (d < dm) { dm = d; melhor = { p: q, ponto: id, rotulo: id === ORIGEM ? "Origem" : "Coincidente" }; }
     }
     if (melhor) return melhor;
+    const mv = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["vertice"]);
+    if (mv && mv.proj.tipo === "ponto") return { p: mv.proj.p, modelo: mv, rotulo: mv.rotulo };
     for (const g of this.esb.geos) {
       if (g.tipo !== "linha") continue;
       const m = mult(soma(pts.get(g.p1)!, pts.get(g.p2)!), 0.5);
@@ -285,6 +318,8 @@ export class EditorEsboco {
       if (d < dm) { dm = d; melhor = { p: projetarNaGeo(g, pts, q), geo: g.id, rotulo: "Sobre a curva" }; }
     }
     if (melhor) return { ...melhor, hv: undefined };
+    const ma = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["aresta"]);
+    if (ma && ma.proj.tipo !== "ponto") return { p: pontoNaProjecao(ma.proj, q), sobreModelo: ma, rotulo: "Sobre aresta do modelo" };
     if (Math.abs(q.y) < tol && !hv) return { p: { x: q.x, y: 0 }, geo: EIXO_H, rotulo: "Sobre o eixo H" };
     if (Math.abs(q.x) < tol && !hv) return { p: { x: 0, y: q.y }, geo: EIXO_V, rotulo: "Sobre o eixo V" };
     return { p: q, hv, rotulo: hv === "horizontal" ? "Horizontal" : hv === "vertical" ? "Vertical" : undefined };
@@ -292,12 +327,43 @@ export class EditorEsboco {
 
   /** Cria (ou reaproveita) o ponto do encaixe e as relações que ele implica. */
   private pontoDo(enc: Encaixe): string {
+    if (!enc.ponto && enc.modelo) {
+      // vértice da peça: o ponto do esboço é a própria referência (fixa)
+      const g = criarExterna(this.esb, enc.modelo.proj, enc.modelo.ref);
+      return pontosDaGeo(g)[0];
+    }
     const id = op.ponto(this.esb, enc.p, enc.ponto);
     if (!enc.ponto) {
       if (enc.geo) op.restringir(this.esb, { tipo: "coincidente", a: id, b: enc.geo });
       if (enc.meio) op.restringir(this.esb, { tipo: "pontoMedio", p: id, g: enc.meio });
+      if (enc.sobreModelo) {
+        const g = criarExterna(this.esb, enc.sobreModelo.proj, enc.sobreModelo.ref);
+        op.restringir(this.esb, { tipo: "coincidente", a: id, b: g.id });
+      }
     }
     return id;
+  }
+
+  /** Aresta/vértice da peça sob o ponto da tela, já projetado no plano do esboço. */
+  private acharModelo(x: number, y: number, tipo: string, filtro: TipoEntidade[]): AlvoModelo | null {
+    const vp = this.h.viewport;
+    const topo = vp.topologia;
+    if (!topo) return null;
+    const e = vp.picarEntidade(x, y, new Set(filtro), tipo === "touch" ? 22 : 10);
+    if (!e || e.tipo === "face") return null;
+    const ref: Referencia = e.tipo === "vertice" ? { tipo: "vertice", p: topo.vertices[e.indice] } : { tipo: "aresta", ass: topo.arestas[e.indice] };
+    const proj = projetar(ref, this.ref);
+    if (!proj) return null;
+    return { ref, proj, rotulo: e.tipo === "vertice" ? "Vértice do modelo" : "Aresta do modelo" };
+  }
+
+  /** Toque numa aresta/vértice da peça: vira referência e entra na seleção. */
+  private selecionarModelo(m: AlvoModelo, x: number, y: number) {
+    const g = criarExterna(this.esb, m.proj, m.ref);
+    // vértice entra como ponto (para relações ponto-ponto / ponto-curva)
+    this.selecao.add(g.tipo === "ponto" ? g.p : g.id);
+    this.resolver(true);
+    this.abrirCaixaRelacoes(x, y);
   }
 
   // ---------- ponteiro ----------
@@ -313,10 +379,13 @@ export class EditorEsboco {
       return false;
     }
     if (e.pointerType === "mouse" && e.button !== 0) return false;
+    this.tela = { x: e.clientX, y: e.clientY, tipo: e.pointerType };
     const p = this.noPlano(e);
     if (!p) return false;
     const tol = this.tolMm(e.pointerType);
     const alvo = this.achar(p, tol);
+    const modelo = !alvo && this.ferramenta === "selecionar" && e.pointerType !== "touch"
+      ? this.acharModelo(e.clientX, e.clientY, e.pointerType, ["vertice", "aresta"]) : null;
     if (e.pointerType === "touch") {
       if (!this.dedoDesenha) return false;
       // com Selecionar, dedo no vazio gira a vista; em cima de algo, seleciona/arrasta
@@ -324,7 +393,7 @@ export class EditorEsboco {
     }
     const anterior = this.cliques.length ? this.cliques[this.cliques.length - 1].p : undefined;
     const enc = this.ferramentaUsaEncaixe() ? this.encaixar(p, tol, this.ferramenta === "linha" ? anterior : undefined) : { p };
-    this.ponteiro = { id: e.pointerId, tipo: e.pointerType, x0: e.clientX, y0: e.clientY, moveu: false, enc, alvo, arraste: null };
+    this.ponteiro = { id: e.pointerId, tipo: e.pointerType, x0: e.clientX, y0: e.clientY, moveu: false, enc, alvo, modelo, arraste: null };
     this.h.viewport.canvas().setPointerCapture(e.pointerId);
     if (e.pointerType === "touch" && this.ferramenta !== "selecionar") this.abrirLupa(e);
     this.cursor = enc;
@@ -340,6 +409,7 @@ export class EditorEsboco {
     const pt = this.ponteiro;
     if (pt && e.pointerId !== pt.id) return;
     if (!pt && e.pointerType === "touch") return;
+    this.tela = { x: e.clientX, y: e.clientY, tipo: e.pointerType };
     const p = this.noPlano(e);
     if (!p) return;
     const tol = this.tolMm(e.pointerType);
@@ -368,6 +438,7 @@ export class EditorEsboco {
     if (!pt || e.pointerId !== pt.id) return;
     this.ponteiro = null;
     this.fecharLupa();
+    this.tela = { x: e.clientX, y: e.clientY, tipo: pt.tipo };
     const p = this.noPlano(e);
     if (!p) return;
     const tol = this.tolMm(pt.tipo);
@@ -377,10 +448,11 @@ export class EditorEsboco {
         this.resolver(true);
       } else if (pt.alvo) {
         this.alternarSelecao(pt.alvo.id);
+        this.abrirCaixaRelacoes(e.clientX, e.clientY);
+      } else if (pt.modelo && !pt.moveu) {
+        this.selecionarModelo(pt.modelo, e.clientX, e.clientY);
       } else {
-        this.selecao.clear();
-        this.redesenhar();
-        this.h.atualizarInterface();
+        this.limparSelecao();
       }
       return;
     }
@@ -393,12 +465,24 @@ export class EditorEsboco {
   }
 
   private aoToqueCurto(e: PointerEvent) {
-    // toque de dedo que não foi interceptado (navegação): no vazio, limpa a seleção
-    if (e.pointerType === "touch" && this.ferramenta === "selecionar" && this.selecao.size) {
-      this.selecao.clear();
-      this.redesenhar();
-      this.h.atualizarInterface();
+    // toque de dedo que não foi interceptado (navegação): numa aresta/vértice da peça vira
+    // referência; no vazio, limpa a seleção
+    if (e.pointerType !== "touch" || this.ferramenta !== "selecionar") return;
+    const m = this.acharModelo(e.clientX, e.clientY, "touch", ["vertice", "aresta"]);
+    if (m) this.selecionarModelo(m, e.clientX, e.clientY);
+    else if (this.selecao.size) this.limparSelecao();
+  }
+
+  /** Limpa a seleção e remove referências do modelo que ficaram sem uso. */
+  limparSelecao() {
+    this.selecao.clear();
+    this.fecharCaixaRelacoes();
+    if (podarExternas(this.esb, this.selecao)) {
+      this.resolver(true);
+      return;
     }
+    this.redesenhar();
+    this.h.atualizarInterface();
   }
 
   private cancelarPonteiro() {
@@ -456,6 +540,11 @@ export class EditorEsboco {
       if (!ok) return this.h.avisar("Esse ponto não é um canto entre duas linhas (ou o tamanho é grande demais).");
       this.resolver(true);
       return;
+    }
+    if (["estender", "aparar", "offset", "fileteEsboco", "chanfroEsboco"].includes(f)) {
+      const alvo = this.achar(enc.p, tol);
+      const g = alvo && this.esb.geos.find((x) => x.id === alvo.id);
+      if (g?.externa) return this.h.avisar("Referência do modelo é fixa: não pode ser alterada (apague-a se não precisar).");
     }
     if (f === "estender") {
       const alvo = this.achar(enc.p, tol);
@@ -646,11 +735,7 @@ export class EditorEsboco {
       return;
     }
     if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
-    else if (this.selecao.size) {
-      this.selecao.clear();
-      this.redesenhar();
-      this.h.atualizarInterface();
-    }
+    else if (this.selecao.size || this.caixaRel) this.limparSelecao();
   }
 
   /** Geometrias ligadas pelas extremidades à geometria tocada (para offset). */
@@ -847,8 +932,13 @@ export class EditorEsboco {
   // ---------- seleção, relações, exclusão ----------
 
   private alternarSelecao(id: string) {
-    if (this.selecao.has(id)) this.selecao.delete(id);
-    else this.selecao.add(id);
+    if (this.selecao.has(id)) {
+      this.selecao.delete(id);
+      if (podarExternas(this.esb, this.selecao)) {
+        this.resolver(true);
+        return;
+      }
+    } else this.selecao.add(id);
     this.redesenhar();
     this.h.atualizarInterface();
   }
@@ -864,7 +954,7 @@ export class EditorEsboco {
   }
 
   /** Relações que fazem sentido para o que está selecionado. */
-  relacoesPossiveis(): { rotulo: string; aplicar: () => void }[] {
+  relacoesPossiveis(): { rotulo: string; simbolo: string; aplicar: () => void }[] {
     const sel = [...this.selecao];
     const geos = new Map(this.esb.geos.map((g) => [g.id, g]));
     const ehPonto = (id: string) => id === ORIGEM || this.esb.pontos.some((p) => p.id === id);
@@ -872,9 +962,9 @@ export class EditorEsboco {
     const ehLinhaReal = (id: string) => geos.get(id)?.tipo === "linha";
     const ehRedondo = (id: string) => ["circulo", "arco"].includes(geos.get(id)?.tipo ?? "");
     const P = sel.filter(ehPonto), L = sel.filter(ehLinha), R = sel.filter(ehRedondo);
-    const out: { rotulo: string; aplicar: () => void }[] = [];
+    const out: { rotulo: string; simbolo: string; aplicar: () => void }[] = [];
     const add = (rotulo: string, rs: op.NovaRestricao[]) =>
-      out.push({ rotulo, aplicar: () => this.aplicarRelacoes(rs) });
+      out.push({ rotulo, simbolo: SIMBOLO_RELACAO[rs[0].tipo] ?? "•", aplicar: () => this.aplicarRelacoes(rs) });
     const n = sel.length;
 
     if (n === L.length && L.length >= 1) {
@@ -909,7 +999,7 @@ export class EditorEsboco {
 
     const fixaveis = sel.filter((id) => id !== ORIGEM && id !== EIXO_H && id !== EIXO_V && (ehPonto(id) || geos.has(id)));
     if (fixaveis.length && fixaveis.length === n) {
-      out.push({ rotulo: "Fixo", aplicar: () => this.fixar(fixaveis) });
+      out.push({ rotulo: "Fixo", simbolo: SIMBOLO_RELACAO.fixo, aplicar: () => this.fixar(fixaveis) });
     }
     return out;
   }
@@ -929,6 +1019,8 @@ export class EditorEsboco {
       return;
     }
     this.selecao.clear();
+    this.fecharCaixaRelacoes();
+    podarExternas(this.esb, this.selecao);
     this.resolver(true);
   }
 
@@ -1005,6 +1097,61 @@ export class EditorEsboco {
   relacoesDaSelecao(): RestricaoEsboco[] {
     return this.esb.restricoes.filter((r) =>
       !ehCota(r) && (this.selecao.has(r.id) || op.referencias(r).some((x) => this.selecao.has(x))));
+  }
+
+  // ---------- caixinha de relações no ponteiro ----------
+
+  /** Abre (ou move) a caixinha com os símbolos das relações possíveis ao lado do ponteiro. */
+  private abrirCaixaRelacoes(x: number, y: number) {
+    if (this.ferramenta !== "selecionar" || !this.selecao.size || !this.relacoesPossiveis().length) {
+      this.fecharCaixaRelacoes();
+      return;
+    }
+    if (!this.caixaRel) {
+      const el = document.createElement("div");
+      el.className = "caixa-relacoes";
+      el.setAttribute("role", "toolbar");
+      el.setAttribute("aria-label", "Adicionar relação");
+      el.onpointerdown = (ev) => ev.stopPropagation();
+      el.onwheel = (ev) => ev.stopPropagation();
+      this.h.overlay.appendChild(el);
+      this.caixaRel = { el, x, y };
+    }
+    this.caixaRel.x = x;
+    this.caixaRel.y = y;
+    this.atualizarCaixaRelacoes();
+  }
+
+  /** Refaz os botões conforme a seleção atual; fecha se nada se aplica. */
+  private atualizarCaixaRelacoes() {
+    const c = this.caixaRel;
+    if (!c) return;
+    const rels = this.ferramenta === "selecionar" && this.selecao.size ? this.relacoesPossiveis() : [];
+    if (!rels.length) {
+      this.fecharCaixaRelacoes();
+      return;
+    }
+    c.el.innerHTML = "";
+    for (const r of rels) {
+      const b = document.createElement("button");
+      b.className = "simbolo-relacao";
+      b.textContent = r.simbolo;
+      b.title = r.rotulo;
+      b.setAttribute("aria-label", r.rotulo);
+      b.onclick = () => r.aplicar();
+      c.el.appendChild(b);
+    }
+    // ao lado do ponteiro, sem sair da área do desenho
+    const ov = this.h.overlay.getBoundingClientRect();
+    const w = c.el.offsetWidth || rels.length * 46, h = c.el.offsetHeight || 50;
+    const px = Math.min(Math.max(4, c.x - ov.left + 18), ov.width - w - 4);
+    const py = Math.min(Math.max(4, c.y - ov.top + 18), ov.height - h - 4);
+    c.el.style.transform = `translate(${px}px, ${py}px)`;
+  }
+
+  fecharCaixaRelacoes() {
+    this.caixaRel?.el.remove();
+    this.caixaRel = null;
   }
 
   // ---------- teclado (computador ou teclado do tablet) ----------
@@ -1182,7 +1329,8 @@ export class EditorEsboco {
   private montarOverlay() {
     const ov = this.h.overlay;
     // preserva a caixa de edição de cota e a lupa
-    for (const el of [...ov.children]) if (el !== this.edicaoCota?.el && el !== this.lupa?.canvas) el.remove();
+    for (const el of [...ov.children]) if (el !== this.edicaoCota?.el && el !== this.lupa?.canvas && el !== this.caixaRel?.el) el.remove();
+    this.atualizarCaixaRelacoes();
     this.rotulos = [];
     const pts = mapaPontos(this.esb);
     const geos = new Map(this.esb.geos.map((g) => [g.id, g]));
@@ -1214,14 +1362,13 @@ export class EditorEsboco {
         if (g.tipo === "ponto") return pts.get(g.p) ?? null;
         return pts.get(g.pontos[Math.floor(g.pontos.length / 2)]) ?? null;
       };
-      const SIMBOLO: Record<string, string> = {
-        horizontal: "H", vertical: "V", paralelo: "∥", perpendicular: "⊥", colinear: "⫽", tangente: "T",
-        igual: "=", concentrico: "◎", pontoMedio: "½", simetrico: "⇹", fixo: "⚲", coincidente: "◉",
-      };
+      const SIMBOLO = SIMBOLO_RELACAO;
+      const externos = idsExternos(this.esb);
       const contagem = new Map<string, number>();
       const vistos = new Set<string>();
       for (const r of this.esb.restricoes) {
         if (ehCota(r)) continue;
+        if (r.tipo === "fixo" && externos.has(r.a)) continue; // referência do modelo: já é fixa por natureza
         const refs = r.tipo === "pontoMedio" ? [r.p] : r.tipo === "simetrico" ? [r.a, r.b]
           : r.tipo === "coincidente" ? [r.a] : r.tipo === "fixo" ? [r.a]
           : (r.tipo === "horizontal" || r.tipo === "vertical") && r.b ? [r.a] : op.referencias(r);
