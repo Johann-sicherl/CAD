@@ -386,13 +386,35 @@ function aplicarInclinacao(tool: Shape3D, inc: Inclinacao | undefined, r: Refere
   return tool.draft(ang, (f) => (f as unknown as Ff).not((g) => g.parallelTo(neutro)) as never, neutro);
 }
 
+/**
+ * Condições "até o vértice / superfície / deslocamento da superfície": a própria referência diz
+ * para que lado extrudar (não é preciso inverter a direção). Null = decide o botão Inverter.
+ */
+function sentidoDaReferencia(cond: Condicao, r: Referencial, inicio: Vec3, centro: Vec3, ctx: Ctx): 1 | -1 | null {
+  let t: number;
+  if (cond.tipo === "vertice") {
+    t = esc3(sub3(pontoDeRef(cond.ref, ctx), inicio), r.normal);
+  } else if (cond.tipo === "superficie" || cond.tipo === "deslocSuperficie") {
+    let p = planoDeRef(cond.ref, ctx);
+    if (cond.tipo === "deslocSuperficie") {
+      p = { ...p, origem: soma3(p.origem, mul3(p.normal, (cond.inverterDesloc ? -1 : 1) * cond.dist)) };
+    }
+    const dn = esc3(r.normal, p.normal);
+    if (Math.abs(dn) < 1e-9) return null;
+    // onde a reta normal ao esboço, saindo do centro do perfil, encontra a superfície
+    t = esc3(sub3(p.origem, centro), p.normal) / dn;
+  } else return null;
+  return Math.abs(t) > 1e-6 ? (t > 0 ? 1 : -1) : null;
+}
+
 function prismaDirecao(
   D: Drawing, r: Referencial, s0: number, sentido: 1 | -1, cond: Condicao, inc: Inclinacao | undefined,
   ctx: Ctx, op: "adicionar" | "cortar", centro2: P2,
 ): Shape3D {
-  const d = mul3(r.normal, sentido);
   const inicio = soma3(r.origem, mul3(r.normal, s0));
   const centro = paraMundo({ ...r, origem: inicio }, centro2.x, centro2.y);
+  sentido = sentidoDaReferencia(cond, r, inicio, centro, ctx) ?? sentido;
+  const d = mul3(r.normal, sentido);
   if (cond.tipo === "planoMedio") {
     const t = noPlano(D, r, s0 - cond.dist / 2).extrude(cond.dist);
     return aplicarInclinacao(t, inc, r, inicio, d);

@@ -127,7 +127,8 @@ function extrusao(corte: boolean, d: DadosEsquema): Esquema<FeatureExtrusao> {
       {
         titulo: "Direção 1",
         campos: [
-          { t: "inverter", rot: "Inverter direção", cam: "inverter", vis: (f) => f.condicao?.tipo !== "passanteAmbos" },
+          // até vértice/superfície: o lado vem da própria referência, não precisa inverter
+          { t: "inverter", rot: "Inverter direção", cam: "inverter", vis: (f) => !["passanteAmbos", "vertice", "superficie", "deslocSuperficie"].includes(f.condicao?.tipo ?? "") },
           ...camposCondicao<FeatureExtrusao>("condicao", ops, "profundidade"),
           ...(corte ? [{ t: "check", rot: "Inverter lado do corte", cam: "inverterLadoCorte" } as Campo<FeatureExtrusao>] : []),
           ...camposInclinacao<FeatureExtrusao>("inclinacao"),

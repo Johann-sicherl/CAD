@@ -24,6 +24,8 @@ Seleção inicial: se nada estiver selecionado, pede um **esboço** (ou plano/fa
   - Até o próximo (Up To Next) → até a próxima face que fecha o perfil
   - Até o vértice (Up To Vertex) → vértice
   - Até a superfície (Up To Surface) → face/plano; opção "Inverter sentido da face"
+  - Até o vértice / até a superfície / deslocamento da superfície: **o sentido vem da referência**
+    (vai sozinho para o lado onde ela está; o botão Inverter direção some) ✅
   - Deslocamento da superfície (Offset From Surface) → face + distância + "Inverter deslocamento"
     + "Transladar superfície" (paralela) ou equidistante
   - Até o corpo (Up To Body) → corpo

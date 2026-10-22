@@ -82,6 +82,15 @@ const bloco = ext(base, 10);
   const c3 = sup.esboco ? null : null; void c3;
   const ec = circulo(3);
   confere("até a superfície (plano a 25)", regenerar([pl, ec, { ...sup, esboco: ec.id }]).volume, Math.PI * 9 * 25);
+  // sentido vem da referência: superfície/vértice abaixo do esboço, sem inverter (mesmo com inverter ligado)
+  const plAbaixo = { ...pl, id: "plb", distancia: 15, inverter: true };
+  const supAbaixo = { ...sup, esboco: ec.id, inverter: false, condicao: { tipo: "superficie", dist: 0, ref: { tipo: "plano", id: "plb" } } };
+  confere("até a superfície abaixo, sem inverter", regenerar([plAbaixo, ec, supAbaixo]).volume, Math.PI * 9 * 15);
+  confere("até a superfície acima, com inverter ligado", regenerar([pl, ec, { ...sup, esboco: ec.id, inverter: true }]).volume, Math.PI * 9 * 25);
+  const vAbaixo = ext(base, 1, { condicao: { tipo: "vertice", dist: 0, ref: { tipo: "vertice", p: [0, 0, -6] } } });
+  confere("até o vértice abaixo (z=−6), sem inverter", regenerar([base, vAbaixo]).volume, 40 * 20 * 6);
+  const dsAbaixo = { ...supAbaixo, condicao: { tipo: "deslocSuperficie", dist: 5, inverterDesloc: false, ref: { tipo: "plano", id: "plb" } } };
+  confere("deslocamento da superfície abaixo (−15 + 5)", regenerar([plAbaixo, ec, dsAbaixo]).volume, Math.PI * 9 * 10);
   const inc = ext(base, 10, { inclinacao: { ativa: true, angulo: 5, paraFora: false } });
   const vi = regenerar([base, inc]).volume ?? 0;
   if (!(vi < 8000 && vi > 7000)) { falhas++; console.log("FALHA inclinação para dentro", vi); } else console.log("ok   inclinação 5° para dentro:", vi.toFixed(1));
