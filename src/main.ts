@@ -680,16 +680,28 @@ function instalarToqueCurto() {
   viewport.aoToqueCurto = (e) => {
     const tol = e.pointerType === "touch" ? 22 : 9;
     esconderBarraContexto();
+    const refViewport = viewport.picarReferencia(e.clientX, e.clientY, tol);
+    // prioridade sobre a peça: borda de qualquer plano, ou a área de um plano/eixo criado pelo
+    // usuário que esteja na frente (os planos principais atravessam a peça: só pela borda)
+    const refPrioritaria = refViewport && (refViewport.borda || !["XY", "XZ", "YZ"].includes(refViewport.id)) ? refViewport : null;
     if (aguardando) {
+      if (refPrioritaria?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refPrioritaria.id), null);
       const face = viewport.picarFace(e.clientX, e.clientY);
-      if (!face) return avisar("Isso não é uma face plana. Toque uma face plana (ou um plano na árvore).");
-      return void suporteEscolhido(faceComoSuporte(face.origem, face.normal), face.origem);
+      if (face) return void suporteEscolhido(faceComoSuporte(face.origem, face.normal), face.origem);
+      if (refViewport?.tipo === "plano") return void suporteEscolhido(suporteDoPlano(refViewport.id), null);
+      return avisar("Toque uma face plana ou um plano.");
     }
     if (comando) {
       const c = comando.campo;
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
+      const refAceita = refViewport && c.aceita.includes(refViewport.tipo) ? refViewport : null;
+      if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
       const ent = viewport.picarEntidade(e.clientX, e.clientY, filtroEntidades(c.aceita), tol);
-      if (!ent) return;
+      if (!ent) {
+        // planos e eixos de referência clicados no viewport
+        if (refViewport && c.aceita.includes(refViewport.tipo)) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
+        return;
+      }
       const r = refDeEntidade(ent)!;
       if (c.aceita.includes("plano") && !c.aceita.includes("face") && (r.tipo !== "face" || r.ass.geom !== "plano")) return avisar("Escolha uma face plana.");
       adicionarAoCampo(r);
@@ -713,7 +725,22 @@ function instalarToqueCurto() {
       return;
     }
     // modo peça: pré-seleção (Ctrl/Shift soma)
-    const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+    const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+    if (!ent && refViewport) {
+      // plano/eixo de referência: seleciona como na árvore (Esboço, Normal a, Ocultar…)
+      limparSelPeca();
+      if (refViewport.id === "XY" || refViewport.id === "XZ" || refViewport.id === "YZ") {
+        const id = refViewport.id;
+        selecionar({ tipo: "ref", id });
+        mostrarBarra(acoesDaReferencia(id), e.clientX, e.clientY);
+      } else {
+        const f = doc.features.find((x) => x.id === refViewport.id);
+        if (!f) return;
+        selecionar({ tipo: "feature", id: f.id });
+        mostrarBarra(acoesDaFeature(f), e.clientX, e.clientY);
+      }
+      return;
+    }
     if (!ent) {
       limparSelPeca();
       selecao = null;
@@ -777,7 +804,8 @@ viewport.canvas().addEventListener("pointermove", (e) => {
     const filtro = comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS;
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
     viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent);
-    viewport.canvas().style.cursor = ent ? "pointer" : "";
+    const ref = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
   });
 });
 
@@ -1250,6 +1278,11 @@ async function iniciarEsboco(ferramenta?: Ferramenta): Promise<boolean> {
 }
 
 /** Face plana → suporte de esboço com origem = projeção da origem do modelo. */
+/** Suporte de esboço para um plano principal (XY/XZ/YZ) ou um plano de referência criado. */
+function suporteDoPlano(id: string): SuporteEsboco {
+  return id === "XY" || id === "XZ" || id === "YZ" ? { tipo: "plano", plano: id, deslocamento: 0 } : { tipo: "planoRef", id };
+}
+
 function faceComoSuporte(ponto: Vec3, normal: Vec3): SuporteEsboco {
   const d = escalar(ponto, normal);
   return { tipo: "face", origem: normal.map((v) => v * d) as Vec3, normal, eixoX: eixoXParaNormal(normal) };

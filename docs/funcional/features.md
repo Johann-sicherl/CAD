@@ -263,6 +263,11 @@ Abas: Manual · Assistente (⏸)
 
 ## 15. Geometria de referência — ✅ plano e eixo; demais pendentes
 
+- Planos e eixos são **selecionáveis no viewport** ✅: borda de qualquer plano (prioridade sobre a
+  peça); área de plano criado pelo usuário quando está na frente da peça; planos principais pela
+  área só onde não há peça. Mostra a barra de contexto (Esboço, Normal a, Ocultar…), serve para
+  "Novo esboço" e para campos de comando que aceitam plano/eixo.
+
 ### Plano
 - **Primeira / Segunda / Terceira referência**: cada uma com seleção + restrição:
   Coincidente · Paralelo · Perpendicular · Projetar · Paralelo à tela · Tangente ·

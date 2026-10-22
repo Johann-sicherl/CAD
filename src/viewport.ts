@@ -193,6 +193,7 @@ export class Viewport {
       const contorno = new THREE.LineBasicMaterial({ color: COR_PLANO, transparent: true, opacity: 0.7 });
       const quad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), preenchimento);
       quad.renderOrder = 2;
+      quad.userData.idRef = { tipo: "plano", id };
       const borda = new THREE.LineLoop(
         new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0),
@@ -568,6 +569,62 @@ export class Viewport {
     return null;
   }
 
+  /**
+   * Plano (principal ou criado) ou eixo de referência sob o ponteiro. Planos: toque dentro do
+   * retângulo visível; eixos: perto da linha. A peça na frente tem prioridade (teste de profundidade).
+   */
+  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo"; id: string; borda: boolean } | null {
+    const ray = this.raio(clientX, clientY);
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - r.left, my = clientY - r.top;
+    const visivel = (o: THREE.Object3D) => {
+      for (let x: THREE.Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
+      return true;
+    };
+    const solido = this.solido();
+    const hitPeca = solido ? ray.intersectObject(solido)[0]?.distance ?? Infinity : Infinity;
+    // eixos primeiro (são finos): distância na tela até o segmento
+    let melhorEixo: string | null = null, dm = tolPx;
+    this.grupoRefsExtras.traverse((o) => {
+      const id = o.userData.idRef;
+      if (!id || id.tipo !== "eixo" || !visivel(o)) return;
+      const pos = ((o as THREE.Line).geometry.getAttribute("position") as THREE.BufferAttribute);
+      const a = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, 0));
+      const b = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, 1));
+      const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+      const k = l2 ? Math.max(0, Math.min(1, ((mx - a.x) * dx + (my - a.y) * dy) / l2)) : 0;
+      const d = Math.hypot(a.x + dx * k - mx, a.y + dy * k - my);
+      if (d < dm) { dm = d; melhorEixo = id.id; }
+    });
+    if (melhorEixo) return { tipo: "eixo", id: melhorEixo, borda: true };
+    const quads: THREE.Mesh[] = [];
+    for (const g of [this.grupoRefs, this.grupoRefsExtras]) {
+      g.traverse((o) => { if (o.userData.idRef?.tipo === "plano" && visivel(o)) quads.push(o as THREE.Mesh); });
+    }
+    // borda do plano (como nos CADs): perto do contorno na tela, mesmo com a peça atrás
+    let melhorBorda: string | null = null, db = tolPx;
+    for (const q of quads) {
+      const pos = q.geometry.getAttribute("position") as THREE.BufferAttribute; // PlaneGeometry: 0 1 / 2 3
+      const w = [0, 1, 3, 2].map((i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(q.matrixWorld));
+      const c = w.map((p) => this.paraTela(p));
+      for (let i = 0; i < 4; i++) {
+        const a = c[i], b = c[(i + 1) % 4];
+        const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+        const k = l2 ? Math.max(0, Math.min(1, ((mx - a.x) * dx + (my - a.y) * dy) / l2)) : 0;
+        const d = Math.hypot(a.x + dx * k - mx, a.y + dy * k - my);
+        if (d >= db) continue;
+        // borda escondida atrás da peça não conta
+        const pw = w[i].clone().lerp(w[(i + 1) % 4], k);
+        if (this.profundidade(pw) > hitPeca + this.raioCena * 0.004 + 1e-3) continue;
+        db = d;
+        melhorBorda = q.userData.idRef.id;
+      }
+    }
+    if (melhorBorda) return { tipo: "plano", id: melhorBorda, borda: true };
+    const hit = ray.intersectObjects(quads, false).find((h) => h.distance <= hitPeca + 1e-3);
+    return hit ? { tipo: "plano", id: hit.object.userData.idRef.id, borda: false } : null;
+  }
+
   /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
   destacarEntidades(sel: Entidade[], realce: Entidade | null = null) {
     for (const o of [...this.grupoDestaque.children]) {
@@ -638,6 +695,7 @@ export class Viewport {
           new THREE.BufferGeometry().setFromPoints([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => new THREE.Vector3((a * L) / 2, (b * L) / 2, 0))),
           new THREE.LineBasicMaterial({ color: cor }),
         );
+        quad.userData.idRef = { tipo: "plano", id: r.id };
         g.add(quad, borda);
         this.grupoRefsExtras.add(g);
       } else {
@@ -645,6 +703,7 @@ export class Viewport {
         const b = new THREE.Vector3(...r.origem).addScaledVector(new THREE.Vector3(...r.dir), r.comprimento / 2);
         const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineDashedMaterial({ color: cor, dashSize: 4, gapSize: 2 }));
         l.computeLineDistances();
+        l.userData.idRef = { tipo: "eixo", id: r.id };
         this.grupoRefsExtras.add(l);
       }
     }
