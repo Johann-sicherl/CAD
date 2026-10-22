@@ -1,0 +1,10 @@
+# Configuração de segurança do pnpm (ver README, seção "Dependências").
+
+# Só estes pacotes podem rodar scripts na instalação; qualquer outro é bloqueado.
+# esbuild: confere o binário nativo usado pelo Vite e pelo tsx.
+onlyBuiltDependencies:
+  - esbuild
+
+# Não aceita versões publicadas há menos de 3 dias (em minutos).
+# Pacotes comprometidos costumam ser descobertos e removidos nesse prazo.
+minimumReleaseAge: 4320

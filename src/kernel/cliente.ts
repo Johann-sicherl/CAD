@@ -1,15 +1,18 @@
 // Ponte entre a interface e o Web Worker do kernel.
 // Só a regeneração mais recente importa: pedidos antigos que chegarem atrasados são descartados.
 
-import type { Feature } from "../model";
+import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { ResultadoRegeneracao } from "./regenerar";
+import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
+
+type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
 export class ClienteKernel {
   private worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   private seq = 0;
   private ultimaRegeneracao = 0;
-  private pendentes = new Map<number, { ok: (v: never) => void; falha: (e: Error) => void }>();
+  private pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
 
   readonly pronto: Promise<void>;
 
@@ -27,8 +30,8 @@ export class ClienteKernel {
           case "regenerado":
             if (r.seq === this.ultimaRegeneracao) this.aoRegenerar(r.resultado, r.ms);
             break;
-          case "exportado":
-            this.pendentes.get(r.seq)?.ok(r.blob as never);
+          case "resposta":
+            this.pendentes.get(r.seq)?.ok(r.dados);
             this.pendentes.delete(r.seq);
             break;
           case "erro":
@@ -45,16 +48,29 @@ export class ClienteKernel {
     this.enviar({ tipo: "regenerar", seq: this.seq, features });
   }
 
-  exportar(formato: "step" | "stl"): Promise<Blob> {
+  private pedir<T>(p: SemSeq<PedidoKernel>): Promise<T> {
     const seq = ++this.seq;
-    return new Promise<Blob>((ok, falha) => {
-      this.pendentes.set(seq, { ok: ok as (v: never) => void, falha });
-      this.enviar({ tipo: "exportar", seq, formato });
+    return new Promise<T>((ok, falha) => {
+      this.pendentes.set(seq, { ok: ok as (v: unknown) => void, falha });
+      this.enviar({ ...p, seq } as PedidoKernel);
     });
   }
 
+  exportar(formato: "step" | "stl") {
+    return this.pedir<Blob>({ tipo: "exportar", formato });
+  }
+  medir(refs: Referencia[]) {
+    return this.pedir<ResultadoMedida>({ tipo: "medir", refs });
+  }
+  massa() {
+    return this.pedir<PropriedadesMassa>({ tipo: "massa" });
+  }
+  verificar() {
+    return this.pedir<ResultadoVerificacao>({ tipo: "verificar" });
+  }
+
   private enviar(p: PedidoKernel) {
-    // structuredClone garante que objetos reativos/proxies da UI não vão para o worker
+    // cópia limpa: objetos da UI não vão para o worker
     this.worker.postMessage(JSON.parse(JSON.stringify(p)));
   }
 }

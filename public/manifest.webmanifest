@@ -1,13 +1,13 @@
 {
-  "name": "CAD Tablet",
-  "short_name": "CAD",
-  "description": "CAD paramétrico simplificado para tablet",
+  "name": "JLSCAD",
+  "short_name": "JLSCAD",
+  "description": "CAD paramétrico para celular, tablet e computador",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#15191e",
-  "theme_color": "#15191e",
+  "background_color": "#eef1f4",
+  "theme_color": "#eef1f4",
   "icons": [
     { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
