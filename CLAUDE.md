@@ -41,9 +41,15 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 - **Tema claro** (fundo claro no viewport e painéis).
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
-- **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado): no esboço o botão
-  esquerdo desenha, o do meio arrasta a vista, o direito gira, a roda aproxima; atalhos de teclado
-  (L, R, C, A, S, P, T, D, O, M, V, Esc, Enter, Delete, Ctrl+Z/Y/S, F).
+- **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado), com o mouse dos CADs
+  profissionais: esquerdo seleciona/desenha, **meio gira** (Ctrl + meio arrasta), roda aproxima no
+  cursor, **direito abre o menu de contexto**. Atalhos: Ctrl+1…8 vistas, Espaço orientação, F
+  enquadrar, S barra de atalhos, Ctrl+B reconstruir, Enter/Esc OK/Cancelar, Ctrl+Z/Y/S; no esboço
+  L, R, C, A, S, P, T, D, O, M, V, Delete.
+- **Interação (fluxo de CAD profissional):** selecionar faces/arestas no modelo mostra a barra de
+  contexto; comandos abrem o **painel de comando à esquerda** (no lugar da árvore) com ✓/✕ e o
+  **canto de confirmação** no viewport; campos rosa recebem a geometria tocada; esboços consumidos
+  ficam aninhados no recurso; barra de retrocesso na árvore.
 - **Só quatro áreas de comando:** **Features**, **Sketch**, **Sheet Metal** e **Avaliar**
   (medir, propriedades de massa, vista de seção, análises). Nada de superfícies, soldas, moldes,
   simulação etc.

@@ -66,6 +66,13 @@ export const ICONES = {
   material: svg(`<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 14h18M10 4v16"/><path d="M13 11.5h5" stroke="${C}"/>`),
   alivio: svg(`<path d="M4 4h16v16H4z"/><path d="M14 4v6h6" stroke="${C}"/><circle cx="14" cy="10" r="1.5" stroke="${C}"/>`),
 
+  inclinacaoRecurso: svg(`<path d="M4 20h16"/><path d="M6 20 8 6h8l2 14"/><path d="M8 6h8" stroke="${C}" stroke-width="2.2"/><path d="M12 3v3" stroke-dasharray="1.5 1.5"/>`),
+  eixoRef: svg(`<path d="M4 20 20 4" stroke="${C}" stroke-dasharray="4 2"/><circle cx="12" cy="12" r="5"/>`),
+  ponto: svg(`<circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="${C}"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4" stroke-opacity=".5"/>`),
+  equacoes: svg(`<path d="M5 7h6M8 4v6M5 17h6M14 5l5 5M19 5l-5 5"/><path d="M14 15h5M14 19h5" stroke="${C}"/>`),
+  materialPeca: svg(`<path d="M4 9l8-5 8 5-8 5z"/><path d="M4 9v6l8 5 8-5V9" stroke="${C}"/>`),
+  retrocesso: svg(`<path d="M4 12h16" stroke="${C}" stroke-width="2.4"/><path d="m8 8-4 4 4 4"/>`),
+
   // ---------- Avaliar ----------
   medir: svg(`<path d="M3 15 15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2M6 14l1.5 1.5" stroke="${C}"/>`),
   massa: svg(`<path d="M6 9h12l2 11H4z"/><circle cx="12" cy="6" r="2.5"/><text x="12" y="18" font-size="7" text-anchor="middle" fill="${C}" stroke="none" font-family="sans-serif" font-weight="700">kg</text>`),

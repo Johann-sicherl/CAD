@@ -83,6 +83,8 @@ export function pontosDaGeo(g: GeoEsboco): string[] {
       return [g.c, g.ini, g.fim];
     case "spline":
       return g.pontos;
+    case "ponto":
+      return [g.p];
   }
 }
 
@@ -96,6 +98,7 @@ export function extremidades(g: GeoEsboco): [string, string] | null {
     case "spline":
       return g.pontos.length >= 2 ? [g.pontos[0], g.pontos[g.pontos.length - 1]] : null;
     case "circulo":
+    case "ponto":
       return null;
   }
 }
@@ -150,6 +153,8 @@ export function amostrar(g: GeoEsboco, pts: MapaPontos, passoAng = Math.PI / 48)
       const n = Math.max(6, Math.ceil((a1 - a0) / passoAng));
       return Array.from({ length: n + 1 }, (_, i) => polar(c, r, a0 + ((a1 - a0) * i) / n));
     }
+    case "ponto":
+      return [pts.get(g.p)!];
     case "spline": {
       const bz = splineBeziers(g.pontos.map((id) => pts.get(id)!));
       const out: P2[] = [];
@@ -170,6 +175,8 @@ export function distPontoSegmento(p: P2, a: P2, b: P2): { d: number; t: number }
 
 export function distanciaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
   switch (g.tipo) {
+    case "ponto":
+      return dist(pts.get(g.p)!, p);
     case "linha":
       return distPontoSegmento(p, pts.get(g.p1)!, pts.get(g.p2)!).d;
     case "circulo":
@@ -192,6 +199,8 @@ export function distanciaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
 /** Ponto da geometria mais próximo de `p` (para "ponto sobre curva"). */
 export function projetarNaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): P2 {
   switch (g.tipo) {
+    case "ponto":
+      return pts.get(g.p)!;
     case "linha": {
       const a = pts.get(g.p1)!, b = pts.get(g.p2)!;
       return soma(a, mult(sub(b, a), distPontoSegmento(p, a, b).t));
@@ -233,6 +242,7 @@ function curvaDe(g: GeoEsboco, pts: MapaPontos): Curva | null {
       return { tipo: "circ", c, r: dist(c, pts.get(g.ini)!), a0, a1 };
     }
     case "spline":
+    case "ponto":
       return null;
   }
 }
@@ -369,7 +379,7 @@ export function pontoNoPoligono(p: P2, pol: P2[]): boolean {
 export function encontrarLacos(esb: Pick<FeatureEsboco, "pontos" | "geos">): Laco[] {
   const pts = mapaPontos(esb);
   const lacos: Laco[] = [];
-  const geos = esb.geos.filter((g) => !g.construcao);
+  const geos = esb.geos.filter((g) => !g.construcao && g.tipo !== "ponto");
 
   for (const g of geos) {
     if (g.tipo === "circulo") {
@@ -433,3 +443,41 @@ export function aninhamento(lacos: Laco[]): number[] {
 
 const fmt = (p: P2) => `${p.x.toFixed(1)}; ${p.y.toFixed(1)}`;
 
+
+/**
+ * Cadeia aberta (nervura, recurso fino em perfil aberto): polilinha amostrada das geometrias
+ * que não são de construção, da ponta solta até a outra. Null se não houver cadeia aberta única.
+ */
+export function cadeiaAberta(esb: Pick<FeatureEsboco, "pontos" | "geos">): P2[] | null {
+  const pts = mapaPontos(esb);
+  const geos = esb.geos.filter((g) => !g.construcao && extremidades(g));
+  if (!geos.length) return null;
+  const nos: P2[] = [];
+  const noDe = (p: P2) => {
+    let i = nos.findIndex((n) => dist(n, p) < 1e-4);
+    if (i < 0) { nos.push(p); i = nos.length - 1; }
+    return i;
+  };
+  const arestas = geos.map((g) => {
+    const [a, b] = extremidades(g)!;
+    return { g, a: noDe(pts.get(a)!), b: noDe(pts.get(b)!) };
+  });
+  const grau = new Map<number, number>();
+  for (const e of arestas) for (const n of [e.a, e.b]) grau.set(n, (grau.get(n) ?? 0) + 1);
+  const pontas = [...grau].filter(([, g]) => g === 1).map(([n]) => n);
+  if (pontas.length !== 2 || [...grau.values()].some((g) => g > 2)) return null;
+  const out: P2[] = [];
+  const usadas = new Set<number>();
+  let no = pontas[0];
+  for (;;) {
+    const i = arestas.findIndex((e, k) => !usadas.has(k) && (e.a === no || e.b === no));
+    if (i < 0) break;
+    usadas.add(i);
+    const e = arestas[i];
+    let pl = amostrar(e.g, pts);
+    if (e.a !== no) pl = pl.slice().reverse();
+    out.push(...(out.length ? pl.slice(1) : pl));
+    no = e.a === no ? e.b : e.a;
+  }
+  return out;
+}

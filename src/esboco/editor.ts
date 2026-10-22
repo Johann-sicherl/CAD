@@ -9,7 +9,7 @@ import type { Viewport } from "../viewport";
 import { desenharCota, medirCota, textoCota } from "./cotas";
 import {
   angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
-  mapaPontos, mult, ORIGEM, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
+  mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
 import { referencial, type Referencial } from "./referencial";
@@ -17,11 +17,11 @@ import type { ResultadoSolver, SolverEsboco } from "./solver";
 import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
-  | "selecionar" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
+  | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
   | "aparar" | "offset" | "espelhar" | "cota";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
-  selecionar: "Selecionar", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
+  selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
   rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota",
 };
@@ -30,6 +30,7 @@ export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
 function instrucao(f: Ferramenta, n: number): string {
   switch (f) {
     case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre.";
+    case "ponto": return "Toque para cada ponto (posições de furo, referências).";
     case "linha": return n ? "Próximo ponto. Toque de novo no último ponto (ou Esc) para terminar." : "Toque o ponto inicial (ou arraste de um ponto ao outro).";
     case "retangulo": return n ? "Toque o canto oposto." : "Toque o primeiro canto.";
     case "circulo": return n ? "Toque um ponto do contorno." : "Toque o centro.";
@@ -467,6 +468,10 @@ export class EditorEsboco {
     const cons = this.construcao;
     let pronto = false;
     switch (f) {
+      case "ponto":
+        op.pontoSolto(esb, this.pontoDo(c[0]), cons);
+        pronto = true;
+        break;
       case "linha":
         if (c.length === 2) {
           const a = this.pontoDo(c[0]);
@@ -859,7 +864,7 @@ export class EditorEsboco {
         rs.push({ tipo: "fixo", a: g.id, x: c.x, y: c.y, r: g.r });
         if (g.tipo === "arco") for (const e of [g.ini, g.fim]) rs.push({ tipo: "fixo", a: e, ...pts.get(e)! });
       } else {
-        const ps = g.tipo === "linha" ? [g.p1, g.p2] : g.pontos;
+        const ps = g.tipo === "linha" ? [g.p1, g.p2] : pontosDaGeo(g);
         for (const e of ps) rs.push({ tipo: "fixo", a: e, x: pts.get(e)!.x, y: pts.get(e)!.y });
       }
     }
@@ -1071,6 +1076,7 @@ export class EditorEsboco {
         if (g.tipo === "linha") return mult(soma(pts.get(g.p1)!, pts.get(g.p2)!), 0.5);
         if (g.tipo === "circulo") return polar(pts.get(g.c)!, g.r, Math.PI / 2);
         if (g.tipo === "arco") return mult(soma(pts.get(g.ini)!, pts.get(g.fim)!), 0.5);
+        if (g.tipo === "ponto") return pts.get(g.p) ?? null;
         return pts.get(g.pontos[Math.floor(g.pontos.length / 2)]) ?? null;
       };
       const SIMBOLO: Record<string, string> = {

@@ -114,6 +114,13 @@ export function poligono(esb: FeatureEsboco, c: string, vertice: P2, lados: numb
   return [circ, ...ls];
 }
 
+/** Ponto solto (posição de furo, referência). */
+export function pontoSolto(esb: FeatureEsboco, p: string, construcao = false): Geo<"ponto"> {
+  const g: Geo<"ponto"> = { id: novoId(), tipo: "ponto", p, ...(construcao && { construcao }) };
+  esb.geos.push(g);
+  return g;
+}
+
 export function spline(esb: FeatureEsboco, pontos: string[], construcao = false): Geo<"spline"> {
   const g: Geo<"spline"> = { id: novoId(), tipo: "spline", pontos, ...(construcao && { construcao }) };
   esb.geos.push(g);
@@ -200,7 +207,7 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
   const g = esb.geos.find((x) => x.id === geoId);
   if (!g) return false;
   const pts = mapaPontos(esb);
-  if (g.tipo === "spline") {
+  if (g.tipo === "spline" || g.tipo === "ponto") {
     excluir(esb, [g.id]);
     return true;
   }
@@ -456,6 +463,7 @@ export function espelhar(esb: FeatureEsboco, geoIds: string[], eixo: string): st
       n = circulo(esb, par(g.c), g.r, g.construcao);
       restringir(esb, { tipo: "igual", a: g.id, b: n.id });
     } else if (g.tipo === "arco") n = arco(esb, par(g.c), par(g.fim), par(g.ini), g.construcao); // espelho inverte o sentido
+    else if (g.tipo === "ponto") n = pontoSolto(esb, par(g.p), g.construcao);
     else n = spline(esb, g.pontos.map(par), g.construcao);
     novas.push(n.id);
   }

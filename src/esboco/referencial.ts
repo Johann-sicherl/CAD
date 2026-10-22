@@ -28,7 +28,18 @@ export const normalizar = (a: Vec3): Vec3 => {
   return [a[0] / n, a[1] / n, a[2] / n];
 };
 
-export function referencial(s: SuporteEsboco): Referencial {
+/**
+ * Planos de referência resolvidos na última regeneração (o kernel calcula; a interface registra
+ * aqui para desenhar e esboçar neles). Chave = id do recurso de plano.
+ */
+export const planosResolvidos = new Map<string, Referencial>();
+
+export function referencial(s: SuporteEsboco, planos: Map<string, Referencial> = planosResolvidos): Referencial {
+  if (s.tipo === "planoRef") {
+    const r = planos.get(s.id);
+    if (!r) throw new Error("O plano de referência deste esboço não existe ou vem depois dele.");
+    return r;
+  }
   if (s.tipo === "plano") {
     const b = BASES[s.plano];
     const origem = b.normal.map((v) => v * s.deslocamento) as Vec3;

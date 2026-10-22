@@ -5,7 +5,12 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { MalhaPeca } from "./kernel/regenerar";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import type { InfoReferencia, MalhaPeca } from "./kernel/regenerar";
+import type { Topologia } from "./kernel/topologia";
+import { coresCurvatura, coresEspessura, coresInclinacao, materialZebra, type Analise } from "./analises";
 import type { Plano, Vec3 } from "./model";
 import type { Referencial } from "./esboco/referencial";
 
@@ -37,6 +42,16 @@ interface Referencia {
   visivel: boolean;
 }
 
+export type TipoEntidade = "face" | "aresta" | "vertice";
+/** Entidade da peça na tela: índice em `topologia.faces/arestas/vertices`. */
+export interface Entidade {
+  tipo: TipoEntidade;
+  indice: number;
+}
+
+const COR_SELECAO = 0x1f78d1;
+const COR_REALCE = 0x7fb8ef;
+
 /** Face plana tocada na peça: ponto e normal para iniciar um esboço nela. */
 export interface FacePlana {
   origem: Vec3;
@@ -56,6 +71,8 @@ export class Viewport {
   /** Câmera mudou (zoom/órbita): a camada do esboço refaz setas na escala certa. */
   aoMudarCamera: (() => void) | null = null;
   readonly grupoEsboco = new THREE.Group();
+  /** Botão direito (ou toque longo): menu de contexto. */
+  aoMenuContexto: ((e: MouseEvent) => void) | null = null;
 
   private renderer: THREE.WebGLRenderer;
   private cena = new THREE.Scene();
@@ -63,6 +80,16 @@ export class Viewport {
   private controles: OrbitControls;
   private grupoPeca = new THREE.Group();
   private faces: Uint32Array = new Uint32Array();
+  private gruposArestas: Uint32Array = new Uint32Array();
+  private posArestas: Float32Array = new Float32Array();
+  topologia: Topologia | null = null;
+  private grupoDestaque = new THREE.Group();
+  private grupoRefsExtras = new THREE.Group();
+  private grupoSecao = new THREE.Group();
+  private secao: THREE.Plane | null = null;
+  private analise: Analise | null = null;
+  /** Último resultado de análise (texto para o painel). */
+  infoAnalise = "";
   private grupoRefs = new THREE.Group();
   private refs = new Map<IdReferencia, Referencia>();
   private destaque: IdReferencia | null = null;
@@ -86,7 +113,8 @@ export class Viewport {
   private materialArestas = new THREE.LineBasicMaterial({ color: 0x1f2a35 });
 
   constructor(private container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true });
+    this.renderer.localClippingEnabled = true;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // poupa GPU do tablet
     this.renderer.autoClear = false;
     container.appendChild(this.renderer.domElement);
@@ -123,7 +151,12 @@ export class Viewport {
 
     this.criarReferencias();
     this.grupoEsboco.renderOrder = 10;
-    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoEsboco);
+    this.grupoDestaque.renderOrder = 5;
+    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoEsboco);
+    this.renderer.domElement.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.aoMenuContexto?.(e);
+    });
     this.criarTriade();
 
     this.renderer.domElement.addEventListener("dblclick", () => {
@@ -284,12 +317,16 @@ export class Viewport {
 
   private emEsboco = false;
 
-  /** No esboço o botão esquerdo desenha; o do meio arrasta a vista e o direito gira. */
+  /**
+   * Mouse como nos CADs profissionais: botão do meio gira (Ctrl + meio arrasta), roda aproxima,
+   * direito abre o menu de contexto. Fora do esboço o esquerdo arrastado no vazio também gira
+   * (útil em touchpad); no esboço o esquerdo é só do desenho.
+   */
   modoEsboco(ativo: boolean) {
     this.emEsboco = ativo;
     this.controles.mouseButtons = ativo
-      ? { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE }
-      : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+      ? { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null }
+      : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null };
   }
 
   private raio(clientX: number, clientY: number): THREE.Raycaster {
@@ -308,6 +345,12 @@ export class Viewport {
     if (!p) return null;
     const d = p.sub(new THREE.Vector3(...ref.origem));
     return { x: d.dot(new THREE.Vector3(...ref.x)), y: d.dot(new THREE.Vector3(...ref.y)) };
+  }
+
+  /** Ponto do mundo → pixel (relativo ao canto do viewport). */
+  mundoParaTela(p: Vec3): { x: number; y: number } {
+    const t = this.paraTela(new THREE.Vector3(...p));
+    return { x: t.x, y: t.y };
   }
 
   /** Coordenadas do plano → pixel (relativo ao canto do viewport). */
@@ -381,7 +424,11 @@ export class Viewport {
 
   // ---------- peça ----------
 
-  mostrarMalha(m: MalhaPeca | null) {
+  mostrarMalha(m: MalhaPeca | null, topo: Topologia | null = null) {
+    this.topologia = topo;
+    this.gruposArestas = m?.gruposArestas ?? new Uint32Array();
+    this.posArestas = m?.arestas ?? new Float32Array();
+    this.destacarEntidades([]);
     this.grupoPeca.children.forEach((o) => {
       (o as THREE.Mesh).geometry?.dispose();
     });
@@ -403,6 +450,8 @@ export class Viewport {
     }
     this.faces = m?.faces ?? new Uint32Array();
     this.aplicarEstilo();
+    this.aplicarAnalise();
+    this.aplicarSecao();
 
     const caixa = new THREE.Box3().setFromObject(this.grupoPeca);
     let meio = 50;
@@ -424,6 +473,248 @@ export class Viewport {
     const arestas = this.grupoPeca.getObjectByName("arestas");
     if (solido) solido.visible = this.estilo !== "arestas";
     if (arestas) arestas.visible = this.estilo !== "sombreado";
+    this.precisaRender = true;
+  }
+
+  // ---------- seleção de faces, arestas e vértices ----------
+
+  private solido(): THREE.Mesh | null {
+    const s = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    return s && s.visible ? s : null;
+  }
+
+  private paraTela(p: THREE.Vector3): { x: number; y: number; z: number } {
+    const q = p.clone().project(this.camera);
+    const { clientWidth: w, clientHeight: h } = this.container;
+    return { x: ((q.x + 1) / 2) * w, y: ((1 - q.y) / 2) * h, z: q.z };
+  }
+
+  /**
+   * Entidade sob o ponteiro, respeitando o filtro. Prioridade: vértice, aresta, face
+   * (como nos CADs). `tolPx` maior para o dedo.
+   */
+  picarEntidade(clientX: number, clientY: number, filtro: Set<TipoEntidade>, tolPx = 10): Entidade | null {
+    const topo = this.topologia;
+    if (!topo) return null;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - r.left, my = clientY - r.top;
+    const ray = this.raio(clientX, clientY);
+    const solido = this.solido();
+    const hit = solido ? ray.intersectObject(solido)[0] : undefined;
+    const limite = hit ? hit.distance * 1.002 + this.raioCena * 0.004 : Infinity;
+    const visivel = (p: THREE.Vector3) => this.estilo === "arestas" || p.distanceTo(this.camera.position) <= limite;
+    const v = new THREE.Vector3();
+
+    if (filtro.has("vertice")) {
+      let melhor = -1, dm = tolPx;
+      topo.vertices.forEach((q, i) => {
+        v.set(...q);
+        const t = this.paraTela(v);
+        const d = Math.hypot(t.x - mx, t.y - my);
+        if (d < dm && t.z < 1 && visivel(v)) { dm = d; melhor = i; }
+      });
+      if (melhor >= 0) return { tipo: "vertice", indice: melhor };
+    }
+    if (filtro.has("aresta")) {
+      let melhor = -1, dm = tolPx;
+      const a = new THREE.Vector3(), b = new THREE.Vector3();
+      for (let g = 0; g < this.gruposArestas.length / 2; g++) {
+        const ini = this.gruposArestas[g * 2], qtd = this.gruposArestas[g * 2 + 1];
+        for (let k = ini; k + 1 < ini + qtd; k += 2) {
+          a.fromArray(this.posArestas, k * 3);
+          b.fromArray(this.posArestas, (k + 1) * 3);
+          const ta = this.paraTela(a), tb = this.paraTela(b);
+          const dx = tb.x - ta.x, dy = tb.y - ta.y;
+          const l2 = dx * dx + dy * dy;
+          const t = l2 ? Math.max(0, Math.min(1, ((mx - ta.x) * dx + (my - ta.y) * dy) / l2)) : 0;
+          const d = Math.hypot(ta.x + dx * t - mx, ta.y + dy * t - my);
+          if (d < dm) {
+            // ponto da aresta mais próximo do raio (correto em perspectiva) para testar se está oculto
+            ray.ray.distanceSqToSegment(a, b, undefined, v);
+            if (visivel(v)) { dm = d; melhor = g; }
+          }
+        }
+      }
+      if (melhor >= 0) return { tipo: "aresta", indice: melhor };
+    }
+    if (filtro.has("face") && hit && hit.faceIndex != null) {
+      const idx = hit.faceIndex * 3;
+      for (let i = 0; i < this.faces.length; i += 3) {
+        if (idx >= this.faces[i] && idx < this.faces[i] + this.faces[i + 1]) return { tipo: "face", indice: i / 3 };
+      }
+    }
+    return null;
+  }
+
+  /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
+  destacarEntidades(sel: Entidade[], realce: Entidade | null = null) {
+    for (const o of [...this.grupoDestaque.children]) {
+      this.grupoDestaque.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
+    }
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    const itens = [...sel.map((e) => ({ e, cor: COR_SELECAO })), ...(realce ? [{ e: realce, cor: COR_REALCE }] : [])];
+    const { w, h } = this.tamanho();
+    for (const { e, cor } of itens) {
+      if (e.tipo === "face" && solido) {
+        const ini = this.faces[e.indice * 3], qtd = this.faces[e.indice * 3 + 1];
+        const src = solido.geometry;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", src.getAttribute("position"));
+        geo.setAttribute("normal", src.getAttribute("normal"));
+        geo.setIndex(Array.from((src.getIndex()!.array as Uint32Array).subarray(ini, ini + qtd)));
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: cor, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+          clippingPlanes: this.secao ? [this.secao] : [],
+        }));
+        this.grupoDestaque.add(m);
+      } else if (e.tipo === "aresta") {
+        const ini = this.gruposArestas[e.indice * 2], qtd = this.gruposArestas[e.indice * 2 + 1];
+        const geo = new LineSegmentsGeometry();
+        geo.setPositions(Array.from(this.posArestas.subarray(ini * 3, (ini + qtd) * 3)));
+        const mat = new LineMaterial({ color: cor, linewidth: 4, depthTest: false, transparent: true });
+        mat.resolution.set(w, h);
+        const l = new LineSegments2(geo, mat);
+        l.renderOrder = 6;
+        this.grupoDestaque.add(l);
+      } else if (e.tipo === "vertice" && this.topologia) {
+        const p = this.topologia.vertices[e.indice];
+        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p)]);
+        const pt = new THREE.Points(geo, new THREE.PointsMaterial({ color: cor, size: 12, sizeAttenuation: false, depthTest: false }));
+        pt.renderOrder = 7;
+        this.grupoDestaque.add(pt);
+      }
+    }
+    this.precisaRender = true;
+  }
+
+  // ---------- planos e eixos criados pelo usuário ----------
+
+  mostrarReferenciasExtras(refs: InfoReferencia[], visivel: (id: string) => boolean, destaque: string | null) {
+    for (const o of [...this.grupoRefsExtras.children]) {
+      this.grupoRefsExtras.remove(o);
+      o.traverse((x) => {
+        (x as THREE.Mesh).geometry?.dispose();
+        ((x as THREE.Mesh).material as THREE.Material)?.dispose?.();
+      });
+    }
+    for (const r of refs) {
+      if (!visivel(r.id) && r.id !== destaque) continue;
+      const ativo = r.id === destaque;
+      const cor = ativo ? COR_DESTAQUE : COR_PLANO;
+      if (r.tipo === "plano") {
+        const g = new THREE.Group();
+        g.matrixAutoUpdate = false;
+        const { origem, x, y, normal } = r.ref;
+        g.matrix.makeBasis(new THREE.Vector3(...x), new THREE.Vector3(...y), new THREE.Vector3(...normal)).setPosition(...origem);
+        const L = r.tamanho;
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(L, L), new THREE.MeshBasicMaterial({
+          color: cor, transparent: true, opacity: ativo ? 0.22 : 0.08, side: THREE.DoubleSide, depthWrite: false,
+        }));
+        const borda = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => new THREE.Vector3((a * L) / 2, (b * L) / 2, 0))),
+          new THREE.LineBasicMaterial({ color: cor }),
+        );
+        g.add(quad, borda);
+        this.grupoRefsExtras.add(g);
+      } else {
+        const a = new THREE.Vector3(...r.origem).addScaledVector(new THREE.Vector3(...r.dir), -r.comprimento / 2);
+        const b = new THREE.Vector3(...r.origem).addScaledVector(new THREE.Vector3(...r.dir), r.comprimento / 2);
+        const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineDashedMaterial({ color: cor, dashSize: 4, gapSize: 2 }));
+        l.computeLineDistances();
+        this.grupoRefsExtras.add(l);
+      }
+    }
+    this.precisaRender = true;
+  }
+
+  // ---------- aparência, seção e análises ----------
+
+  definirCorPeca(cor: number) {
+    this.materialSolido.color.setHex(cor);
+    this.precisaRender = true;
+  }
+
+  /** Vista de seção: corta a exibição pelo plano (normal aponta para o lado que some). */
+  definirSecao(plano: { normal: Vec3; ponto: Vec3 } | null) {
+    this.secao = plano
+      ? new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...plano.normal).negate(), new THREE.Vector3(...plano.ponto))
+      : null;
+    this.aplicarSecao();
+  }
+
+  private aplicarSecao() {
+    const planos = this.secao ? [this.secao] : [];
+    this.materialSolido.clippingPlanes = planos;
+    this.materialArestas.clippingPlanes = planos;
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    if (solido && solido.material !== this.materialSolido) (solido.material as THREE.Material).clippingPlanes = planos;
+    for (const o of [...this.grupoSecao.children]) {
+      this.grupoSecao.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
+    }
+    if (this.secao && solido) {
+      // tampa da seção pela técnica do stencil: conta faces de trás/frente cortadas
+      const base = { depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, clippingPlanes: planos };
+      const tras = new THREE.Mesh(solido.geometry, new THREE.MeshBasicMaterial({
+        ...base, side: THREE.BackSide, stencilFail: THREE.IncrementWrapStencilOp, stencilZFail: THREE.IncrementWrapStencilOp, stencilZPass: THREE.IncrementWrapStencilOp,
+      }));
+      const frente = new THREE.Mesh(solido.geometry, new THREE.MeshBasicMaterial({
+        ...base, side: THREE.FrontSide, stencilFail: THREE.DecrementWrapStencilOp, stencilZFail: THREE.DecrementWrapStencilOp, stencilZPass: THREE.DecrementWrapStencilOp,
+      }));
+      tras.renderOrder = frente.renderOrder = 1;
+      const tam = this.raioCena * 8;
+      const tampa = new THREE.Mesh(new THREE.PlaneGeometry(tam, tam), new THREE.MeshStandardMaterial({
+        color: 0xe0a23a, metalness: 0.1, roughness: 0.7, stencilWrite: true, stencilRef: 0,
+        stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp,
+      }));
+      tampa.renderOrder = 1.1;
+      this.secao.coplanarPoint(tampa.position);
+      tampa.lookAt(tampa.position.clone().sub(this.secao.normal));
+      tampa.onAfterRender = (r) => r.clearStencil();
+      this.grupoSecao.add(tras, frente, tampa);
+    }
+    this.precisaRender = true;
+  }
+
+  definirAnalise(a: Analise | null) {
+    this.analise = a;
+    this.aplicarAnalise();
+  }
+
+  private aplicarAnalise() {
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    this.infoAnalise = "";
+    if (!solido) return;
+    if (solido.material !== this.materialSolido) (solido.material as THREE.Material).dispose();
+    solido.material = this.materialSolido;
+    const a = this.analise;
+    if (!a) {
+      this.precisaRender = true;
+      return;
+    }
+    const geo = solido.geometry;
+    const comCores = (cores: Float32Array) => {
+      geo.setAttribute("color", new THREE.BufferAttribute(cores, 3));
+      solido.material = new THREE.MeshLambertMaterial({ vertexColors: true, clippingPlanes: this.secao ? [this.secao] : [] });
+    };
+    if (a.tipo === "inclinacao") {
+      comCores(coresInclinacao(geo, new THREE.Vector3(...a.direcao), a.angulo));
+      this.infoAnalise = `Verde: inclinação ≥ ${a.angulo}° · Vermelho: negativa · Amarelo: precisa de inclinação`;
+    } else if (a.tipo === "curvatura") {
+      const r = coresCurvatura(geo);
+      comCores(r.cores);
+      this.infoAnalise = r.maxima > 0 ? `Raio mínimo aprox.: ${(1 / r.maxima).toFixed(2)} mm (vermelho)` : "Sem faces curvas";
+    } else if (a.tipo === "espessura") {
+      const r = coresEspessura(solido, a.alvo);
+      comCores(r.cores);
+      this.infoAnalise = `Espessura mínima encontrada: ${Number.isFinite(r.minima) ? r.minima.toFixed(2) : "—"} mm (alvo ${a.alvo} mm)`;
+    } else {
+      solido.material = materialZebra(a.listras);
+      this.infoAnalise = "Listras contínuas = faces tangentes/curvatura contínua";
+    }
     this.precisaRender = true;
   }
 

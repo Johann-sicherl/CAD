@@ -6,7 +6,7 @@ import { Algorithm, GcsWrapper, init_planegcs_module, SolveStatus } from "@salus
 import type { SketchPrimitive } from "@salusoft89/planegcs/dist/sketch/sketch_primitive";
 import type { FeatureEsboco, GeoEsboco, RestricaoEsboco } from "../model";
 import { ehCota } from "../model";
-import { angulosArco, EIXO_H, EIXO_V, extremidades, mapaPontos, ORIGEM } from "./geometria";
+import { angulosArco, EIXO_H, EIXO_V, extremidades, mapaPontos, ORIGEM, pontosDaGeo } from "./geometria";
 
 export type Definicao = "subdefinido" | "definido" | "superdefinido";
 
@@ -133,7 +133,7 @@ export class SolverEsboco {
 }
 
 function geoPontos(g: GeoEsboco): string[] {
-  return g.tipo === "linha" ? [g.p1, g.p2] : g.tipo === "circulo" ? [g.c] : g.tipo === "arco" ? [g.c, g.ini, g.fim] : g.pontos;
+  return pontosDaGeo(g);
 }
 
 const unicos = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];

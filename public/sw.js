@@ -1,6 +1,6 @@
 // Service worker: guarda o app (inclusive o kernel .wasm de ~10 MB) em cache
 // para abrir rápido e funcionar sem internet depois da primeira visita.
-const CACHE = "cad-tablet-v3";
+const CACHE = "cad-tablet-v4";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
