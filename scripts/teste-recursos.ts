@@ -12,6 +12,7 @@ import { medidasFuro } from "../src/kernel/furos";
 import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
 import { ORIGEM } from "../src/esboco/geometria";
+import { absorvidosDe, excluirRecursos, filhosDe } from "../src/dependencias";
 
 const require = createRequire(import.meta.url);
 setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
@@ -240,6 +241,34 @@ const bloco = ext(base, 10);
   confere("medir: distância entre topo e base", parseFloat(dist.replace(",", ".")), 10);
   const v = verificar(pecaAtual());
   if (!v.valida || v.faces !== 6 || v.arestas !== 12) { falhas++; console.log("FALHA verificar", v); } else console.log("ok   verificar: válida, 6 faces, 12 arestas");
+}
+
+// ---------- excluir pai leva os filhos ----------
+{
+  const e1 = retangulo(40, 20);
+  const x1 = ext(e1, 10);
+  const pl = { ...(novaFeature("planoRef", 1) as any), id: "plx", ref1: { tipo: "plano", id: "XY" }, distancia: 10 };
+  const e2 = { ...circulo(3), id: "e2x", suporte: { tipo: "planoRef" as const, id: "plx" } };
+  const x2 = ext(e2, 5);
+  const pad = { ...(novaFeature("padraoLinear", 1) as any), recursos: [x2.id] };
+  const feats: Feature[] = [e1, x1, pl, e2, x2, pad];
+  const f1 = filhosDe(feats, pl.id).map((f) => f.id);
+  const ok1 = f1.length === 3 && [e2.id, x2.id, pad.id].every((i) => f1.includes(i));
+  if (!ok1) falhas++;
+  console.log(`${ok1 ? "ok  " : "FALHA"} filhos do plano: esboço, extrusão e padrão (${f1.length})`);
+  const f2 = filhosDe(feats, e1.id).map((f) => f.id);
+  const ok2 = f2.length === 1 && f2[0] === x1.id;
+  if (!ok2) falhas++;
+  console.log(`${ok2 ? "ok  " : "FALHA"} filho do esboço: a extrusão`);
+  const abs = absorvidosDe(feats, new Set([x1.id]));
+  const ok3 = abs.length === 1 && abs[0].id === e1.id;
+  if (!ok3) falhas++;
+  console.log(`${ok3 ? "ok  " : "FALHA"} esboço absorvido pela extrusão`);
+  const doc = { formato: "cad-tablet", versao: 2, nome: "t", features: [...feats], retrocesso: 5, equacoes: { [`${x2.id}.profundidade`]: "=2" } } as any;
+  excluirRecursos(doc, new Set([pl.id, ...f1]));
+  const ok4 = doc.features.length === 2 && doc.retrocesso === undefined && !Object.keys(doc.equacoes).length;
+  if (!ok4) falhas++;
+  console.log(`${ok4 ? "ok  " : "FALHA"} excluir: sobra base, retrocesso e equações ajustados`);
 }
 
 if (falhas) {

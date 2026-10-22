@@ -35,6 +35,7 @@ import { esquemaDe, type DadosEsquema } from "./ui/esquemas";
 import { ler, renderizarFormulario, type Esquema, type TipoSel } from "./ui/formulario";
 import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes";
 import type { Analise } from "./analises";
+import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
 
 const CHAVE_AUTOSAVE = "cad-tablet:documento";
 const CHAVE_PREFS = "cad-tablet:interface";
@@ -1049,14 +1050,81 @@ function mostrarBarraNoItem(li: HTMLElement, acoes: AcaoContexto[]) {
   mostrarBarra(acoes, r.right - 10, r.bottom + 60);
 }
 
+/**
+ * Excluir com confirmação, como nos CADs profissionais: lista os recursos filhos (dependem do
+ * excluído e saem junto, por padrão) e os absorvidos (esboço consumido; opcional).
+ */
 function excluirFeature(f: Feature) {
-  const dependentes = doc.features.filter((x) => ("esboco" in x && x.esboco === f.id && x.id !== f.id) || ("recursos" in x && x.recursos.includes(f.id)));
-  if (dependentes.length && !confirm(`${f.nome} é usado por ${dependentes.map((x) => x.nome).join(", ")}. Excluir mesmo assim?`)) return;
-  doc.features = doc.features.filter((x) => x.id !== f.id);
-  if (doc.retrocesso !== undefined && doc.retrocesso >= doc.features.length) delete doc.retrocesso;
-  selecao = null;
-  alterou(true);
-  renderizarTudo();
+  esconderBarraContexto();
+  const filhos = filhosDe(doc.features, f.id);
+  let comFilhos = true;
+  let comAbsorvidos = false;
+  const alvo = () => new Set([f.id, ...(comFilhos ? filhos.map((x) => x.id) : [])]);
+  const absorvidos = () => absorvidosDe(doc.features, alvo());
+
+  const fundo = document.createElement("div");
+  fundo.className = "fundo-dialogo";
+  const dlg = document.createElement("div");
+  dlg.className = "dialogo dialogo-excluir";
+  dlg.setAttribute("role", "dialog");
+  dlg.setAttribute("aria-modal", "true");
+  fundo.append(dlg);
+  const item = (x: Feature) => `<li>${ICONES[iconeFeature(x)]}<span>${escapar(x.nome)}</span><small>${ROTULO_TIPO[x.tipo]}</small></li>`;
+  const montar = () => {
+    const abs = absorvidos();
+    dlg.innerHTML = `
+      <header><strong>Confirmar exclusão</strong></header>
+      <div class="excluir-corpo">
+        <ul class="excluir-lista">${item(f)}</ul>
+        ${filhos.length ? `
+          <label class="excluir-opcao"><input type="checkbox" data-op="filhos" ${comFilhos ? "checked" : ""}/>Excluir também os recursos filhos (${filhos.length})</label>
+          <ul class="excluir-lista filhos${comFilhos ? "" : " mantidos"}">${filhos.map(item).join("")}</ul>` : ""}
+        ${abs.length ? `
+          <label class="excluir-opcao"><input type="checkbox" data-op="absorvidos" ${comAbsorvidos ? "checked" : ""}/>Excluir também os recursos absorvidos (${abs.length})</label>
+          <ul class="excluir-lista${comAbsorvidos ? "" : " mantidos"}">${abs.map(item).join("")}</ul>` : ""}
+        ${filhos.length && !comFilhos ? `<p class="dialogo-nota">Os filhos mantidos ficarão com erro na árvore.</p>` : ""}
+      </div>
+      <footer><button data-b="cancelar">Cancelar</button><button data-b="ok" class="perigo">Excluir</button></footer>`;
+    dlg.querySelector<HTMLInputElement>('[data-op="filhos"]')?.addEventListener("change", (e) => {
+      comFilhos = (e.target as HTMLInputElement).checked;
+      montar();
+    });
+    dlg.querySelector<HTMLInputElement>('[data-op="absorvidos"]')?.addEventListener("change", (e) => {
+      comAbsorvidos = (e.target as HTMLInputElement).checked;
+      montar();
+    });
+    dlg.querySelector<HTMLButtonElement>('[data-b="cancelar"]')!.onclick = fechar;
+    const ok = dlg.querySelector<HTMLButtonElement>('[data-b="ok"]')!;
+    ok.onclick = confirmar;
+    ok.focus();
+  };
+  const fechar = () => {
+    fundo.remove();
+    document.removeEventListener("keydown", teclas, true);
+  };
+  const confirmar = () => {
+    const ids = alvo();
+    if (comAbsorvidos) for (const e of absorvidos()) ids.add(e.id);
+    fechar();
+    if (comando && ids.has(comando.f.id)) fecharComando();
+    if (editor && ids.has(editor.esb.id)) sairEsboco();
+    excluirRecursos(doc, ids);
+    selecao = null;
+    alterou(true);
+    renderizarTudo();
+    avisar(ids.size > 1 ? `${ids.size} recursos excluídos.` : `${f.nome} excluído.`);
+  };
+  const teclas = (e: KeyboardEvent) => {
+    if (e.key === "Escape") fechar();
+    else if (e.key === "Enter" && !(e.target as HTMLElement).matches("input[type=checkbox]")) confirmar();
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  fundo.onclick = (e) => e.target === fundo && fechar();
+  document.addEventListener("keydown", teclas, true);
+  document.body.append(fundo);
+  montar();
 }
 
 function alternarReferencia(id: IdReferencia) {
