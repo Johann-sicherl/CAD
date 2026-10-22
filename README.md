@@ -86,12 +86,18 @@ scripts/teste-kernel.ts  teste do kernel em Node
 scripts/teste-esboco.ts  teste do esboço (solver, aparar/offset/espelhar, sólidos)
 ```
 
+## Especificação funcional
+
+O comportamento esperado de cada comando (caixas, campos, opções e status) está em
+[`docs/funcional/`](docs/funcional/README.md): Features, Sketch, Sheet Metal e Avaliar.
+
 ## Próximos passos (roteiro)
 
 - **Fase 3 — Features:** condições de fim da extrusão (cego, até a próxima, passante, plano médio),
   seleção de faces/arestas, filete/chanfro em arestas escolhidas, padrões, espelhar, casca,
   nervura, furo assistido; depois varredura e loft
 - **Fase 4 — Sheet Metal:** flange base/de aresta, dobras, fator K, alívios, planificação e DXF
+- **Fase 5 — Avaliar:** medir, propriedades de massa, vista de seção, verificar e análises
 
 ## Licenças de terceiros
 

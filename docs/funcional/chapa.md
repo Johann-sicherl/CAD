@@ -1,0 +1,130 @@
+# Sheet Metal — chapa metálica (Fase 4)
+
+Implementação própria (o kernel não tem chapa). Status: tudo **F4** salvo indicação.
+
+Conceitos comuns a todos os comandos:
+- **Parâmetros de chapa** (do recurso "Chapa metálica" criado pela 1ª flange): espessura,
+  raio de dobra, cálculo de dobra, alívio automático, material/tabela.
+- **Cálculo de dobra**: Tabela de dobras · **Fator K** · Margem de dobra (bend allowance) ·
+  Dedução de dobra (bend deduction) · Tabela de cálculo.
+- **Alívio automático**: Retangular · Rasgado (tear) · Oblongo; proporção do alívio ou largura/profundidade.
+- Cada comando pode **sobrepor** raio, cálculo de dobra e alívio ("personalizado").
+
+---
+
+## 1. Flange base / Aba (Base Flange/Tab)
+Perfil: esboço fechado (placa) ou aberto (perfil dobrado)
+- **Direção 1** (perfil aberto): condição final (Cego, Plano médio…), profundidade, inverter
+- **Direção 2** (perfil aberto)
+- **Bitolas de chapa**: usar tabela de bitolas, tabela, espessura/raio vindos da tabela
+- **Parâmetros de chapa**: espessura, **inverter direção** (lado do material), raio de dobra
+- **Margem de dobra**: Tabela · Fator K (valor) · Margem · Dedução · Tabela de cálculo
+- **Alívio automático**: tipo, usar proporção (valor) ou largura/profundidade
+- **Contornos selecionados**
+- *Aba (Tab)*: com chapa existente, esboço fechado numa face vira aba da mesma espessura
+
+## 2. Flange de aresta (Edge Flange)
+- **Parâmetros da flange**: arestas (lista), **editar perfil da flange**, usar raio padrão / raio,
+  distância de folga (entre flanges adjacentes)
+- **Ângulo**: ângulo da flange, face de referência, perpendicular / paralela à face
+- **Comprimento da flange**: condição (Cego, Até o vértice), inverter, comprimento;
+  medição: **Externo virtual** · **Interno virtual** · **Tangente à dobra**
+- **Posição da flange**: **Material interno** · **Material externo** · **Dobra externa** ·
+  Dobra a partir do virtual afiado · Tangente à dobra; **Aparar dobras laterais**;
+  **Deslocamento** (condição, distância)
+- Margem de dobra personalizada · Alívio personalizado (tipo, proporção)
+
+## 3. Flange de meia-esquadria (Miter Flange)
+Perfil: esboço aberto perpendicular à aresta
+- **Parâmetros**: ao longo das arestas (cadeia), raio, posição da flange (interno/externo/dobra
+  externa), aparar dobras laterais, distância de folga
+- **Deslocamentos inicial/final**
+- Margem de dobra e alívio personalizados
+
+## 4. Bainha (Hem)
+- **Arestas**, editar largura da bainha
+- **Tipo e tamanho**: **Fechada** (comprimento) · **Aberta** (comprimento, folga) ·
+  **Gota** (ângulo, raio) · **Enrolada** (ângulo, raio)
+- Posição: material interno · material externo · dobra externa · inverter
+- Folga de meia-esquadria · margem de dobra personalizada
+
+## 5. Dobra esboçada (Sketched Bend)
+Linha de esboço numa face plana da chapa
+- **Face fixa**
+- **Posição da dobra**: Linha de centro da dobra · Material interno · Material externo · Dobra externa
+- **Ângulo**, inverter direção, raio
+- Margem de dobra personalizada
+
+## 6. Junta (Jog)
+- Face fixa, usar raio padrão / raio
+- **Deslocamento da junta**: condição (Cego, Até o vértice…), distância,
+  **posição da cota**: deslocamento externo · interno · total; **fixar comprimento projetado**
+- **Posição da junta** (como na dobra esboçada), **ângulo da junta**
+- Margem de dobra personalizada
+
+## 7. Dobra cruzada (Cross Break) — ⏸
+Face, direção, raio, ângulo (apenas visual/cosmético).
+
+## 8. Dobras em loft / Flange varrida — ⏸
+Loft entre dois perfis abertos (conformada / dobrada com nº de facetas); flange varrida por trajetória.
+
+## 9. Cantos
+### Fechar canto (Closed Corner)
+- Faces a estender · faces correspondentes (automático)
+- **Tipo de canto**: Topo (butt) · Sobreposto · Subposto; **distância de folga**;
+  proporção de sobreposição
+- Abrir região de dobra · faces coplanares · canto estreito · propagação automática
+### Alívio de canto (Corner Relief)
+- Tipo de canto: **2 dobras** · **3 dobras**; coletar todos os cantos
+- **Tipo de alívio**: Retangular · Circular · Rasgado · Oblongo · Largura constante ·
+  (3 dobras: completo, …)
+- Centrado nas linhas de dobra · tangente à dobra · adicionar faces perpendiculares · folga · tamanho
+### Canto soldado (Welded Corner) — ⏸
+Canto, ponto de parada, filete, textura, nota de solda.
+### Quebrar canto / Aparar canto (Break Corner)
+- Arestas/cantos · **Tipo**: Chanfro (distância) · Filete (raio) · quebrar dos dois lados
+
+## 10. Aba e rasgo (Tab and Slot) — ⏸
+Aresta da aba, referências inicial/final, deslocamento, espaçamento (igual / nº de instâncias),
+comprimento/altura da aba, comprimento/folga do rasgo, tipo de canto, rasgo passante.
+
+## 11. Desdobrar / Dobrar (Unfold / Fold)
+- **Face fixa** · **Dobras a desdobrar** (lista) · **Coletar todas as dobras**
+- Uso: desdobrar → adicionar corte atravessando dobras → dobrar de volta
+
+## 12. Planificar (Flatten / Flat Pattern)
+- Liga/desliga a vista planificada (recurso "Padrão planificado" no fim da árvore)
+- **Parâmetros do planificado**: face fixa · mesclar faces · simplificar dobras · mostrar rasgos ·
+  tratamento de cantos · **direção do grão** · recriar padrão planificado
+- **Caixa delimitadora** do planificado (comprimento × largura) — alimenta a lista de corte
+
+## 13. Converter em chapa / Inserir dobras / Rasgar
+- **Converter em chapa** (de sólido): face fixa, espessura, inverter espessura, manter corpo,
+  **arestas de dobra** (lista), **arestas de rasgo** (encontradas), raio padrão, folga do rasgo,
+  alívio automático
+- **Inserir dobras** (casca de espessura constante): face fixa, raio, cálculo, alívio
+- **Rasgar** (Rip): arestas, folga, direção
+
+## 14. Cortes em chapa
+- **Corte extrudado** com **Vincular à espessura** e **Corte normal** (perpendicular à chapa
+  mesmo em faces dobradas): normal ao esboço · normal à chapa; otimizar geometria
+
+## 15. Ferramentas de conformação e respiro — ⏸
+- **Ferramenta de conformação** (biblioteca: louver, nervura estampada, extrusão): face de parada,
+  faces a remover, ponto de inserção, ângulo, inverter ferramenta, vincular
+- **Respiro** (Vent): limite, nervuras, longarinas, área de preenchimento, área de fluxo, filetes
+
+## 16. Tabela de material/espessura (Gauge table) — F4
+Material · espessura (bitola) · raio interno · **fator K** · alívio padrão. Editável no app,
+salva no arquivo e reutilizável entre peças.
+
+## 17. Lista de corte / propriedades da chapa — F4
+Comprimento e largura da caixa delimitadora · espessura · nº de dobras · material · massa ·
+**comprimento de corte** externo/interno · área · nº de recortes · tratamento superficial.
+
+## 18. Exportar DXF/DWG do planificado — F4
+- **Exportar**: geometria · arestas ocultas · recursos de biblioteca · ferramentas de conformação ·
+  **linhas de dobra** · esboços · notas de dobra (ângulo, raio, direção ↑↓)
+- **Opções**: camadas separadas (contorno, dobra ↑, dobra ↓, notas), mesclar entidades,
+  remover entidades, unidade mm, versão DXF R12/2000
+- **Tabela de dobras** (no desenho) — ⏸

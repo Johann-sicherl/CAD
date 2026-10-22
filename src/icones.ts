@@ -66,6 +66,18 @@ export const ICONES = {
   material: svg(`<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 14h18M10 4v16"/><path d="M13 11.5h5" stroke="${C}"/>`),
   alivio: svg(`<path d="M4 4h16v16H4z"/><path d="M14 4v6h6" stroke="${C}"/><circle cx="14" cy="10" r="1.5" stroke="${C}"/>`),
 
+  // ---------- Avaliar ----------
+  medir: svg(`<path d="M3 15 15 3l6 6L9 21z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2M6 14l1.5 1.5" stroke="${C}"/>`),
+  massa: svg(`<path d="M6 9h12l2 11H4z"/><circle cx="12" cy="6" r="2.5"/><text x="12" y="18" font-size="7" text-anchor="middle" fill="${C}" stroke="none" font-family="sans-serif" font-weight="700">kg</text>`),
+  propSecao: svg(`<path d="M5 5h14v4h-5v10h-4V9H5z"/><circle cx="12" cy="11" r="1.6" fill="${C}" stroke="${C}"/>`),
+  vistaSecao: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18M4 7.5l8 4.5 8-4.5" stroke-opacity=".4"/><path d="M12 12v9l8-4.5v-9z" fill="${C}" fill-opacity=".3" stroke="${C}"/>`),
+  verificar: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="m8.5 12 2.5 2.5 4.5-5" stroke="${C}" stroke-width="2"/>`),
+  analiseInclinacao: svg(`<path d="M4 20h16"/><path d="M7 20 9 6h6l2 14" stroke="${C}"/><path d="M12 3v6M10 7l2 2 2-2"/>`),
+  analiseEspessura: svg(`<rect x="3" y="6" width="18" height="12" rx="1"/><rect x="7" y="9" width="10" height="6" stroke="${C}"/><path d="M5 6v3M5 15v3" stroke="${C}"/>`),
+  zebra: svg(`<circle cx="12" cy="12" r="8"/><path d="M6 7c4 2 8 2 12 0M4.5 11c5 2 10 2 15 0M4.5 15c5 2 10 2 15 0" stroke="${C}"/>`),
+  curvatura: svg(`<path d="M3 18C7 6 17 6 21 18"/><path d="M6 12l-2-3M9 9.2 8 6M12 8.5V5M15 9.2l1-3.2M18 12l2-3" stroke="${C}"/>`),
+  desempenho: svg(`<path d="M4 17a8 8 0 1 1 16 0"/><path d="m12 17 4-6" stroke="${C}" stroke-width="2"/><circle cx="12" cy="17" r="1.5"/>`),
+
   // ---------- árvore / referência ----------
   peca: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/>`),
   plano: svg(`<path d="M3 16 9 6h12l-6 10z" stroke="${C}"/>`),

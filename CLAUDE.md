@@ -44,10 +44,16 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 - **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado): no esboço o botão
   esquerdo desenha, o do meio arrasta a vista, o direito gira, a roda aproxima; atalhos de teclado
   (L, R, C, A, S, P, T, D, O, M, V, Esc, Enter, Delete, Ctrl+Z/Y/S, F).
-- **Só três áreas de comando:** **Features**, **Sketch** e **Sheet Metal**. Nada de superfícies,
-  soldas, simulação etc.
+- **Só quatro áreas de comando:** **Features**, **Sketch**, **Sheet Metal** e **Avaliar**
+  (medir, propriedades de massa, vista de seção, análises). Nada de superfícies, soldas, moldes,
+  simulação etc.
+- **Fluxo e comportamento o mais próximos possível do SOLIDWORKS** (referência profissional do
+  Johann): mesmos painéis de comando, campos, opções, condições finais, mouse e atalhos.
+  Continua proibido copiar ícones, cores da marca, logotipos, textos e nomes registrados.
+  A especificação campo a campo de cada comando está em **`docs/funcional/`** — consultar antes de
+  implementar qualquer comando e atualizar o status (✅/🟡/fase) ao entregar.
 - Layout de referência (genérico de CAD): barra superior com menus/ações rápidas → linha de ícones
-  da aba ativa → abas Features / Sketch / Sheet Metal; árvore à esquerda com planos Frontal,
+  da aba ativa → abas Features / Sketch / Sheet Metal / Avaliar; árvore à esquerda com planos Frontal,
   Superior, Lateral, Origem e features; barra de vistas flutuante no topo do viewport;
   tríade de eixos no canto inferior esquerdo; barra de status embaixo (unidades, estado).
   Tudo adaptado a toque (alvos ≥ 44 px).
@@ -67,6 +73,10 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 4. **Sheet Metal** (implementação própria, o kernel não tem) — flange base a partir de esboço;
    flange de aresta; dobra por esboço; tabela material/espessura com fator K e raio de dobra;
    alívios de dobra e de canto; planificação e exportação **DXF** para corte.
+5. **Avaliar** — medir (distâncias, ângulos, raios, XYZ, mín./máx.), propriedades de massa
+   (com material e densidade), propriedades de seção, vista de seção, verificar geometria,
+   análises de inclinação, espessura, zebra e curvatura, tempo de reconstrução por recurso.
+   Medir, propriedades de massa e vista de seção podem ser antecipados se forem úteis antes.
 
 Fase atual: Fases 1 e 2 entregues; próxima: **Fase 3** (features).
 Limitação conhecida da Fase 2: esboço em face guarda o plano da face no momento da criação

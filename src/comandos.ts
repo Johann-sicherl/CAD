@@ -3,7 +3,7 @@
 
 import type { NomeIcone } from "./icones";
 
-export type IdAba = "features" | "sketch" | "chapa";
+export type IdAba = "features" | "sketch" | "chapa" | "avaliar";
 
 export interface Comando {
   id: string;
@@ -73,6 +73,22 @@ export const ABAS: Aba[] = [
       { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, fator K e raio", grupo: 1, fase: 4 },
       { id: "planificar", rotulo: "Planificar", icone: "planificar", dica: "Mostra a chapa planificada", grupo: 2, fase: 4 },
       { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Planificado em DXF para corte", grupo: 2, fase: 4 },
+    ],
+  },
+  {
+    id: "avaliar",
+    rotulo: "Avaliar",
+    comandos: [
+      { id: "medir", rotulo: "Medir", icone: "medir", dica: "Distâncias, ângulos, raios e coordenadas", grupo: 0, fase: 5 },
+      { id: "massa", rotulo: "Massa", icone: "massa", dica: "Propriedades de massa: massa, volume, centro de massa, inércia", grupo: 0, fase: 5 },
+      { id: "prop-secao", rotulo: "Prop. de seção", icone: "propSecao", dica: "Área, centroide e momentos de inércia de uma face", grupo: 0, fase: 5 },
+      { id: "vista-secao", rotulo: "Vista de seção", icone: "vistaSecao", dica: "Corta a vista por um ou mais planos (só visual)", grupo: 1, fase: 5 },
+      { id: "verificar", rotulo: "Verificar", icone: "verificar", dica: "Procura geometria inválida, arestas curtas e raio mínimo", grupo: 1, fase: 5 },
+      { id: "analise-inclinacao", rotulo: "Inclinação", icone: "analiseInclinacao", dica: "Análise de inclinação para moldagem/fundição", grupo: 2, fase: 5 },
+      { id: "analise-espessura", rotulo: "Espessura", icone: "analiseEspessura", dica: "Regiões finas e grossas da peça", grupo: 2, fase: 5 },
+      { id: "zebra", rotulo: "Zebra", icone: "zebra", dica: "Listras zebra para avaliar continuidade entre faces", grupo: 2, fase: 5 },
+      { id: "curvatura", rotulo: "Curvatura", icone: "curvatura", dica: "Faces coloridas pela curvatura", grupo: 2, fase: 5 },
+      { id: "desempenho", rotulo: "Desempenho", icone: "desempenho", dica: "Tempo de reconstrução de cada recurso", grupo: 3, fase: 5 },
     ],
   },
 ];
