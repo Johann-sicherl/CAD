@@ -1,6 +1,6 @@
 // Referencial do plano de esboço: origem, eixos X/Y do esboço e normal, em coordenadas do mundo.
-// Mesma convenção dos planos nomeados do kernel (replicad), para o esboço na tela e o sólido
-// gerado coincidirem: Superior (XY) olha de cima; Frontal (XZ) e Lateral (YZ) têm o Y do esboço = Z.
+// Y para cima (como nos CADs profissionais): Frontal (XY) visto de +Z, Superior (XZ) visto de cima
+// (+Y, com o −Z do mundo para cima no esboço), Lateral (YZ) visto de +X (o −Z fica à direita).
 
 import type { SuporteEsboco, Vec3 } from "../model";
 
@@ -12,9 +12,9 @@ export interface Referencial {
 }
 
 const BASES: Record<"XY" | "XZ" | "YZ", { x: Vec3; normal: Vec3 }> = {
-  XY: { x: [1, 0, 0], normal: [0, 0, 1] },
-  XZ: { x: [1, 0, 0], normal: [0, -1, 0] },
-  YZ: { x: [0, 1, 0], normal: [1, 0, 0] },
+  XY: { x: [1, 0, 0], normal: [0, 0, 1] }, // Frontal: y do esboço = +Y
+  XZ: { x: [1, 0, 0], normal: [0, 1, 0] }, // Superior: y do esboço = −Z
+  YZ: { x: [0, 0, -1], normal: [1, 0, 0] }, // Lateral: y do esboço = +Y
 };
 
 export const cruz = (a: Vec3, b: Vec3): Vec3 => [
@@ -52,11 +52,11 @@ export function referencial(s: SuporteEsboco, planos: Map<string, Referencial> =
 
 /**
  * Eixo X do esboço para uma face plana com normal `n`: horizontal sempre que possível,
- * para que o "para cima" do esboço numa face vertical seja o Z do modelo.
+ * para que o "para cima" do esboço numa face vertical seja o Y do modelo.
  */
 export function eixoXParaNormal(n: Vec3): Vec3 {
-  const z: Vec3 = [0, 0, 1];
-  const x = cruz(z, n);
+  const y: Vec3 = [0, 1, 0];
+  const x = cruz(y, n);
   return Math.hypot(...x) < 1e-6 ? [1, 0, 0] : normalizar(x);
 }
 

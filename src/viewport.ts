@@ -19,17 +19,18 @@ export type Vista = "iso" | "frontal" | "traseira" | "superior" | "inferior" | "
 export type EstiloExibicao = "sombreado-arestas" | "sombreado" | "arestas";
 export type IdReferencia = Plano | "origem";
 
+// Y para cima: frontal olha de +Z, superior de +Y, direita de +X; isométrica de (1, 1, 1)
 const DIRECOES_VISTA: Record<Vista, [number, number, number]> = {
-  iso: [1, -1, 1],
-  frontal: [0, -1, 0.0001],
-  traseira: [0, 1, 0.0001],
-  superior: [0, -0.0001, 1],
-  inferior: [0, -0.0001, -1],
-  esquerda: [-1, 0, 0.0001],
-  direita: [1, 0, 0.0001],
+  iso: [1, 1, 1],
+  frontal: [0, 0.0001, 1],
+  traseira: [0, 0.0001, -1],
+  superior: [0, 1, 0.0001],
+  inferior: [0, -1, 0.0001],
+  esquerda: [-1, 0.0001, 0],
+  direita: [1, 0.0001, 0],
 };
 
-const NORMAL_PLANO: Record<Plano, Vista> = { XY: "superior", XZ: "frontal", YZ: "direita" };
+const NORMAL_PLANO: Record<Plano, Vista> = { XY: "frontal", XZ: "superior", YZ: "direita" };
 
 const COR_EIXO = { x: 0xd9443f, y: 0x3c9a4f, z: 0x2f7fd0 };
 const COR_PLANO = 0x5b8fc7;
@@ -125,10 +126,10 @@ export class Viewport {
     this.renderer.autoClear = false;
     container.appendChild(this.renderer.domElement);
 
-    // CAD usa Z para cima
-    THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+    // Y para cima, como nos CADs profissionais
+    THREE.Object3D.DEFAULT_UP.set(0, 1, 0);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 4000);
-    this.camera.up.set(0, 0, 1);
+    this.camera.up.set(0, 1, 0);
 
     // registrado antes do OrbitControls: pode impedir que a navegação veja o evento
     this.renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -315,7 +316,7 @@ export class Viewport {
         const alvo = ray.intersectObjects(this.rotulosTriade)[0];
         if (alvo) {
           const eixo = alvo.object.userData.eixo as "x" | "y" | "z";
-          this.definirVista(eixo === "x" ? "direita" : eixo === "y" ? "traseira" : "superior");
+          this.definirVista(eixo === "x" ? "direita" : eixo === "y" ? "superior" : "frontal");
           return;
         }
       }
@@ -389,7 +390,9 @@ export class Viewport {
     const alvo = this.controles.target.clone();
     alvo.sub(n.clone().multiplyScalar(alvo.clone().sub(o).dot(n))); // projeta o alvo no plano
     const dir = n.clone();
-    if (Math.abs(dir.z) > 0.999) dir.y -= 0.0001 * Math.sign(dir.z); // evita a câmera alinhada ao "para cima"
+    // plano horizontal (normal ≈ Y, o "para cima" da câmera): inclina um fio para o y do esboço
+    // ficar para cima na tela (no Superior, o −Z do mundo)
+    if (Math.abs(dir.y) > 0.999) dir.addScaledVector(new THREE.Vector3(...ref.y), -0.0001);
     this.moverCamera(alvo, alvo.clone().add(dir.normalize().multiplyScalar(this.distCam)), true);
   }
 

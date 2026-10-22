@@ -422,7 +422,7 @@ function criarRecurso(id: string) {
     case "inclinacao":
       // plano neutro: plano escolhido na árvore; faces: as tocadas no modelo
       f.faces = faces;
-      f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XY" };
+      f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XZ" }; // Superior
       break;
     case "nervura": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
@@ -446,7 +446,7 @@ function criarRecurso(id: string) {
       break;
     case "planoRef": {
       const planos = [...planosArvore, ...facesPlanas];
-      f.ref1 = planos[0] ?? { tipo: "plano", id: "XY" };
+      f.ref1 = planos[0] ?? { tipo: "plano", id: "XZ" }; // Superior
       // dois planos: plano médio; plano + aresta/eixo: em ângulo
       const linha = selPeca.find((r) => r.tipo === "aresta") ?? eixosArvore[0];
       if (planos.length >= 2) {
@@ -1041,7 +1041,7 @@ viewport.aoMenuContexto = (e) => {
 };
 
 // ---------- árvore do modelo ----------
-const REFERENCIAS: IdReferencia[] = ["XZ", "XY", "YZ", "origem"];
+const REFERENCIAS: IdReferencia[] = ["XY", "XZ", "YZ", "origem"]; // Frontal, Superior, Lateral
 
 const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   esboco: "esboco", extrusao: "extrusao", revolucao: "revolucao", filete: "filete", chanfro: "chanfro",
@@ -1729,7 +1729,7 @@ function comandoAvaliar(id: string) {
       if (avaliacao?.tipo === "secao") return fecharAvaliacao();
       fecharAvaliacao();
       fecharJanela();
-      avaliacao = { tipo: "secao", plano: "XZ", desloc: 0, inverter: false };
+      avaliacao = { tipo: "secao", plano: "XY", desloc: 0, inverter: false };
       aplicarSecao();
       renderizarPainelAvaliacao();
       break;
@@ -1741,7 +1741,7 @@ function comandoAvaliar(id: string) {
       if (avaliacao?.tipo === "analise" && avaliacao.analise.tipo === tipo) return fecharAvaliacao();
       fecharAvaliacao();
       fecharJanela();
-      const analise: Analise = tipo === "inclinacao" ? { tipo, direcao: [0, 0, 1], angulo: 1 }
+      const analise: Analise = tipo === "inclinacao" ? { tipo, direcao: [0, 1, 0], angulo: 1 }
         : tipo === "espessura" ? { tipo, alvo: 2 } : tipo === "zebra" ? { tipo, listras: 12 } : { tipo };
       avaliacao = { tipo: "analise", analise, plano: "XY" };
       viewport.definirAnalise(analise);
@@ -1843,7 +1843,7 @@ function mostrarDesempenho() {
   abrirJanela("Desempenho da reconstrução", `<p class="dica">Total: ${num(total, 0)} ms · ${tempos.length} recursos</p>${tabela(linhas)}`);
 }
 
-const NORMAL_PLANO: Record<Plano, Vec3> = { XY: [0, 0, 1], XZ: [0, -1, 0], YZ: [1, 0, 0] };
+const NORMAL_PLANO: Record<Plano, Vec3> = { XY: [0, 0, 1], XZ: [0, 1, 0], YZ: [1, 0, 0] };
 
 function aplicarSecao() {
   if (avaliacao?.tipo !== "secao") return;
@@ -1917,7 +1917,7 @@ function renderizarPainelAvaliacao() {
     b.onclick = acao;
     corpo.append(b);
   };
-  const planos: [string, string][] = [["XZ", "Plano Frontal"], ["XY", "Plano Superior"], ["YZ", "Plano Lateral"]];
+  const planos: [string, string][] = [["XY", "Plano Frontal"], ["XZ", "Plano Superior"], ["YZ", "Plano Lateral"]];
   if (a.tipo === "secao") {
     const t = viewport.topologia;
     const ext = t?.vertices.length ? Math.max(...t.vertices.flatMap((v) => v.map(Math.abs)), 10) : 50;
@@ -2104,9 +2104,9 @@ function renderizarBarraVistas() {
       })),
     ),
   );
-  const algumPlano = (["XZ", "XY", "YZ"] as const).some((p) => prefs.refsVisiveis[p]);
+  const algumPlano = (["XY", "XZ", "YZ"] as const).some((p) => prefs.refsVisiveis[p]);
   botao(algumPlano ? "plano" : "olhoFechado", algumPlano ? "Ocultar planos" : "Mostrar planos", () => {
-    for (const p of ["XZ", "XY", "YZ"] as const) {
+    for (const p of ["XY", "XZ", "YZ"] as const) {
       prefs.refsVisiveis[p] = !algumPlano;
       viewport.definirVisibilidadeReferencia(p, !algumPlano);
     }

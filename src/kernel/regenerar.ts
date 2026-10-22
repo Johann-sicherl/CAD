@@ -529,9 +529,10 @@ function revolucaoRapida(f: FeatureRevolucao): Shape3D {
   if (f.largura <= 0 || f.altura <= 0) throw new Error("Largura e altura devem ser positivas.");
   if (f.raioInterno < 0) throw new Error("O perfil não pode cruzar o eixo.");
   const desenho = drawRectangle(f.largura, f.altura).translate(f.raioInterno + f.largura / 2, f.altura / 2);
-  const esboco = desenho.sketchOnPlane(f.plano) as unknown as Sk;
-  const eixo: Vec3 = f.plano === "XY" ? [0, 1, 0] : [0, 0, 1];
-  return esboco.revolve(eixo, { origin: [0, 0, 0], angle: Math.min(360, Math.max(1, f.angulo)) });
+  // mesma base dos esboços; o eixo é o "vertical" (y) do plano, passando pela origem
+  const r = referencial({ tipo: "plano", plano: f.plano, deslocamento: 0 });
+  const esboco = noPlano(desenho, r) as unknown as Sk;
+  return esboco.revolve(r.y, { origin: [0, 0, 0], angle: Math.min(360, Math.max(1, f.angulo)) });
 }
 
 // ---------- nervura ----------

@@ -24,7 +24,9 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   (`src/kernel/worker.ts`); lógica pura em `src/kernel/regenerar.ts` (testável em Node)
 - Esboço (`src/esboco/`): solver PlaneGCS via `@salusoft89/planegcs` (WASM, LGPL) na thread da UI
   (resposta imediata ao arrastar); geometria/operações puras e testadas em `scripts/teste-esboco.ts`
-- Visualização: Three.js (`src/viewport.ts`), Z para cima, render só quando algo muda
+- Visualização: Three.js (`src/viewport.ts`), **Y para cima** (Frontal = XY, Superior = XZ, Lateral = YZ;
+  isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
+  migrados ao abrir (`validarDocumento`)
 - Modelo: lista de features serializada em JSON (`.jlscad`; abre `.cadt` antigos), em `src/model.ts`
 - PWA (manifest + `public/sw.js`), deploy automático no GitHub Pages via `.github/workflows/deploy.yml`
 - Unidade: **mm** (sistema MMGS)

@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import {
-  documentoExemplo, novaFeature, novoEsboco, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
+  documentoExemplo, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
 import { regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
@@ -149,19 +149,19 @@ const bloco = ext(base, 10);
 
 // ---------- nervura ----------
 {
-  // L: base 40×20×5 + parede 5×20×30; nervura diagonal no plano frontal
-  const b1 = retangulo(40, 20);
+  // L (Y para cima): base 40×20×5 no Superior + parede 5×20×30; nervura diagonal no Frontal
+  const b1 = retangulo(40, 20, "XZ");
   const e1 = ext(b1, 5);
-  const p = retangulo(5, 20, "XY", -17.5, 0);
+  const p = retangulo(5, 20, "XZ", -17.5, 0);
   const e2 = ext(p, 30);
-  const s = novoEsboco(5, { tipo: "plano", plano: "XZ", deslocamento: 0 });
+  const s = novoEsboco(5, { tipo: "plano", plano: "XY", deslocamento: 0 });
   op.linha(s, op.ponto(s, { x: -15, y: 25 }), op.ponto(s, { x: 15, y: 5 }));
   const nerv = { ...(novaFeature("nervura", 1) as any), esboco: s.id, espessura: 4, inverterMaterial: false };
   const v0 = regenerar([b1, e1, p, e2]).volume!;
   const r = regenerar([b1, e1, p, e2, s, nerv]);
   semErros("nervura", r);
   const ganho = (r.volume ?? 0) - v0;
-  // triângulo de catetos 30 (x) × 20 (z) × 4 de espessura
+  // triângulo de catetos 30 (x) × 20 (y) × 4 de espessura
   confere("nervura (volume acrescentado)", ganho, 0.5 * 30 * 20 * 4, 0.02);
 }
 
@@ -279,6 +279,21 @@ const bloco = ext(base, 10);
   const ok = n[0] === 6 && n[1] === 2 && n[2] === 1;
   if (!ok) falhas++;
   console.log(`${ok ? "ok  " : "FALHA"} faces por recurso (base 6, ressalto 2, furo 1): ${n.join(", ")}`);
+}
+
+// ---------- arquivo antigo (Z para cima) aberto com Y para cima ----------
+{
+  const e = retangulo(40, 20, "XY");
+  const x = ext(e, 10);
+  const antes = regenerar([e, x]);
+  const d = validarDocumento(JSON.parse(JSON.stringify({ formato: "cad-tablet", versao: 2, nome: "antigo", features: [e, x] })));
+  const sup = (d.features[0] as FeatureEsboco).suporte;
+  const depois = regenerar(d.features);
+  const ys = depois.topologia!.vertices.map((v) => v[1]);
+  const ok = sup.tipo === "plano" && sup.plano === "XZ" && Math.abs((depois.volume ?? 0) - (antes.volume ?? 0)) < 1e-6
+    && Math.abs(Math.max(...ys) - Math.min(...ys) - 10) < 1e-6 && d.versao === 3;
+  if (!ok) falhas++;
+  console.log(`${ok ? "ok  " : "FALHA"} migração: esboço vai para o Superior e a altura fica em Y`);
 }
 
 if (falhas) {

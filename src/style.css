@@ -677,7 +677,8 @@ input[type="range"] { width: 100%; accent-color: var(--acento); }
 body.sem-documento { grid-template-rows: auto 1fr auto; }
 body.sem-documento [data-requer-doc],
 body.sem-documento .viewport-wrap { display: none !important; }
-body.sem-documento .area { grid-template-columns: minmax(0, 1fr); }
+/* !important: os perfis de dispositivo (ex.: computador) definem a coluna da árvore */
+body.sem-documento .area { grid-template-columns: minmax(0, 1fr) !important; }
 .tela-inicial {
   display: grid;
   align-content: center;
