@@ -7,6 +7,7 @@ import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
   documentoVazio,
+  ehCota,
   esbocosAbsorvidos,
   MATERIAIS,
   NOME_PLANO,
@@ -17,7 +18,9 @@ import {
   type Documento,
   type Feature,
   type FeatureEsboco,
+  type FeatureExtrusao,
   type FeatureFuro,
+  type FeatureRevolucao,
   type Plano,
   type Referencia,
   type SuporteEsboco,
@@ -26,7 +29,10 @@ import {
 import { Viewport, type Entidade, type EstiloExibicao, type IdReferencia, type TipoEntidade, type Vista } from "./viewport";
 import { EditorEsboco, type Ferramenta, type Hospedeiro } from "./esboco/editor";
 import { renderizarPainelEsboco } from "./esboco/painel";
-import { eixoXParaNormal, escalar, planosResolvidos, referencial } from "./esboco/referencial";
+import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
+import { desenharCota, textoCota } from "./esboco/cotas";
+import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
+import type * as THREE from "three";
 import { SolverEsboco } from "./esboco/solver";
 import { construirCamada, descartarCamada } from "./esboco/visual";
 import { aninhamento, encontrarLacos } from "./esboco/geometria";
@@ -217,6 +223,13 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     else if (el) msg ? (el.textContent = msg) : el.remove();
   }
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
+  // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
+  if (recursoComCotas) {
+    const f = doc.features.find((x) => x.id === recursoComCotas);
+    if (f) mostrarCotasNoModelo(f);
+    else fecharCotasNoModelo();
+  }
+  atualizarAlcas();
 }
 
 function atualizarStatus() {
@@ -639,6 +652,7 @@ function dadosEsquema(f: Feature): DadosEsquema {
 
 function abrirComando(f: Feature, novo: boolean) {
   if (editor) sairEsboco();
+  fecharCotasNoModelo();
   fecharAvaliacao();
   comando = {
     f, novo, snapshot: JSON.stringify(doc), campo: null, recolhidas: new Set(),
@@ -708,6 +722,7 @@ function renderizarComando() {
     recolhidas: c.recolhidas,
   });
   atualizarDestaques();
+  atualizarAlcas();
 }
 
 function confirmarComando() {
@@ -734,6 +749,7 @@ function cancelarComando() {
 
 function fecharComando() {
   comando = null;
+  viewport.mostrarAlcas([]);
   mostrarPainel(editor ? "esboco" : "arvore");
   atualizarDestaques();
 }
@@ -884,9 +900,26 @@ function filtroEntidades(aceita: TipoSel[]): Set<TipoEntidade> {
 const TODAS: Set<TipoEntidade> = new Set(["face", "aresta", "vertice"]);
 
 function instalarToqueCurto() {
+  viewport.aoToqueDuplo = (e) => {
+    // duplo clique numa face: mostra as cotas do recurso que a criou, para editar no modelo
+    if (editor || comando || aguardando) return;
+    const ent = viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face"]), e.pointerType === "touch" ? 22 : 9);
+    const f = ent?.tipo === "face" ? recursoDaFace(ent.indice) : null;
+    if (!f) {
+      fecharCotasNoModelo();
+      viewport.enquadrar();
+      return;
+    }
+    esconderBarraContexto();
+    limparSelPeca();
+    definirSel({ tipo: "feature", id: f.id });
+    renderizarTudo();
+    mostrarCotasNoModelo(f);
+  };
   viewport.aoToqueCurto = (e) => {
     const tol = e.pointerType === "touch" ? 22 : 9;
     esconderBarraContexto();
+    if (!comando) fecharCotasNoModelo();
     const refViewport = viewport.picarReferencia(e.clientX, e.clientY, tol);
     // prioridade sobre a peça: borda de qualquer plano, ou a área de um plano/eixo criado pelo
     // usuário que esteja na frente (os planos principais atravessam a peça: só pela borda)
@@ -1135,7 +1168,15 @@ function esconderBarraContexto() {
 }
 
 viewport.aoMenuContexto = (e) => {
-  if (editor || comando) return;
+  if (editor) return;
+  const outros = viewport.entidadesSobCursor(e.clientX, e.clientY, 9);
+  const itemOutro = outros.length > 1
+    ? [{ rotulo: "Selecionar outro…", icone: "selecionar" as NomeIcone, acao: () => selecionarOutro(outros, e.clientX, e.clientY) }]
+    : [];
+  if (comando) {
+    if (itemOutro.length) mostrarBarra(itemOutro, e.clientX, e.clientY);
+    return;
+  }
   const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, 9);
   if (ent) {
     const r = refDeEntidade(ent)!;
@@ -1144,10 +1185,233 @@ viewport.aoMenuContexto = (e) => {
   }
   mostrarBarra([
     ...(selPeca.length ? acoesDoModelo() : []),
+    ...itemOutro,
     { rotulo: "Enquadrar", icone: "enquadrar", acao: () => viewport.enquadrar() },
     { rotulo: "Orientação…", icone: "vistas", acao: () => abrirSeletorVistas($("barra-vistas")) },
   ], e.clientX, e.clientY);
 };
+
+/** Lista as entidades sob o cursor (inclusive escondidas); passar o dedo/mouse realça cada uma. */
+function selecionarOutro(lista: ReturnType<Viewport["entidadesSobCursor"]>, x: number, y: number) {
+  const nomeGeom: Record<string, string> = { plano: "plana", cilindro: "cilíndrica", cone: "cônica", esfera: "esférica", toro: "toroidal", linha: "reta", circulo: "circular" };
+  const cont = { face: 0, aresta: 0, vertice: 0 };
+  const itens = lista.map((ent) => {
+    const r = refDeEntidade(ent)!;
+    const n = ++cont[ent.tipo];
+    const geom = "ass" in r ? nomeGeom[(r.ass as { geom?: string }).geom ?? ""] : undefined;
+    const tipo = ent.tipo === "face" ? "Face" : ent.tipo === "aresta" ? "Aresta" : "Vértice";
+    return {
+      rotulo: `${tipo} ${n}${geom ? ` (${geom})` : ""}${n === 1 && ent.tipo === "face" ? " · frente" : ""}`,
+      icone: (ent.tipo === "face" ? "face" : ent.tipo === "aresta" ? "aresta" : "vertice") as NomeIcone,
+      aoPassar: () => atualizarDestaques(r),
+      acao: () => {
+        if (comando?.campo) {
+          const c = comando.campo;
+          if (!c.aceita.includes(ent.tipo)) return avisar("Esse tipo de entidade não serve para o campo ativo.");
+          adicionarAoCampo(r);
+          return;
+        }
+        selPeca = [r];
+        definirSel(null);
+        renderizarArvore();
+        atualizarStatus();
+        atualizarDestaques();
+        mostrarBarra(acoesDoModelo(), x, y);
+      },
+    };
+  });
+  abrirPopover({ x, y }, itens);
+}
+
+// ---------- cotas do recurso sobre o modelo (duplo clique) ----------
+
+let recursoComCotas: string | null = null;
+const camadaCotasModelo = Object.assign(document.createElement("div"), { className: "camada-cotas-modelo" });
+$("viewport").parentElement!.appendChild(camadaCotasModelo);
+const cotasNoModelo = new CotasNoModelo(viewport, camadaCotasModelo);
+let camadasCotasModelo: THREE.Group[] = [];
+
+/** O recurso mais recente que tem a face entre as "suas" faces. */
+function recursoDaFace(indice: number): Feature | null {
+  let achado: Feature | null = null;
+  for (const f of ativas()) if (facesPorRecurso[f.id]?.includes(indice)) achado = f;
+  return achado;
+}
+
+/** Valores do próprio recurso mostrados no modelo: [caminho, rótulo, unidade, visível?]. */
+const PARAMETROS_NO_MODELO: Partial<Record<Feature["tipo"], [string, string, string, ((f: never) => boolean)?][]>> = {
+  extrusao: [
+    ["profundidade", "D1", "mm", (f: FeatureExtrusao) => !f.condicao || f.condicao.tipo === "cego" || f.condicao.tipo === "planoMedio"],
+    ["direcao2.condicao.dist", "D2", "mm", (f: FeatureExtrusao) => !!f.direcao2?.ativa && f.direcao2.condicao.tipo === "cego"],
+  ],
+  revolucao: [["angulo", "Ângulo", "°"], ["direcao2.angulo", "Ângulo 2", "°", (f: FeatureRevolucao) => !!f.direcao2?.ativa]],
+  filete: [["raio", "R", "mm"]],
+  chanfro: [["distancia", "D", "mm"]],
+  casca: [["espessura", "Espessura", "mm"]],
+  inclinacao: [["angulo", "Inclinação", "°"]],
+  nervura: [["espessura", "Espessura", "mm"]],
+  furo: [["condicao.profundidade", "Profundidade", "mm"]],
+  padraoLinear: [["dir1.espacamento", "Espaçamento", "mm"], ["dir1.instancias", "Instâncias", ""]],
+  padraoCircular: [["angulo", "Ângulo", "°"], ["instancias", "Instâncias", ""]],
+};
+
+function fecharCotasNoModelo() {
+  recursoComCotas = null;
+  cotasNoModelo.limpar();
+  for (const c of camadasCotasModelo) {
+    viewport.grupoEsboco.remove(c);
+    descartarCamada(c);
+  }
+  camadasCotasModelo = [];
+  viewport.pedirRender();
+}
+
+function mostrarCotasNoModelo(f: Feature) {
+  fecharCotasNoModelo();
+  recursoComCotas = f.id;
+  const valores = () => resolverVariaveis(doc.variaveis).valores;
+  const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  const rotulos: RotuloModelo[] = [];
+  const { w, h } = viewport.tamanho();
+
+  // cotas dos esboços usados pelo recurso (ou do próprio esboço)
+  const ids = f.tipo === "esboco" ? [f.id] : esbocosAbsorvidos(f);
+  for (const id of ids) {
+    const esb = doc.features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco");
+    if (!esb) continue;
+    let ref;
+    try {
+      ref = referencial(esb.suporte);
+    } catch {
+      continue;
+    }
+    const mmPx = viewport.mmPorPixel(ref);
+    const camada = construirCamada(esb, { ref, mmPx, resolucao: { w, h }, editando: false, mostrarCotas: true });
+    viewport.grupoEsboco.add(camada);
+    camadasCotasModelo.push(camada);
+    for (const c of esb.restricoes) {
+      if (!ehCota(c)) continue;
+      const d = desenharCota(c, esb, mmPx);
+      if (!d) continue;
+      rotulos.push({
+        texto: textoCota(c),
+        edicao: c.expr ?? String(Number(c.valor.toFixed(4))),
+        pos: paraMundo(ref, d.texto.x, d.texto.y),
+        fixo: !!c.referencia,
+        aplicar: (t) => {
+          const v = avaliarExpressao(t, valores());
+          if (!Number.isFinite(v) || v <= 0) return false;
+          c.valor = v;
+          if (t.trim().startsWith("=")) c.expr = t.trim();
+          else delete c.expr;
+          void obterSolver().then((s) => {
+            s.resolver(esb);
+            alterou(true);
+          });
+          return true;
+        },
+      });
+    }
+  }
+
+  // valores do recurso, no centro das faces dele
+  const centro = viewport.centroFaces(facesPorRecurso[f.id] ?? []);
+  const params = (PARAMETROS_NO_MODELO[f.tipo] ?? []).filter(([, , , vis]) => !vis || vis(f as never));
+  params.forEach(([cam, rot, un], i) => {
+    const v = ler(f as unknown as Record<string, unknown>, cam) as number | undefined;
+    if (typeof v !== "number" || !centro) return;
+    const chave = `${f.id}.${cam}`;
+    rotulos.push({
+      texto: `${rot} ${fmt(v)}${un ? (un === "°" ? "°" : ` ${un}`) : ""}`,
+      edicao: doc.equacoes?.[chave] ?? String(v),
+      pos: centro,
+      desloc: (i - (params.length - 1) / 2) * 30,
+      aplicar: (t) => {
+        const n = avaliarExpressao(t, valores());
+        if (!Number.isFinite(n) || n <= 0) return false;
+        gravarCaminho(f as unknown as Record<string, unknown>, cam, cam.endsWith("instancias") ? Math.max(1, Math.round(n)) : n);
+        doc.equacoes ??= {};
+        if (t.trim().startsWith("=")) doc.equacoes[chave] = t.trim();
+        else delete doc.equacoes[chave];
+        alterou(true);
+        return true;
+      },
+    });
+  });
+  if (!rotulos.length) {
+    recursoComCotas = null;
+    return avisar(`${f.nome}: sem cotas para mostrar.`);
+  }
+  cotasNoModelo.mostrar(rotulos);
+  viewport.pedirRender();
+}
+
+// ---------- alças de arrasto do comando (profundidade da extrusão) ----------
+
+let valorNoInicioDaAlca = 0;
+
+/** Setas nas pontas da extrusão (direção 1 e 2), em cego ou plano médio. */
+function atualizarAlcas() {
+  const f = comando?.f;
+  if (!f || f.tipo !== "extrusao" || !f.esboco) return viewport.mostrarAlcas([]);
+  const esb = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
+  if (!esb) return viewport.mostrarAlcas([]);
+  let ref, lacos;
+  try {
+    ref = referencial(esb.suporte);
+    lacos = encontrarLacos(esb);
+  } catch {
+    return viewport.mostrarAlcas([]);
+  }
+  const pts = lacos.flatMap((l) => l.poligono);
+  if (!pts.length) return viewport.mostrarAlcas([]);
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const c2 = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+  const de = f.de ?? { tipo: "plano", dist: 0, inverter: false };
+  const s0 = de.tipo === "deslocamento" ? (de.inverter ? -1 : 1) * de.dist : 0;
+  const base = paraMundo(ref, c2.x, c2.y);
+  const n = ref.normal;
+  const sentido = f.inverter ? -1 : 1;
+  const em = (s: number): Vec3 => [base[0] + n[0] * s, base[1] + n[1] * s, base[2] + n[2] * s];
+  const dir = (sg: number): Vec3 => [n[0] * sg, n[1] * sg, n[2] * sg];
+  const cond = f.condicao?.tipo ?? "cego";
+  const alcas: { id: string; pos: Vec3; dir: Vec3 }[] = [];
+  if (cond === "cego") alcas.push({ id: "profundidade", pos: em(s0 + sentido * f.profundidade), dir: dir(sentido) });
+  else if (cond === "planoMedio") alcas.push({ id: "profundidade", pos: em(s0 + sentido * (f.profundidade / 2)), dir: dir(sentido) });
+  if (f.direcao2?.ativa && cond !== "planoMedio" && f.direcao2.condicao.tipo === "cego") {
+    alcas.push({ id: "direcao2.condicao.dist", pos: em(s0 - sentido * f.direcao2.condicao.dist), dir: dir(-sentido) });
+  }
+  viewport.mostrarAlcas(alcas);
+}
+
+viewport.aoArrastarAlca = (id, delta, fim) => {
+  const f = comando?.f as unknown as Record<string, unknown> | undefined;
+  if (!f) return;
+  const atual = ler(f, id) as number;
+  if (!fim && !alcaEmArraste) {
+    alcaEmArraste = true;
+    valorNoInicioDaAlca = atual;
+  }
+  // plano médio: a seta fica na metade, então o arraste vale o dobro
+  const fator = id === "profundidade" && (comando!.f as FeatureExtrusao).condicao?.tipo === "planoMedio" ? 2 : 1;
+  const passo = viewport.mmPorPixel(referencialPadrao()) < 0.05 ? 0.1 : 0.5;
+  const v = Math.max(passo, Math.round((valorNoInicioDaAlca + delta * fator) / passo) * passo);
+  gravarCaminho(f, id, Number(v.toFixed(4)));
+  delete doc.equacoes?.[`${comando!.f.id}.${id}`];
+  avisar(`${id === "profundidade" ? "D1" : "D2"}: ${v.toLocaleString("pt-BR")} mm`);
+  if (fim) {
+    alcaEmArraste = false;
+    renderizarComando();
+    regenerarPrevia(0);
+  } else {
+    atualizarAlcas();
+    regenerarPrevia(120);
+  }
+};
+let alcaEmArraste = false;
+
+/** Referencial qualquer (plano frontal) para medir mm por pixel na tela. */
+const referencialPadrao = () => referencial({ tipo: "plano", plano: "XY", deslocamento: 0 });
 
 // ---------- árvore do modelo ----------
 const REFERENCIAS: IdReferencia[] = ["XY", "XZ", "YZ", "origem"]; // Frontal, Superior, Lateral
@@ -1587,6 +1851,10 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
         renderizarAbas();
         renderizarPainelEdicaoEsboco();
       }
+      return;
+    case "espelhoDinamico":
+      if (!editor) return avisar("Espelhamento dinâmico: abra um esboço primeiro.");
+      editor.alternarEspelhoDinamico();
       return;
     case "exibirRelacoes":
       if (!editor) return avisar("Relações: abra um esboço primeiro.");
@@ -2349,6 +2617,8 @@ interface ItemPopover {
   icone?: NomeIcone;
   marcado?: boolean;
   acao: () => void;
+  /** Ponteiro sobre o item (ex.: realçar a entidade no modelo). */
+  aoPassar?: () => void;
 }
 
 let popoverAberto: HTMLElement | null = null;
@@ -2372,6 +2642,7 @@ function abrirPopover(ancora: HTMLElement | { x: number; y: number }, itens: Ite
       fecharPopover();
       it.acao();
     };
+    if (it.aoPassar) b.onpointerenter = it.aoPassar;
     p.appendChild(b);
   }
   document.body.appendChild(p);
@@ -2763,6 +3034,7 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     fecharPopover();
     esconderBarraContexto();
+    fecharCotasNoModelo();
     if (comando) cancelarComando();
     else if (avaliacao) fecharAvaliacao();
     else if (aguardando) {

@@ -216,7 +216,9 @@ Parâmetros: X/Y.
 - Entidades a espelhar ✅ (campo de seleção) · **Copiar** ✅ · **Espelhar em relação a** ✅
   (linha do esboço, eixo ou aresta reta da peça) · relações de simetria ✅ · pré-visualização ✅
 - Pendente: plano/face como espelho
-- Espelhamento dinâmico (desenhar e espelhar ao mesmo tempo) ⏸
+- **Espelhamento dinâmico** ✅ (Espelhar ▾ → Espelhamento dinâmico): escolher a linha de centro (ou
+  eixo); tudo o que se desenha aparece espelhado, com relações de simetria; aviso no painel com
+  "Desligar"
 
 ### Padrão linear de esboço — ✅
 - **Direção 1/2** ✅: direção (eixo, linha do esboço ou aresta da peça), inverter, espaçamento,
@@ -337,5 +339,5 @@ chanfro.
 - Atalhos ✅: L linha · R retângulo · C círculo · A arco · S spline · P polígono · T aparar ·
   D cota · O offset · M espelhar · V selecionar · Enter conclui · Esc cancela · Delete exclui
 - Tecla S → barra de atalhos ✅ · menu de contexto do botão direito ✅
-- Planejado: **gestos de mouse/caneta** (botão direito + arrastar → guia radial) ❌,
-  **espelhamento dinâmico** ❌ (ver `referencia-introducao.md` §7)
+- Planejado: **gestos de mouse/caneta** (botão direito + arrastar → guia radial) ❌
+  (ver `referencia-introducao.md` §7)

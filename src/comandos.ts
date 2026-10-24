@@ -181,7 +181,13 @@ export const ABAS: Aba[] = [
         ],
       },
       { id: "offset", rotulo: "Offset", icone: "offset", dica: "Copia uma cadeia de entidades a uma distância (O)", grupo: 3 },
-      { id: "espelhar", rotulo: "Espelhar", icone: "espelharEsboco", dica: "Espelha a seleção em torno de uma linha (M)", grupo: 3 },
+      {
+        id: "grupo-espelhar-esboco", rotulo: "Espelhar", icone: "espelharEsboco", dica: "Espelhar entidades", grupo: 3,
+        itens: [
+          { id: "espelhar", rotulo: "Espelhar entidades", icone: "espelharEsboco", dica: "Espelha a seleção em torno de uma linha (M)", grupo: 3 },
+          { id: "espelhoDinamico", rotulo: "Espelhamento dinâmico", icone: "espelhoDinamico", dica: "Desenha de um lado e aparece do outro (liga/desliga)", grupo: 3 },
+        ],
+      },
       {
         id: "grupo-padrao-esboco", rotulo: "Padrão", icone: "padraoLinearEsboco", dica: "Padrões de esboço", grupo: 3,
         itens: [

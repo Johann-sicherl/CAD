@@ -41,6 +41,9 @@ export type TipoLinha = "normal" | "centro" | "pontoMedio";
 export type TipoCirculo = "centro" | "perimetro";
 export type TipoArco = "3pontos" | "centro" | "tangente";
 export type TipoRasgo = "reto" | "centro" | "arco3" | "arcoCentro";
+/** Ferramentas que desenham geometria nova (as que o espelhamento dinâmico acompanha). */
+const FERRAMENTAS_DESENHO: string[] = ["ponto", "linha", "retangulo", "circulo", "arco", "rasgo", "poligono", "spline", "elipse", "elipseParcial", "parabola"];
+
 export type ModoAparar = "potente" | "canto" | "dentro" | "fora" | "proximo";
 
 /** Instrução curta mostrada no painel para cada etapa da ferramenta. */
@@ -221,6 +224,7 @@ export class EditorEsboco {
 
   constructor(private h: Hospedeiro, public esb: FeatureEsboco) {
     this.ref = referencial(esb.suporte);
+    this.geosConhecidas = new Set(esb.geos.map((g) => g.id));
     const vp = h.viewport;
     vp.modoEsboco(true);
     vp.interceptador = (e) => this.aoPressionar(e);
@@ -277,6 +281,8 @@ export class EditorEsboco {
   /** Depois de desfazer/refazer o documento é outro objeto: aponta para o esboço novo. */
   reatar(esb: FeatureEsboco) {
     this.esb = esb;
+    this.geosConhecidas = new Set(esb.geos.map((g) => g.id));
+    if (this.espelhoDinamico && !esb.geos.some((g) => g.id === this.espelhoDinamico) && this.espelhoDinamico !== EIXO_H && this.espelhoDinamico !== EIXO_V) this.espelhoDinamico = null;
     this.ref = referencial(esb.suporte);
     const existe = new Set([...esb.pontos.map((p) => p.id), ...esb.geos.map((g) => g.id), ...esb.restricoes.map((r) => r.id), ORIGEM, EIXO_H, EIXO_V]);
     for (const id of [...this.selecao]) if (!existe.has(id)) this.selecao.delete(id);
@@ -329,6 +335,14 @@ export class EditorEsboco {
   /** Resolve, atualiza estado/definição e redesenha. `final` grava passo de desfazer. */
   resolver(final: boolean, notificar = true) {
     podarExternas(this.esb, this.selecao);
+    // espelhamento dinâmico: o que acabou de ser desenhado ganha a cópia espelhada
+    if (final && this.espelhoDinamico && FERRAMENTAS_DESENHO.includes(this.ferramenta)) {
+      const novas = this.esb.geos
+        .filter((g) => !this.geosConhecidas.has(g.id) && !g.externa && g.id !== this.espelhoDinamico && !this.sobreOEspelho(g))
+        .map((g) => g.id);
+      if (novas.length) for (const id of op.espelhar(this.esb, novas, this.espelhoDinamico)) this.geosConhecidas.add(id);
+    }
+    this.geosConhecidas = new Set(this.esb.geos.map((g) => g.id));
     this.estado = this.h.solver.resolver(this.esb);
     this.atualizarTextosNaCurva();
     this.conflito = new Set(this.estado.conflitantes);
@@ -654,6 +668,15 @@ export class EditorEsboco {
   // ---------- ferramentas ----------
 
   private registrar(enc: Encaixe, tol: number, tipo: string) {
+    if (this.escolhendoEspelho) {
+      const alvo = this.achar(enc.p, tol);
+      const ok = alvo?.tipo === "geo" && (alvo.id === EIXO_H || alvo.id === EIXO_V || this.esb.geos.some((g) => g.id === alvo.id && g.tipo === "linha"));
+      if (!ok) return this.h.avisar("Toque uma linha (de preferência a linha de centro) ou um eixo do esboço.");
+      this.ligarEspelho(alvo!.id);
+      this.redesenhar();
+      this.h.atualizarInterface();
+      return;
+    }
     const f = this.ferramenta;
     const esb = this.esb;
     const c = this.cliques;
@@ -1100,6 +1123,67 @@ export class EditorEsboco {
       for (const am of tracosDaGeo(g, pts)) for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
     }
     return { segmentos: segs, pontos: [] };
+  }
+
+  // ---------- espelhamento dinâmico ----------
+
+  /** Linha (ou eixo) de espelho ativa: tudo que for desenhado aparece espelhado do outro lado. */
+  espelhoDinamico: string | null = null;
+  /** Esperando o toque na linha que vira o espelho. */
+  escolhendoEspelho = false;
+  private geosConhecidas = new Set<string>();
+
+  /** Liga (pela linha selecionada, ou pedindo uma) ou desliga o espelhamento dinâmico. */
+  alternarEspelhoDinamico() {
+    if (this.espelhoDinamico || this.escolhendoEspelho) {
+      this.espelhoDinamico = null;
+      this.escolhendoEspelho = false;
+      this.h.avisar("Espelhamento dinâmico desligado.");
+    } else {
+      const sel = [...this.selecao];
+      const linha = sel.length === 1 && (sel[0] === EIXO_H || sel[0] === EIXO_V || this.esb.geos.some((g) => g.id === sel[0] && g.tipo === "linha")) ? sel[0] : null;
+      if (linha) this.ligarEspelho(linha);
+      else {
+        // o toque na linha passa pelo registro das ferramentas de desenho
+        if (!FERRAMENTAS_DESENHO.includes(this.ferramenta)) this.definirFerramenta("linha");
+        this.escolhendoEspelho = true;
+        this.h.avisar("Espelhamento dinâmico: toque a linha de centro (ou um eixo) que será o espelho.");
+      }
+    }
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+
+  /** Geometria toda em cima da linha de espelho (a cópia seria ela mesma). */
+  private sobreOEspelho(g: GeoEsboco): boolean {
+    const pts = mapaPontos(this.esb);
+    const e = this.espelhoDinamico!;
+    const eg = this.esb.geos.find((x) => x.id === e);
+    const [a, b] = e === EIXO_H ? [{ x: 0, y: 0 }, { x: 1, y: 0 }] : e === EIXO_V ? [{ x: 0, y: 0 }, { x: 0, y: 1 }]
+      : eg?.tipo === "linha" ? [pts.get(eg.p1)!, pts.get(eg.p2)!] : [null, null];
+    if (!a || !b) return false;
+    const d = sub(b, a), l = Math.hypot(d.x, d.y) || 1;
+    const fora = (p: P2) => Math.abs((p.x - a.x) * d.y - (p.y - a.y) * d.x) / l > 1e-6;
+    return g.tipo === "linha" && !fora(pts.get(g.p1)!) && !fora(pts.get(g.p2)!);
+  }
+
+  private ligarEspelho(id: string) {
+    this.espelhoDinamico = id;
+    this.escolhendoEspelho = false;
+    this.selecao.clear();
+    this.geosConhecidas = new Set(this.esb.geos.map((g) => g.id));
+    this.h.avisar("Espelhamento dinâmico ligado: o que você desenhar aparece do outro lado da linha.");
+    if (!FERRAMENTAS_DESENHO.includes(this.ferramenta)) this.definirFerramenta("linha");
+  }
+
+  /** Nome do espelho dinâmico para o painel. */
+  get nomeEspelhoDinamico(): string | null {
+    const e = this.espelhoDinamico;
+    if (!e) return null;
+    if (e === EIXO_H) return "eixo horizontal";
+    if (e === EIXO_V) return "eixo vertical";
+    const g = this.esb.geos.find((x) => x.id === e);
+    return g?.construcao ? "linha de centro" : "linha";
   }
 
   // ---------- texto de esboço ----------

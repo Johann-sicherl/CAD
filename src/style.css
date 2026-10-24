@@ -911,3 +911,20 @@ textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font
 .barra-alternar .alternar[aria-pressed="true"] { background: var(--acento-suave); color: var(--acento); border-color: var(--acento); }
 .barra-alternar .negrito { font-weight: 800; }
 .barra-alternar .italico { font-style: italic; font-family: serif; }
+
+/* cotas de um recurso sobre o modelo (duplo clique) */
+.camada-cotas-modelo { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.cota-modelo {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: auto;
+  min-height: 30px; padding: 2px 9px; border-radius: 6px; border: 1px solid #2f7fd0;
+  background: rgba(255, 255, 255, 0.95); color: #174c80; font-weight: 600; font-size: 14px; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.cota-modelo.fixa { border-color: var(--linha); color: var(--texto-2); font-weight: 500; }
+.cota-modelo-edicao {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: auto; width: 110px;
+  min-height: 34px; padding: 2px 8px; border: 2px solid var(--acento); border-radius: 6px; font: inherit; font-size: 15px;
+}
+.cota-modelo-edicao.invalido { border-color: var(--erro); }
+body.disp-tablet .cota-modelo, body.disp-celular .cota-modelo { min-height: 40px; font-size: 16px; }
+.aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }

@@ -455,8 +455,10 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 | Suprimir / Reativar | por recurso (✅) e por configuração (⏸) | 🟡 |
 | **Destaque do recurso** | selecionar um recurso na árvore pinta as faces dele na peça (outro tom); esboço selecionado destaca o recurso que o consome | ✅ |
 | Pai/filho | lista de referências do recurso; **excluir o pai** abre "Confirmar exclusão" com os filhos (excluídos junto, padrão) e os absorvidos (esboço, opcional) | 🟡 (exclusão ✅) |
-| Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | 🟡 (menu de contexto ✅) |
-| **Instant3D** | arrastar faces/cotas com alças no viewport | F3 |
+| Editar recurso / Editar esboço | menu de contexto ✅; **duplo clique numa face** mostra as cotas do esboço e os valores do recurso (D1, R, espessura…) sobre o modelo, editáveis no lugar (aceita "=expressão") ✅ | ✅ |
+| **Alças de arrasto** | seta na ponta da extrusão/corte (D1 e D2, cego/plano médio) arrastável durante o comando ✅; ângulo da revolução ⏸ | 🟡 |
+| **Instant3D** | arrastar faces/cotas com alças fora do comando | ⏸ |
+| **Selecionar outro** | botão direito → lista das entidades sob o cursor (faces de trás, arestas, vértices), com realce ao passar; também dentro de comandos para o campo ativo | ✅ |
 | Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1); **seta ▸/▾** mostra os elementos usados: esboço absorvido, recursos (padrões/espelho), faces/arestas/vértices/planos/eixos escolhidos e o plano do esboço; toque destaca/seleciona; recolhido por padrão | ✅ |
 | **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
 | Configurações / tabela de projeto | variações da peça | ⏸ |

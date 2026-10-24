@@ -93,6 +93,14 @@ export function renderizarPainelEsboco(
     painel.append(botao("Excluir relações em conflito", () => ed.excluirConflitos(), "perigo largo"));
   }
 
+  // espelhamento dinâmico ligado: aviso fixo com botão para desligar
+  if (ed.espelhoDinamico || ed.escolhendoEspelho) {
+    const caixa = el("div", "aviso-dinamico");
+    caixa.append(el("span", "", ed.espelhoDinamico ? `Espelhamento dinâmico ligado (espelho: ${ed.nomeEspelhoDinamico})` : "Espelhamento dinâmico: toque a linha de espelho"));
+    caixa.append(botao("Desligar", () => ed.alternarEspelhoDinamico()));
+    painel.append(caixa);
+  }
+
   // ferramenta
   painel.append(el("h3", "prop-titulo", ROTULO_FERRAMENTA[ed.ferramenta]));
   painel.append(el("p", "dica", ed.instrucao));

@@ -25,11 +25,11 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | Barra de contexto ao selecionar | barra de contexto no viewport e na árvore | ✅ |
 | Mouse: esquerdo seleciona, meio gira, Ctrl+meio arrasta, roda aproxima, direito menu | igual | ✅ |
 | **Gestos de mouse** (direito + arrastar → guia radial com 8 comandos) | — | ❌ |
-| **Alças de arrasto** no viewport (ex.: profundidade da extrusão) | só campos no painel | ❌ |
+| **Alças de arrasto** no viewport (ex.: profundidade da extrusão) | setas na extrusão/corte (D1, D2) | 🟡 (revolução ⏸) |
 | Pré-visualização dos recursos (extrusão, corte, varredura, loft, padrões) | pré-visualização sombreada | ✅ |
 | Retorno no cursor (tipo de entidade, ponto médio, inferências) | caixinha de relações, encaixes, ponto médio | ✅ |
 | **Filtro de seleção** (só arestas, só faces, só vértices…) | — (cada comando já filtra o que aceita) | 🟡 |
-| **Selecionar outro** (entidade escondida atrás de outra) | — | ❌ |
+| **Selecionar outro** (entidade escondida atrás de outra) | botão direito → lista com realce | ✅ |
 | Selecionar laço/cadeia de arestas para filete | selecionar cadeia tangente no filete | 🟡 |
 
 ## 2. Esboço
@@ -45,7 +45,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | Superdefinido: apagar o excesso | "Excluir relações em conflito", Exibir/Excluir relações | ✅ |
 | Relações por inferência (horizontal, vertical, paralela ao desenhar) | encaixes H/V criam relações | ✅ |
 | Adicionar relações (tangente, concêntrica, igual…) | caixinha no ponteiro + painel | ✅ |
-| **Espelhamento dinâmico** (desenha de um lado, aparece do outro) | só Espelhar depois de desenhar | ❌ |
+| **Espelhamento dinâmico** (desenha de um lado, aparece do outro) | Espelhar ▾ → Espelhamento dinâmico | ✅ |
 | Converter entidades (projetar arestas da peça) | converter + referência do modelo | ✅ |
 | Offset de entidades (ex.: aba/rebordo de tampa) | painel completo | ✅ |
 | Rasgo, arco tangente, spline, elipse | todos | ✅ |
@@ -69,7 +69,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | Furação | furo assistido (rebaixo, escareado, rosca) | ✅ |
 | Recurso aplicado sem esboço (filete, chanfro, casca) | igual | ✅ |
 | Editar recurso, editar esboço | menu de contexto, árvore | ✅ |
-| **Duplo clique no recurso mostra as cotas no modelo e edita no lugar** | — | ❌ |
+| **Duplo clique no recurso mostra as cotas no modelo e edita no lugar** | duplo clique/toque numa face | ✅ |
 | Ocultar/mostrar esboços, planos, eixos | olho na árvore + Ocultar/mostrar itens | ✅ |
 | Suprimir / reativar recurso | árvore | ✅ |
 | Barra de retrocesso | árvore | ✅ |
@@ -103,11 +103,11 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 
 ## 7. Lacunas priorizadas (sugestão)
 
-Rápidas, no fluxo básico do guia:
-1. **Duplo clique no recurso**: mostrar as cotas do esboço e do recurso no modelo e editar no lugar.
-2. **Alças de arrasto** na pré-visualização: profundidade da extrusão/corte, ângulo da revolução.
-3. **Selecionar outro**: ciclar entre as entidades sob o cursor (face de trás, aresta escondida).
-4. **Espelhamento dinâmico** no esboço.
+Rápidas, no fluxo básico do guia — **entregues** (24/10/2026):
+1. ✅ **Duplo clique no recurso**: cotas do esboço e do recurso no modelo, editáveis no lugar.
+2. 🟡 **Alças de arrasto**: extrusão/corte ✅; ângulo da revolução fica para depois.
+3. ✅ **Selecionar outro**.
+4. ✅ **Espelhamento dinâmico** no esboço.
 
 Médias:
 5. **Filtro de seleção** global (arestas / faces / vértices / planos), útil no tablet.

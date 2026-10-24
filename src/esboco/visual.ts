@@ -39,6 +39,8 @@ export interface OpcoesCamada {
   mostrarEixos?: boolean;
   /** Cota sendo posicionada (segue o cursor). */
   cotaPrevia?: CotaEsboco | null;
+  /** Fora da edição: desenhar as cotas (duplo clique num recurso mostra as cotas no modelo). */
+  mostrarCotas?: boolean;
 }
 
 type Traco = { cor: number; largura: number; tracejado: boolean };
@@ -84,7 +86,7 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
     adicionar({ cor: corDe(g.id), largura, tracejado: !!g.construcao }, seg);
   }
 
-  if (o.editando) {
+  if (o.editando || o.mostrarCotas) {
     for (const c of esb.restricoes) {
       if (!ehCota(c)) continue;
       const d = desenharCota(c, esb, o.mmPx);
