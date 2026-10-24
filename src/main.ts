@@ -62,7 +62,13 @@ interface Prefs {
   dispositivo?: Dispositivo;
   /** Botões com menu ▾: última subfunção usada de cada um (id do botão → id da subfunção). */
   ultimoMenu?: Record<string, string>;
+  /** Barra de vistas aberta (recolhida, só a setinha aparece). */
+  barraVistasAberta?: boolean;
+  /** Ocultar/mostrar itens: tipos ocultos de uma vez e "ocultar todos os tipos". */
+  tiposOcultos?: TipoItem[];
+  ocultarTudo?: boolean;
 }
+type TipoItem = "planos" | "eixos" | "origem" | "esbocos";
 type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
   aba: "features",
@@ -72,6 +78,16 @@ const prefs: Prefs = {
   ...lerJSON<Partial<Prefs>>(CHAVE_PREFS),
 };
 const salvarPrefs = () => gravarJSON(CHAVE_PREFS, prefs);
+
+/** O tipo de item está oculto pela barra de vistas (por tipo ou por "ocultar todos os tipos")? */
+const tipoOculto = (t: TipoItem) => !!prefs.ocultarTudo || (prefs.tiposOcultos ?? []).includes(t);
+
+/** Planos padrão e origem: visibilidade de cada um (árvore) combinada com a dos tipos. */
+function aplicarVisibilidadeRefs() {
+  for (const id of Object.keys(prefs.refsVisiveis) as IdReferencia[]) {
+    viewport.definirVisibilidadeReferencia(id, prefs.refsVisiveis[id] && !tipoOculto(id === "origem" ? "origem" : "planos"));
+  }
+}
 
 // ---------- estado ----------
 /** Item selecionado na árvore (recurso ou plano principal). */
@@ -135,7 +151,7 @@ const viewport = new Viewport($("viewport"));
 const kernel = new ClienteKernel(aoRegenerar);
 
 viewport.definirEstilo(prefs.estilo);
-for (const [id, vis] of Object.entries(prefs.refsVisiveis)) viewport.definirVisibilidadeReferencia(id as IdReferencia, vis);
+aplicarVisibilidadeRefs();
 aplicarMaterial();
 
 kernel.pronto
@@ -847,7 +863,12 @@ function facesDosSelecionados(): Entidade[] {
 
 function mostrarReferenciasExtras(destaque?: string) {
   const sel = destaque ?? idSelecionado();
-  viewport.mostrarReferenciasExtras(referenciasKernel, (id) => !prefs.refsOcultas.includes(id), sel ?? null);
+  const tipo = new Map(referenciasKernel.map((r) => [r.id, r.tipo]));
+  viewport.mostrarReferenciasExtras(
+    referenciasKernel,
+    (id) => !prefs.refsOcultas.includes(id) && !tipoOculto(tipo.get(id) === "eixo" ? "eixos" : "planos"),
+    sel ?? null,
+  );
 }
 
 // ---------- toques no modelo ----------
@@ -1476,7 +1497,7 @@ function excluirFeature(f: Feature) {
 function alternarReferencia(id: IdReferencia) {
   prefs.refsVisiveis[id] = !prefs.refsVisiveis[id];
   salvarPrefs();
-  viewport.definirVisibilidadeReferencia(id, prefs.refsVisiveis[id]);
+  aplicarVisibilidadeRefs();
   renderizarTudo();
 }
 
@@ -1764,6 +1785,7 @@ function desenharEsbocos() {
   for (const f of ativas()) {
     if (f.tipo !== "esboco" || f.suprimida) continue;
     if (usados.has(f.id) && f.id !== idSelecionado()) continue;
+    if (tipoOculto("esbocos") && f.id !== idSelecionado()) continue;
     let ref;
     try {
       ref = referencial(f.suporte);
@@ -2171,54 +2193,155 @@ function abrirSeletorVistas(ancora: HTMLElement) {
   ]);
 }
 
+const TIPOS_ITENS: [TipoItem, string][] = [["planos", "Planos"], ["eixos", "Eixos"], ["origem", "Origem"], ["esbocos", "Esboços"]];
+
+/**
+ * Barra de vistas no topo do viewport, recolhida numa setinha para não ocupar a tela:
+ * ampliar para caber, zoom por área, vista de seção, orientação, ocultar/mostrar itens e
+ * configurações de vista.
+ */
 function renderizarBarraVistas() {
   const barra = $("barra-vistas");
   barra.innerHTML = "";
-  const botao = (icone: NomeIcone, titulo: string, acao: (b: HTMLButtonElement) => void, pressionado = false) => {
+  const aberta = !!prefs.barraVistasAberta;
+  barra.classList.toggle("aberta", aberta);
+  const seta = document.createElement("button");
+  seta.className = "btn-ic seta-vistas";
+  seta.title = aberta ? "Recolher a barra de vistas" : "Ferramentas de vista";
+  seta.setAttribute("aria-label", seta.title);
+  seta.setAttribute("aria-expanded", String(aberta));
+  seta.innerHTML = ICONES[aberta ? "setaCima" : "setaBaixo"];
+  seta.onclick = () => {
+    prefs.barraVistasAberta = !aberta;
+    salvarPrefs();
+    fecharPopover();
+    renderizarBarraVistas();
+  };
+  barra.appendChild(seta);
+  if (!aberta) return;
+
+  const caixa = document.createElement("div");
+  caixa.className = "caixa-vistas";
+  barra.appendChild(caixa);
+  const botao = (icone: NomeIcone, titulo: string, acao: (b: HTMLButtonElement) => void, pressionado = false, menu = false) => {
     const b = document.createElement("button");
-    b.className = "btn-ic";
+    b.className = `btn-ic${menu ? " com-menu" : ""}`;
     b.title = titulo;
     b.setAttribute("aria-label", titulo);
     b.setAttribute("aria-pressed", String(pressionado));
-    b.innerHTML = ICONES[icone];
+    b.innerHTML = ICONES[icone] + (menu ? `<span class="mini-seta">▾</span>` : "");
     b.onclick = () => acao(b);
-    barra.appendChild(b);
+    caixa.appendChild(b);
     return b;
   };
-  const sep = () => barra.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
 
   botao("enquadrar", "Ampliar para caber (F)", () => viewport.enquadrar());
+  botao("zoomArea", "Zoom por área: arraste um retângulo", () => iniciarZoomArea(), zoomAreaAtivo);
   botao("vistaSecao", "Vista de seção", () => comandoAvaliar("vista-secao"), avaliacao?.tipo === "secao");
-  sep();
-  botao("vistas", "Orientação da vista (Espaço)", (b) => abrirSeletorVistas(b));
-  botao("normalA", "Normal a (Ctrl+8)", normalA);
-  sep();
-  const estiloAtual = ESTILOS.find((e) => e[0] === prefs.estilo)!;
-  botao(estiloAtual[2], `Estilo: ${estiloAtual[1]}`, (b) =>
-    abrirPopover(
-      b,
-      ESTILOS.map(([e, r, ic]) => ({
-        rotulo: r,
-        icone: ic,
-        marcado: e === prefs.estilo,
-        acao: () => {
-          prefs.estilo = e;
-          salvarPrefs();
-          viewport.definirEstilo(e);
-          renderizarBarraVistas();
-        },
-      })),
-    ),
-  );
-  const algumPlano = (["XY", "XZ", "YZ"] as const).some((p) => prefs.refsVisiveis[p]);
-  botao(algumPlano ? "plano" : "olhoFechado", algumPlano ? "Ocultar planos" : "Mostrar planos", () => {
-    for (const p of ["XY", "XZ", "YZ"] as const) {
-      prefs.refsVisiveis[p] = !algumPlano;
-      viewport.definirVisibilidadeReferencia(p, !algumPlano);
-    }
-    salvarPrefs();
-    renderizarTudo();
-  });
+  botao("vistas", "Orientação da vista (Espaço)", (b) => abrirSeletorVistas(b), false, true);
+  const algoOculto = !!prefs.ocultarTudo || !!prefs.tiposOcultos?.length;
+  botao(algoOculto ? "olhoFechado" : "olho", "Ocultar/mostrar itens", (b) => abrirOcultarItens(b), algoOculto, true);
+  botao("configVista", "Configurações de vista", (b) => abrirConfigVista(b), false, true);
+}
+
+function alternarTipoOculto(t: TipoItem | "tudo") {
+  if (t === "tudo") prefs.ocultarTudo = !prefs.ocultarTudo;
+  else {
+    const lista = new Set(prefs.tiposOcultos ?? []);
+    if (lista.has(t)) lista.delete(t);
+    else lista.add(t);
+    prefs.tiposOcultos = [...lista];
+  }
+  salvarPrefs();
+  aplicarVisibilidadeRefs();
+  mostrarReferenciasExtras();
+  if (!editor) desenharEsbocos();
+  renderizarBarraVistas();
+}
+
+function abrirOcultarItens(b: HTMLElement) {
+  abrirPopover(b, [
+    {
+      rotulo: prefs.ocultarTudo ? "Mostrar os tipos de novo" : "Ocultar todos os tipos",
+      icone: prefs.ocultarTudo ? "olho" : "olhoFechado",
+      marcado: !!prefs.ocultarTudo,
+      acao: () => alternarTipoOculto("tudo"),
+    },
+    ...TIPOS_ITENS.map(([t, r]) => ({
+      rotulo: `${r}${prefs.ocultarTudo ? " (ocultos por \"todos os tipos\")" : ""}`,
+      icone: (tipoOculto(t) ? "olhoFechado" : "olho") as NomeIcone,
+      marcado: !tipoOculto(t),
+      acao: () => alternarTipoOculto(t),
+    })),
+  ]);
+}
+
+function abrirConfigVista(b: HTMLElement) {
+  abrirPopover(b, [
+    ...ESTILOS.map(([e, r, ic]) => ({
+      rotulo: r,
+      icone: ic,
+      marcado: e === prefs.estilo,
+      acao: () => {
+        prefs.estilo = e;
+        salvarPrefs();
+        viewport.definirEstilo(e);
+        renderizarBarraVistas();
+      },
+    })),
+  ]);
+}
+
+// ---------- zoom por área ----------
+
+let zoomAreaAtivo = false;
+
+/** Arrastar um retângulo no viewport para ampliá-lo (Esc ou toque sem arrastar cancela). */
+function iniciarZoomArea() {
+  if (zoomAreaAtivo) return;
+  zoomAreaAtivo = true;
+  renderizarBarraVistas();
+  avisar("Zoom por área: arraste um retângulo sobre a região a ampliar.");
+  const vp = $("viewport");
+  const capa = document.createElement("div");
+  capa.className = "capa-zoom-area";
+  const ret = document.createElement("div");
+  ret.className = "retangulo-zoom";
+  capa.appendChild(ret);
+  vp.appendChild(capa);
+  let ini: { x: number; y: number } | null = null;
+  const fim = () => {
+    zoomAreaAtivo = false;
+    capa.remove();
+    document.removeEventListener("keydown", esc, true);
+    renderizarBarraVistas();
+  };
+  const esc = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    fim();
+  };
+  document.addEventListener("keydown", esc, true);
+  capa.onpointerdown = (e) => {
+    ini = { x: e.clientX, y: e.clientY };
+    capa.setPointerCapture(e.pointerId);
+  };
+  capa.onpointermove = (e) => {
+    if (!ini) return;
+    const r = vp.getBoundingClientRect();
+    Object.assign(ret.style, {
+      display: "block",
+      left: `${Math.min(ini.x, e.clientX) - r.left}px`,
+      top: `${Math.min(ini.y, e.clientY) - r.top}px`,
+      width: `${Math.abs(e.clientX - ini.x)}px`,
+      height: `${Math.abs(e.clientY - ini.y)}px`,
+    });
+  };
+  capa.onpointerup = (e) => {
+    if (ini) viewport.ampliarArea(ini.x, ini.y, e.clientX, e.clientY);
+    fim();
+  };
+  capa.onpointercancel = fim;
 }
 
 interface ItemPopover {

@@ -827,6 +827,22 @@ export class Viewport {
     this.moverCamera(centro, centro.clone().add(dir.multiplyScalar(this.distCam)), animado, zoom);
   }
 
+  /** Zoom por área: o retângulo da tela (coordenadas do cliente) passa a ocupar a vista. */
+  ampliarArea(x0: number, y0: number, x1: number, y1: number) {
+    const r = this.container.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    const rw = Math.abs(x1 - x0), rh = Math.abs(y1 - y0);
+    if (rw < 4 || rh < 4 || !w || !h) return;
+    // deslocamento do centro do retângulo ao centro da tela, em mm, nos eixos da câmera
+    const dx = ((x0 + x1) / 2 - r.left - w / 2) / this.camera.zoom;
+    const dy = -((y0 + y1) / 2 - r.top - h / 2) / this.camera.zoom;
+    const direita = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const cima = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    const d = direita.multiplyScalar(dx).add(cima.multiplyScalar(dy));
+    const zoom = this.camera.zoom * Math.min(w / rw, h / rh);
+    this.moverCamera(this.controles.target.clone().add(d), this.camera.position.clone().add(d), true, zoom);
+  }
+
   definirVista(v: Vista, animado = true) {
     const alvo = this.controles.target.clone();
     const dir = new THREE.Vector3(...DIRECOES_VISTA[v]).normalize();

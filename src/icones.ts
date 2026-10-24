@@ -141,6 +141,10 @@ export const ICONES = {
   pasta: svg(`<path d="M3 6h6l2 2h10v11H3z"/>`),
 
   // ---------- barra de vistas ----------
+  zoomArea: svg(`<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5 21 21"/><rect x="7" y="7.5" width="6" height="5" stroke="${C}" stroke-dasharray="2 1.5"/>`),
+  configVista: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/><path d="M7 12.5c1.5-3 3-4.5 5-4.5s3.5 1.5 5 4.5" stroke="${C}"/>`),
+  setaBaixo: svg(`<path d="M7 10l5 5 5-5"/>`),
+  setaCima: svg(`<path d="M7 14l5-5 5 5"/>`),
   enquadrar: svg(`<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="9" y="9" width="6" height="6" stroke="${C}"/>`),
   vistaIso: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9" stroke="${C}"/>`),
   vistaFrontal: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" stroke-opacity=".35"/><rect x="6" y="7" width="12" height="11" stroke="${C}"/>`),

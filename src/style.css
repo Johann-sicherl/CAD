@@ -279,6 +279,16 @@ button svg { width: 22px; height: 22px; flex: none; }
   box-shadow: var(--sombra);
 }
 .barra-vistas .sep { margin: 6px 2px; }
+/* recolhida: só a setinha; aberta: a caixa com as ferramentas de vista ao lado */
+.barra-vistas { align-items: center; }
+.barra-vistas:not(.aberta) { padding: 1px 6px; border-radius: 0 0 10px 10px; top: 0; border-top: none; }
+.barra-vistas .seta-vistas { min-width: 36px; color: var(--texto-2); }
+.barra-vistas:not(.aberta) .seta-vistas { min-height: 30px; }
+.caixa-vistas { display: flex; gap: 2px; padding-left: 2px; border-left: 1px solid var(--linha); }
+.caixa-vistas .com-menu { position: relative; }
+.caixa-vistas .mini-seta { position: absolute; right: 1px; bottom: 0; font-size: 9px; color: var(--texto-2); }
+.capa-zoom-area { position: absolute; inset: 0; z-index: 15; cursor: crosshair; touch-action: none; }
+.retangulo-zoom { display: none; position: absolute; border: 1.5px dashed var(--acento); background: rgba(47, 127, 208, 0.08); }
 .popover {
   position: fixed;
   z-index: 40;
@@ -873,6 +883,7 @@ body.disp-celular .barra-vistas {
   scrollbar-width: none;
 }
 body.disp-celular .barra-vistas .btn-ic { min-width: 40px; }
+body.disp-celular .barra-vistas:not(.aberta) { left: 50%; right: auto; transform: translateX(-50%); }
 body.disp-celular #canto-confirmacao { top: 64px; }
 body.disp-celular .status { font-size: 12px; }
 
