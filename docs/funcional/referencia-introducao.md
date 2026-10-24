@@ -24,7 +24,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | Barra de atalhos (tecla S) | barra de atalhos no cursor | ✅ |
 | Barra de contexto ao selecionar | barra de contexto no viewport e na árvore | ✅ |
 | Mouse: esquerdo seleciona, meio gira, Ctrl+meio arrasta, roda aproxima, direito menu | igual | ✅ |
-| **Gestos de mouse** (direito + arrastar → guia radial com 8 comandos) | — | ❌ |
+| **Gestos de mouse** (direito + arrastar → guia radial com 8 comandos) | — | 🚫 (decisão do Johann, 24/10/2026) |
 | **Alças de arrasto** no viewport (ex.: profundidade da extrusão) | setas na extrusão/corte (D1, D2) | 🟡 (revolução ⏸) |
 | Pré-visualização dos recursos (extrusão, corte, varredura, loft, padrões) | pré-visualização sombreada | ✅ |
 | Retorno no cursor (tipo de entidade, ponto médio, inferências) | caixinha de relações, encaixes, ponto médio | ✅ |
@@ -111,7 +111,7 @@ Rápidas, no fluxo básico do guia — **entregues** (24/10/2026):
 
 Médias:
 5. ✅ **Filtro de seleção** global (faces / arestas / vértices / planos / eixos / curvas).
-6. **Gestos de mouse/caneta**: botão direito (ou caneta) + arrastar → guia radial.
+6. 🚫 ~~Gestos de mouse/caneta~~ — fora do projeto (decisão do Johann).
 7. ✅ **Configurações da peça**: variações de cotas e de supressão no mesmo arquivo.
 
 Grandes:

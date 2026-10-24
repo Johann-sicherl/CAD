@@ -51,6 +51,7 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
+- **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
 - **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado), com o mouse dos CADs

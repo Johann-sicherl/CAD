@@ -339,5 +339,5 @@ chanfro.
 - Atalhos ✅: L linha · R retângulo · C círculo · A arco · S spline · P polígono · T aparar ·
   D cota · O offset · M espelhar · V selecionar · Enter conclui · Esc cancela · Delete exclui
 - Tecla S → barra de atalhos ✅ · menu de contexto do botão direito ✅
-- Planejado: **gestos de mouse/caneta** (botão direito + arrastar → guia radial) ❌
+- Gestos de mouse/caneta (guia radial): **fora do projeto** (decisão do Johann)
   (ver `referencia-introducao.md` §7)
