@@ -150,9 +150,9 @@ export const ABAS: Aba[] = [
       {
         id: "grupo-elipse", rotulo: "Elipse", icone: "elipse", dica: "Elipses e cônicas", grupo: 1,
         itens: [
-          { id: "elipse", rotulo: "Elipse", icone: "elipse", dica: "Centro e dois semieixos", grupo: 1, emBreve: true },
-          { id: "elipseParcial", rotulo: "Elipse parcial", icone: "elipseParcial", dica: "Arco de elipse", grupo: 1, emBreve: true },
-          { id: "parabola", rotulo: "Parábola", icone: "parabola", dica: "Foco, vértice e extremos", grupo: 1, emBreve: true },
+          { id: "elipse", rotulo: "Elipse", icone: "elipse", dica: "Centro e dois semieixos", grupo: 1 },
+          { id: "elipseParcial", rotulo: "Elipse parcial", icone: "elipseParcial", dica: "Arco de elipse", grupo: 1 },
+          { id: "parabola", rotulo: "Parábola", icone: "parabola", dica: "Foco, vértice e extremos", grupo: 1 },
           { id: "conica", rotulo: "Cônica", icone: "conica", dica: "Cônica geral", grupo: 1, emBreve: true },
         ],
       },

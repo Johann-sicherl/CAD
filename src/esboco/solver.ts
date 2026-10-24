@@ -6,7 +6,10 @@ import { Algorithm, GcsWrapper, init_planegcs_module, SolveStatus } from "@salus
 import type { SketchPrimitive } from "@salusoft89/planegcs/dist/sketch/sketch_primitive";
 import type { FeatureEsboco, GeoEsboco, RestricaoEsboco } from "../model";
 import { ehCota } from "../model";
-import { angulosArco, EIXO_H, EIXO_V, extremidades, mapaPontos, ORIGEM, pontosDaGeo } from "./geometria";
+import {
+  angulosArco, EIXO_H, EIXO_V, elipseDe, extremidades, mapaPontos, ORIGEM, parabolaDe, paramElipse, paramParabola,
+  parametrosArcoElipse, pontosDaGeo, rot90,
+} from "./geometria";
 
 export type Definicao = "subdefinido" | "definido" | "superdefinido";
 
@@ -184,6 +187,38 @@ function montar(esb: FeatureEsboco, arrasto?: Arrasto): { prims: Prim[]; ids: Id
         prims.push({ id: ids.aux(g.id), type: "arc_rules", a_id: id });
         break;
       }
+      case "elipse":
+      case "arcoElipse": {
+        // o foco é auxiliar (só do solver); as pontas dos eixos ficam presas à elipse
+        const e = elipseDe(g, pts);
+        const fc = Math.sqrt(Math.max(e.a * e.a - e.b * e.b, 1e-10));
+        const foco = ids.aux(g.id);
+        prims.push({ id: foco, type: "point", x: e.c.x + e.u.x * fc, y: e.c.y + e.u.y * fc, fixed: false });
+        const id = ids.novo(g.id);
+        if (g.tipo === "elipse") prims.push({ id, type: "ellipse", c_id: ids.de(g.c), focus1_id: foco, radmin: e.b });
+        else {
+          const [t0, t1] = parametrosArcoElipse(e, pts.get(g.ini)!, pts.get(g.fim)!);
+          prims.push({
+            id, type: "arc_of_ellipse", c_id: ids.de(g.c), focus1_id: foco, radmin: e.b, start_angle: t0, end_angle: t1,
+            start_id: ids.de(g.ini), end_id: ids.de(g.fim),
+          });
+          prims.push({ id: ids.aux(g.id), type: "arc_of_ellipse_rules", a_id: id });
+        }
+        prims.push({ id: ids.aux(g.id), type: "internal_alignment_ellipse_major_diameter", e_id: id, p1_id: ids.de(g.m1), p2_id: ids.de(g.m2) });
+        prims.push({ id: ids.aux(g.id), type: "internal_alignment_ellipse_minor_diameter", e_id: id, p1_id: ids.de(g.n1), p2_id: ids.de(g.n2) });
+        break;
+      }
+      case "parabola": {
+        const pb = parabolaDe(g, pts);
+        const id = ids.novo(g.id);
+        prims.push({
+          id, type: "arc_of_parabola", vertex_id: ids.de(g.v), focus1_id: ids.de(g.f),
+          start_angle: paramParabola(pb, pts.get(g.ini)!), end_angle: paramParabola(pb, pts.get(g.fim)!),
+          start_id: ids.de(g.ini), end_id: ids.de(g.fim),
+        });
+        prims.push({ id: ids.aux(g.id), type: "arc_of_parabola_rules", a_id: id });
+        break;
+      }
       case "spline":
         break; // só os pontos de passagem entram no solver
     }
@@ -197,7 +232,7 @@ function montar(esb: FeatureEsboco, arrasto?: Arrasto): { prims: Prim[]; ids: Id
   };
   const centro = (id: string) => {
     const g = geos.get(id);
-    return g && (g.tipo === "circulo" || g.tipo === "arco") ? g.c : id;
+    return g && (g.tipo === "circulo" || g.tipo === "arco" || g.tipo === "elipse" || g.tipo === "arcoElipse") ? g.c : id;
   };
 
   const coincidentes = new Set<string>();
@@ -249,6 +284,17 @@ function tangenteNoPonto(g: GeoEsboco, p: string, pts: Map<string, { x: number; 
     const c = pts.get(g.c)!, q = pts.get(p)!;
     return { x: -(q.y - c.y), y: q.x - c.x };
   }
+  if (g.tipo === "arcoElipse") {
+    const m = new Map(pts);
+    const e = elipseDe(g, m), t = paramElipse(e, pts.get(p)!);
+    const v = rot90(e.u);
+    return { x: -e.a * Math.sin(t) * e.u.x + e.b * Math.cos(t) * v.x, y: -e.a * Math.sin(t) * e.u.y + e.b * Math.cos(t) * v.y };
+  }
+  if (g.tipo === "parabola") {
+    const pb = parabolaDe(g, new Map(pts)), s = paramParabola(pb, pts.get(p)!);
+    const v = rot90(pb.u);
+    return { x: (pb.u.x * s) / (2 * pb.f) + v.x, y: (pb.u.y * s) / (2 * pb.f) + v.y };
+  }
   return { x: 1, y: 0 };
 }
 
@@ -279,6 +325,8 @@ function traduzir(
       if (t === "linha" || t === "eixo") return [P("point_on_line_pl", { p_id: d(p), l_id: d(g) })];
       if (t === "circulo") return [P("point_on_circle", { p_id: d(p), c_id: d(g) })];
       if (t === "arco") return [P("point_on_arc", { p_id: d(p), a_id: d(g) })];
+      if (t === "elipse" || t === "arcoElipse") return [P("point_on_ellipse", { p_id: d(p), e_id: d(g) })];
+      if (t === "parabola") return [P("point_on_parabolic_arc", { p_id: d(p), e_id: d(g) })];
       return [];
     }
     case "horizontal":

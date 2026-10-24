@@ -87,6 +87,15 @@ export type GeoEsboco =
   | (GeoBase & { tipo: "arco"; c: string; ini: string; fim: string; r: number })
   /** Curva suave que passa pelos pontos (Catmull-Rom → Bézier cúbica). */
   | (GeoBase & { tipo: "spline"; pontos: string[] })
+  /**
+   * Elipse pelo centro e pelas pontas dos eixos: m1/m2 no eixo maior (m1 = lado positivo),
+   * n1/n2 no menor (n1 = 90° anti-horário do maior). As pontas ficam presas à curva no solver.
+   */
+  | (GeoBase & { tipo: "elipse"; c: string; m1: string; m2: string; n1: string; n2: string })
+  /** Elipse parcial: como a elipse, percorrida no sentido anti-horário de `ini` a `fim`. */
+  | (GeoBase & { tipo: "arcoElipse"; c: string; m1: string; m2: string; n1: string; n2: string; ini: string; fim: string })
+  /** Arco de parábola pelo vértice `v` e foco `f`, de `ini` a `fim` (parâmetro crescente). */
+  | (GeoBase & { tipo: "parabola"; v: string; f: string; ini: string; fim: string })
   /** Ponto solto (posição de furo, referência). */
   | (GeoBase & { tipo: "ponto"; p: string });
 

@@ -359,6 +359,69 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("circular: cota do raio", e2.restricoes.some((r) => r.tipo === "distancia" && r.a === ORIGEM && Math.abs((r as { valor: number }).valor - 20) < 1e-9));
 }
 
+// 17. Elipse, elipse parcial e parábola: solver, cotas pelos eixos e área do perfil
+{
+  const e = plano();
+  const c = op.ponto(e, { x: 10, y: 5 });
+  const [el, eixoM, eixoN] = op.elipse(e, c, { x: 30, y: 5 }, 8);
+  verdade("elipse resolve", solver.resolver(e).conflitantes.length === 0);
+  confere("elipse: área π·a·b", regenerar([e, extrusao(e, 1)]).volume ?? 0, Math.PI * 20 * 8);
+  // centro e eixos cotados → totalmente definida
+  op.restringir(e, { tipo: "distanciaH", a: ORIGEM, b: c, valor: 10 });
+  op.restringir(e, { tipo: "distanciaV", a: ORIGEM, b: c, valor: 5 });
+  op.restringir(e, { tipo: "horizontal", a: eixoM.id });
+  op.restringir(e, { tipo: "distancia", a: eixoM.id, valor: 50 });
+  op.restringir(e, { tipo: "distancia", a: eixoN.id, valor: 20 });
+  const r = solver.resolver(e);
+  verdade("elipse cotada pelos eixos: totalmente definida", r.ok && r.definicao === "definido");
+  confere("elipse: diâmetro maior vira 50", regenerar([e, extrusao(e, 1)]).volume ?? 0, Math.PI * 25 * 10);
+  // ponto sobre a elipse
+  const q = op.ponto(e, { x: 10, y: 20 });
+  op.pontoSolto(e, q);
+  op.restringir(e, { tipo: "coincidente", a: q, b: el.id });
+  solver.resolver(e);
+  const qq = e.pontos.find((p) => p.id === q)!;
+  confere("ponto sobre a elipse", ((qq.x - 10) / 25) ** 2 + ((qq.y - 5) / 10) ** 2, 1);
+
+  // meia elipse fechada por uma linha (anti-horário de +a até −a: metade de cima)
+  const e2 = plano();
+  const c2 = op.ponto(e2, { x: 0, y: 0 });
+  const [ae] = op.arcoElipse(e2, c2, { x: 20, y: 0 }, 10, { x: 20, y: 0 }, { x: -20, y: 0 });
+  const a2 = ae as Extract<typeof ae, { tipo: "arcoElipse" }>;
+  op.linha(e2, a2.fim, a2.ini);
+  verdade("elipse parcial resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("meia elipse: área π·a·b/2", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, (Math.PI * 20 * 10) / 2);
+  const e3 = plano();
+  const c3 = op.ponto(e3, { x: 0, y: 0 });
+  const [ae3] = op.arcoElipse(e3, c3, { x: 20, y: 0 }, 10, { x: 0, y: 10 }, { x: 0, y: -10 });
+  const a3 = ae3 as Extract<typeof ae3, { tipo: "arcoElipse" }>;
+  op.linha(e3, a3.fim, a3.ini);
+  confere("elipse parcial de 90° a 270° (lado esquerdo)", regenerar([e3, extrusao(e3, 1)]).volume ?? 0, (Math.PI * 20 * 10) / 2);
+  const e3b = plano();
+  const c3b = op.ponto(e3b, { x: 0, y: 0 });
+  // de t = −0,5 até t = −π/2 no sentido anti-horário (mais de meia volta), fechada pela corda
+  const P = (t: number) => ({ x: 20 * Math.cos(t), y: 10 * Math.sin(t) });
+  const [ae3b] = op.arcoElipse(e3b, c3b, { x: 20, y: 0 }, 10, P(-0.5), P(-Math.PI / 2));
+  const a3b = ae3b as Extract<typeof ae3b, { tipo: "arcoElipse" }>;
+  op.linha(e3b, a3b.fim, a3b.ini);
+  const [p0, p1] = [P(-0.5), P(-Math.PI / 2)];
+  // área = setor em parâmetro excêntrico (½·a·b·Δt) + parcela da corda (½·(x1·y0 − x0·y1))
+  confere("elipse parcial maior que meia volta", regenerar([e3b, extrusao(e3b, 1)]).volume ?? 0,
+    0.5 * 20 * 10 * (1.5 * Math.PI + 0.5) + 0.5 * (p1.x * p0.y - p0.x * p1.y));
+
+  // parábola foco (0,1), vértice (0,0), de x = −2 a 2, fechada pela corda y = 1: área 2/3·4·1
+  const e4 = plano();
+  const f = op.ponto(e4, { x: 0, y: 1 });
+  op.pontoSolto(e4, f, true);
+  const pb = op.parabola(e4, f, { x: 0, y: 0 }, { x: 2, y: 1 }, { x: -2, y: 1 });
+  op.linha(e4, pb.fim, pb.ini);
+  verdade("parábola resolve", solver.resolver(e4).conflitantes.length === 0);
+  confere("segmento de parábola: 2/3 · base · altura", regenerar([e4, extrusao(e4, 1)]).volume ?? 0, (2 / 3) * 4 * 1);
+  // espelhar e copiar elipse parcial mantém a forma (o solver não vira a elipse)
+  const novas = op.espelhar(e2, [ae.id], EIXO_V);
+  verdade("elipse parcial espelhada resolve", solver.resolver(e2).conflitantes.length === 0 && novas.length === 1);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

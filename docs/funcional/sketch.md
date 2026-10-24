@@ -14,7 +14,8 @@ em arco por 3 pontos / em arco pelo centro · Círculo / perimetral · Arco pelo
 3 pontos · Filete / Chanfro de esboço · Aparar / Estender · Converter entidades (aresta/vértice da
 peça vira geometria fixa do esboço) · Padrão linear / circular de esboço · Exibir/Excluir relações ·
 painéis completos de Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
-Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Elipse/Elipse parcial/Parábola/Cônica,
+✅ Elipse · Elipse parcial · Parábola.
+Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Cônica,
 Texto, Entidades de silhueta, Curva de interseção.
 
 Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
@@ -139,8 +140,18 @@ Todos os painéis de entidade têm, além dos campos abaixo:
 - **Spline de estilo** (grau 3/5/7, polígono de controle) ⏸ · **Spline de equação**
   (explícita y=f(x) / paramétrica x(t),y(t), t1, t2, travar extremidades) ⏸ · **Ajustar spline** ⏸
 
-### Elipse, elipse parcial, parábola, cônica — ⏸ (elipse F3 se necessário)
-Parâmetros: centro, raios maior/menor, ângulos; cônica: rho.
+### Elipse, elipse parcial, parábola — ✅ · cônica — ⏸
+- **Elipse**: centro → ponta do eixo maior → eixo menor. Cria os **eixos maior e menor como linhas
+  de construção** presas à curva (solver PlaneGCS): cotar o comprimento de cada eixo dá os
+  diâmetros; relação horizontal/vertical ou cota de ângulo no eixo maior dá a orientação.
+- **Elipse parcial**: centro → eixo maior → eixo menor e início → fim (anti-horário).
+- **Parábola**: foco → vértice → início → fim. Vira Bézier quadrática exata no kernel.
+- Ponto sobre a curva (coincidente), tangência numa ponta comum, copiar/girar/mover, espelhar e
+  padrões ✅; arrastar a curva move a peça inteira, arrastar as pontas dos eixos muda tamanho e giro.
+- Perfil exato no kernel (elipse/arco de elipse e parábola do OpenCascade) ✅; na varredura a
+  elipse é aproximada por B-spline.
+- Pendentes: painel de parâmetros (centro, raios, ângulos), aparar/estender elipse e parábola
+  (hoje aparar apaga a curva inteira), offset delas; **cônica** (rho) não existe no PlaneGCS.
 
 ### Ponto — ✅
 Parâmetros: X/Y.

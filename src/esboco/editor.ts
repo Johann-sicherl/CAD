@@ -8,7 +8,7 @@ import { ehCota, novoId } from "../model";
 import type { TipoEntidade, Viewport } from "../viewport";
 import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
-  amostrar, angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
+  amostrar, angulo, centroTresPontos, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
@@ -19,12 +19,14 @@ import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
+  | "elipse" | "elipseParcial" | "parabola"
   | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter"
   | "padraoLinearEsboco" | "padraoCircularEsboco" | "exibirRelacoes";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
-  rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", estender: "Estender",
+  rasgo: "Rasgo", poligono: "Polígono", spline: "Spline",
+  elipse: "Elipse", elipseParcial: "Elipse parcial", parabola: "Parábola", aparar: "Aparar", estender: "Estender",
   fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota", converter: "Converter entidades",
   padraoLinearEsboco: "Padrão linear de esboço", padraoCircularEsboco: "Padrão circular de esboço",
@@ -76,6 +78,10 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "arco": return ["Toque o início do arco.", "Toque o fim do arco.", "Toque um ponto por onde o arco passa."][n] ?? "";
     case "rasgo": return ["Toque o centro da primeira ponta.", "Toque o centro da segunda ponta.", "Toque para definir a largura."][n] ?? "";
     case "poligono": return n ? "Toque um vértice." : "Toque o centro.";
+    case "elipse": return ["Toque o centro.", "Toque a ponta do eixo maior.", "Toque para definir o eixo menor."][n] ?? "";
+    case "elipseParcial":
+      return ["Toque o centro.", "Toque a ponta do eixo maior.", "Toque para definir o eixo menor e o início do arco.", "Toque o fim do arco (sentido anti-horário)."][n] ?? "";
+    case "parabola": return ["Toque o foco.", "Toque o vértice.", "Toque o início do arco.", "Toque o fim do arco."][n] ?? "";
     case "spline": return n ? "Mais pontos. Toque no último de novo (ou Esc) para terminar; no primeiro, fecha a curva." : "Toque o primeiro ponto da curva.";
     case "aparar": return "Toque o trecho a apagar (entre interseções).";
     case "offset": return "Toque uma entidade: a cadeia ligada a ela é copiada à distância indicada.";
@@ -556,7 +562,7 @@ export class EditorEsboco {
       return;
     }
     // arrastar de um ponto a outro = dois cliques (início no ponto pressionado)
-    const precisaDois = ["linha", "retangulo", "circulo", "arco", "rasgo", "poligono"].includes(this.ferramenta);
+    const precisaDois = ["linha", "retangulo", "circulo", "arco", "rasgo", "poligono", "elipse", "elipseParcial", "parabola"].includes(this.ferramenta);
     if (pt.moveu && precisaDois && this.cliques.length === 0) this.registrar(pt.enc, tol, pt.tipo);
     const anterior = this.cliques.length ? this.cliques[this.cliques.length - 1].p : undefined;
     const enc = this.ferramentaUsaEncaixe() ? this.encaixar(p, tol, this.ferramenta === "linha" ? anterior : undefined) : { p };
@@ -613,7 +619,9 @@ export class EditorEsboco {
         const borda = (g.tipo === "circulo" || g.tipo === "arco");
         if (borda) pt.arraste = { tipo: "raio", id: g.id };
         else {
-          const ids = g.tipo === "linha" ? [g.p1, g.p2] : g.tipo === "spline" ? g.pontos : [];
+          // elipse e parábola: arrastar a curva leva a curva inteira (as pontas dos eixos mudam o tamanho)
+          const ids = g.tipo === "linha" ? [g.p1, g.p2] : g.tipo === "spline" ? g.pontos
+            : g.tipo === "elipse" || g.tipo === "arcoElipse" || g.tipo === "parabola" ? pontosDaGeo(g) : [];
           pt.arraste = { tipo: "pontos", ids, orig: ids.map((i) => ({ ...pts.get(i)! })), inicio: p };
         }
       }
@@ -885,6 +893,25 @@ export class EditorEsboco {
             ? op.poligonoCircunscrito(esb, centro, c[1].p, this.lados, cons)
             : op.poligono(esb, centro, c[1].p, this.lados, cons);
           this.lembrarPoligono(gs, centro);
+          pronto = true;
+        }
+        break;
+      case "elipse":
+      case "elipseParcial": {
+        const final = f === "elipse" ? 3 : 4;
+        if (c.length === final) {
+          const b = op.semieixoMenor(c[0].p, c[1].p, c[2].p);
+          if (dist(c[0].p, c[1].p) < 1e-6 || b < 1e-6) this.h.avisar("Elipse: os eixos não podem ter tamanho zero.");
+          else if (f === "elipse") op.elipse(esb, this.pontoDo(c[0]), c[1].p, b, cons);
+          else op.arcoElipse(esb, this.pontoDo(c[0]), c[1].p, b, c[2].p, c[3].p, cons);
+          pronto = true;
+        }
+        break;
+      }
+      case "parabola":
+        if (c.length === 4) {
+          if (dist(c[0].p, c[1].p) < 1e-6) this.h.avisar("Parábola: o foco e o vértice não podem coincidir.");
+          else op.parabola(esb, this.pontoDo(c[0]), c[1].p, c[2].p, c[3].p, cons);
           pronto = true;
         }
         break;
@@ -1840,6 +1867,36 @@ export class EditorEsboco {
           poli(Array.from({ length: n }, (_, i) => polar(c[0], r, a0 + (i * 2 * Math.PI) / n)), true);
         }
         break;
+      case "elipse":
+      case "elipseParcial":
+        if (c.length === 1) segs.push(c[0], cur);
+        if (c.length >= 2) {
+          const a = dist(c[0], c[1]);
+          const u = a > 1e-9 ? mult(sub(c[1], c[0]), 1 / a) : { x: 1, y: 0 };
+          const b = op.semieixoMenor(c[0], c[1], c.length === 2 ? cur : c[2]);
+          const e = { c: c[0], u, a, b };
+          segs.push(c[0], c[1]);
+          let t0 = 0, t1 = 2 * Math.PI;
+          if (c.length === 3) {
+            t0 = paramElipse(e, c[2]);
+            t1 = paramElipse(e, cur);
+            while (t1 <= t0) t1 += 2 * Math.PI;
+          }
+          const n = 72;
+          poli(Array.from({ length: n + 1 }, (_, i) => pontoElipse(e, t0 + ((t1 - t0) * i) / n)));
+          if (c.length === 3) pontos.push(pontoElipse(e, t0));
+        }
+        break;
+      case "parabola":
+        if (c.length === 1) segs.push(c[0], cur);
+        if (c.length >= 2) {
+          const pb = parabolaDe({ v: "v", f: "f" }, new Map([["v", c[1]], ["f", c[0]]]));
+          const sc = paramParabola(pb, cur);
+          const [s0, s1] = c.length === 2 ? [-Math.abs(sc), Math.abs(sc)] : [paramParabola(pb, c[2]), sc];
+          const n = 48;
+          poli(Array.from({ length: n + 1 }, (_, i) => pontoParabola(pb, s0 + ((s1 - s0) * i) / n)));
+        }
+        break;
       case "spline":
         if (c.length) {
           const bz = splineBeziers([...c, cur]);
@@ -1933,7 +1990,9 @@ export class EditorEsboco {
         if (g.tipo === "circulo") return polar(pts.get(g.c)!, g.r, Math.PI / 2);
         if (g.tipo === "arco") return mult(soma(pts.get(g.ini)!, pts.get(g.fim)!), 0.5);
         if (g.tipo === "ponto") return pts.get(g.p) ?? null;
-        return pts.get(g.pontos[Math.floor(g.pontos.length / 2)]) ?? null;
+        if (g.tipo === "spline") return pts.get(g.pontos[Math.floor(g.pontos.length / 2)]) ?? null;
+        const am = amostrar(g, pts);
+        return am[Math.floor(am.length / 4)];
       };
       const SIMBOLO = SIMBOLO_RELACAO;
       const externos = idsExternos(this.esb);

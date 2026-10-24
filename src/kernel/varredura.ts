@@ -9,7 +9,7 @@ import {
   makeThreePointArc, type Drawing, type Edge, type Face, type Shape3D, type Wire,
 } from "replicad";
 import type { FeatureEsboco, FeatureVarredura, Vec3 } from "../model";
-import { mapaPontos, polar, splineBeziers, angulosArco } from "../esboco/geometria";
+import { amostrar, controleParabola, mapaPontos, parabolaDe, paramParabola, polar, splineBeziers, angulosArco } from "../esboco/geometria";
 import { cruz, normalizar, paraMundo, type Referencial } from "../esboco/referencial";
 
 // ---------- vetores ----------
@@ -70,6 +70,15 @@ export function trechosDoEsboco(esb: FeatureEsboco, r: Referencial): Trecho[] {
       out.push({ tipo: "circulo", c: M(P(g.c)), r: g.r, n: r.normal, inicio: M(polar(P(g.c), g.r, 0)) });
     } else if (g.tipo === "spline") {
       for (const [a, c1, c2, b] of splineBeziers(g.pontos.map(P))) out.push({ tipo: "bezier", pts: [M(a), M(c1), M(c2), M(b)] });
+    } else if (g.tipo === "parabola") {
+      // arco de parábola = Bézier quadrática exata
+      const pb = parabolaDe(g, pts);
+      const a = P(g.ini), b = P(g.fim);
+      out.push({ tipo: "bezier", pts: [M(a), M(controleParabola(pb, paramParabola(pb, a), paramParabola(pb, b))), M(b)] });
+    } else if (g.tipo === "elipse" || g.tipo === "arcoElipse") {
+      const am = amostrar(g, pts, Math.PI / 48).map(M);
+      if (g.tipo === "elipse") am[am.length - 1] = am[0];
+      out.push({ tipo: "pontos", pts: am });
     }
   }
   return out;

@@ -6,7 +6,7 @@ import type { FeatureEsboco, GeoEsboco, RestricaoEsboco } from "../model";
 import { novoId } from "../model";
 import {
   angulo, angulosArco, areaAssinada, centroTresPontos, cruz2, dist, distPontoSegmento, EIXO_H, EIXO_V,
-  esc2, extremidades, IDS_IMPLICITOS, intersecoes, mapaPontos, mult, norm, ORIGEM, paramNoArco, polar,
+  elipseDe, esc2, extremidades, IDS_IMPLICITOS, parabolaDe, paramElipse, paramParabola, pontoElipse, pontoParabola, intersecoes, mapaPontos, mult, norm, ORIGEM, paramNoArco, polar,
   pontosDaGeo, soma, sub, type MapaPontos, type P2,
 } from "./geometria";
 
@@ -221,7 +221,8 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2, opc: Opcoes
     else excluir(esb, [g.id]);
     return true;
   };
-  if (g.tipo === "spline" || g.tipo === "ponto") return apagarInteira();
+  // sem interseção analítica: a curva sai inteira
+  if (g.tipo === "spline" || g.tipo === "ponto" || g.tipo === "elipse" || g.tipo === "arcoElipse" || g.tipo === "parabola") return apagarInteira();
   const cortes = cortesNaGeo(esb, g, pts, opc.cortadores);
 
   if (g.tipo === "circulo") {
@@ -622,10 +623,91 @@ export function espelhar(esb: FeatureEsboco, geoIds: string[], eixo: string): st
       restringir(esb, { tipo: "igual", a: g.id, b: n.id });
     } else if (g.tipo === "arco") n = arco(esb, par(g.c), par(g.fim), par(g.ini), g.construcao); // espelho inverte o sentido
     else if (g.tipo === "ponto") n = pontoSolto(esb, par(g.p), g.construcao);
-    else n = spline(esb, g.pontos.map(par), g.construcao);
+    else n = copiarCurva(esb, g, par, true);
     novas.push(n.id);
   }
   return novas;
+}
+
+/**
+ * Cópia de spline, elipse ou parábola com os pontos trocados por `m`. Espelhada, a orientação
+ * se inverte: o eixo menor positivo passa a ser o outro lado e o arco troca início e fim.
+ */
+function copiarCurva(esb: FeatureEsboco, g: Geo<"spline" | "elipse" | "arcoElipse" | "parabola">, m: (id: string) => string, espelhada: boolean): GeoEsboco {
+  const k = !!g.construcao;
+  if (g.tipo === "spline") return spline(esb, g.pontos.map(m), k);
+  const novo = (x: Record<string, unknown>) => {
+    const n = { id: novoId(), ...x, ...(k && { construcao: true }) } as GeoEsboco;
+    esb.geos.push(n);
+    return n;
+  };
+  if (g.tipo === "parabola") {
+    const [ini, fim] = espelhada ? [g.fim, g.ini] : [g.ini, g.fim];
+    return novo({ tipo: "parabola", v: m(g.v), f: m(g.f), ini: m(ini), fim: m(fim) });
+  }
+  const [n1, n2] = espelhada ? [g.n2, g.n1] : [g.n1, g.n2];
+  const eixos = { c: m(g.c), m1: m(g.m1), m2: m(g.m2), n1: m(n1), n2: m(n2) };
+  if (g.tipo === "elipse") return novo({ tipo: "elipse", ...eixos });
+  const [ini, fim] = espelhada ? [g.fim, g.ini] : [g.ini, g.fim];
+  return novo({ tipo: "arcoElipse", ...eixos, ini: m(ini), fim: m(fim) });
+}
+
+// ---------- elipse, elipse parcial e parábola ----------
+
+/** Pontas dos eixos de uma elipse e as linhas de construção dos eixos (para cotar e girar). */
+function eixosElipse(esb: FeatureEsboco, c: string, maior: P2, b: number) {
+  const pc = mapaPontos(esb).get(c)!;
+  const d = sub(maior, pc);
+  const a = Math.hypot(d.x, d.y) || 1e-3;
+  const u = mult(d, 1 / a), v = { x: -u.y, y: u.x };
+  const m1 = ponto(esb, soma(pc, mult(u, a))), m2 = ponto(esb, soma(pc, mult(u, -a)));
+  const n1 = ponto(esb, soma(pc, mult(v, b))), n2 = ponto(esb, soma(pc, mult(v, -b)));
+  // eixos sempre de construção (servem para cotar os diâmetros e alinhar a elipse)
+  const lm = linha(esb, m1, m2, true), ln = linha(esb, n1, n2, true);
+  return { c, m1, m2, n1, n2, eixos: [lm, ln] };
+}
+
+/** Semieixo menor a partir de um ponto: distância do ponto à reta do eixo maior. */
+export function semieixoMenor(c: P2, maior: P2, q: P2): number {
+  const d = sub(maior, c);
+  const l = Math.hypot(d.x, d.y) || 1;
+  return Math.abs(cruz2(d, sub(q, c))) / l;
+}
+
+/** Elipse pelo centro, ponta do eixo maior e semieixo menor. Devolve a elipse e seus eixos. */
+export function elipse(esb: FeatureEsboco, c: string, maior: P2, b: number, construcao = false): GeoEsboco[] {
+  const e = eixosElipse(esb, c, maior, Math.max(1e-3, b));
+  const g: Geo<"elipse"> = { id: novoId(), tipo: "elipse", c, m1: e.m1, m2: e.m2, n1: e.n1, n2: e.n2, ...(construcao && { construcao }) };
+  esb.geos.push(g);
+  return [g, ...e.eixos];
+}
+
+/** Elipse parcial: como a elipse, de `ini` a `fim` no sentido anti-horário (pontos projetados na curva). */
+export function arcoElipse(esb: FeatureEsboco, c: string, maior: P2, b: number, ini: P2, fim: P2, construcao = false): GeoEsboco[] {
+  const e = eixosElipse(esb, c, maior, Math.max(1e-3, b));
+  const el = elipseDe(e, mapaPontos(esb));
+  const pi = ponto(esb, pontoElipse(el, paramElipse(el, ini)));
+  const pf = ponto(esb, pontoElipse(el, paramElipse(el, fim)));
+  const g: Geo<"arcoElipse"> = {
+    id: novoId(), tipo: "arcoElipse", c, m1: e.m1, m2: e.m2, n1: e.n1, n2: e.n2, ini: pi, fim: pf, ...(construcao && { construcao }),
+  };
+  esb.geos.push(g);
+  return [g, ...e.eixos];
+}
+
+/** Parábola pelo foco e vértice; o arco vai de perto de `ini` a perto de `fim` (projetados). */
+export function parabola(esb: FeatureEsboco, foco: string, vertice: P2, ini: P2, fim: P2, construcao = false): Geo<"parabola"> {
+  const v = ponto(esb, vertice);
+  const pb = parabolaDe({ v, f: foco }, mapaPontos(esb));
+  let s0 = paramParabola(pb, ini), s1 = paramParabola(pb, fim);
+  if (s0 > s1) [s0, s1] = [s1, s0];
+  if (s1 - s0 < 1e-6) s1 = s0 + 1;
+  const g: Geo<"parabola"> = {
+    id: novoId(), tipo: "parabola", v, f: foco, ini: ponto(esb, pontoParabola(pb, s0)), fim: ponto(esb, pontoParabola(pb, s1)),
+    ...(construcao && { construcao }),
+  };
+  esb.geos.push(g);
+  return g;
 }
 
 // ---------- variantes de entidades (Fase 3) ----------
@@ -877,7 +959,7 @@ export function transformar(esb: FeatureEsboco, geoIds: string[], f: (p: P2) => 
     else if (g.tipo === "circulo") n = circulo(esb, m(g.c), g.r, g.construcao);
     else if (g.tipo === "arco") n = arco(esb, m(g.c), m(g.ini), m(g.fim), g.construcao);
     else if (g.tipo === "ponto") n = pontoSolto(esb, m(g.p), g.construcao);
-    else n = spline(esb, g.pontos.map(m), g.construcao);
+    else n = copiarCurva(esb, g, m, false);
     novas.push(n.id);
   }
   return novas;

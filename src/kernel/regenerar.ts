@@ -5,6 +5,7 @@
 import {
   draw,
   drawCircle,
+  drawEllipse,
   drawPolysides,
   drawRoundedRectangle,
   drawRectangle,
@@ -209,6 +210,10 @@ function desenharPerfil(p: Perfil): Drawing {
 
 function desenhoDoLaco(l: Laco): Drawing {
   if (l.tipo === "circulo") return drawCircle(l.r).translate(l.c.x, l.c.y);
+  if (l.tipo === "elipse") {
+    const { c, u, a, b } = l.e;
+    return drawEllipse(a, b).rotate((Math.atan2(u.y, u.x) * 180) / Math.PI, [0, 0]).translate(c.x, c.y);
+  }
   const ts = l.trechos;
   const ini = ts[0].a;
   const pen = draw([ini.x, ini.y]);
@@ -217,6 +222,13 @@ function desenhoDoLaco(l: Laco): Drawing {
     const b = i === ts.length - 1 ? ini : t.b;
     if (t.tipo === "linha") pen.lineTo([b.x, b.y]);
     else if (t.tipo === "arco") pen.threePointsArcTo([b.x, b.y], [t.meio.x, t.meio.y]);
+    else if (t.tipo === "quad") pen.quadraticBezierCurveTo([b.x, b.y], [t.c1.x, t.c1.y]);
+    else if (t.tipo === "elipse") {
+      const { u, a, b: rb } = t.e;
+      const varr = t.t1 - t.t0;
+      // como no arco elíptico do SVG: grande = mais de meia volta; sentido = anti-horário
+      pen.ellipseTo([b.x, b.y], a, rb, (Math.atan2(u.y, u.x) * 180) / Math.PI, Math.abs(varr) > Math.PI, varr > 0);
+    }
     else pen.cubicBezierCurveTo([b.x, b.y], [t.c1.x, t.c1.y], [t.c2.x, t.c2.y]);
   });
   return pen.close();
