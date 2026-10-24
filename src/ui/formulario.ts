@@ -5,7 +5,7 @@
 
 import type { Referencia } from "../model";
 
-export type TipoSel = "face" | "aresta" | "vertice" | "plano" | "eixo" | "esboco" | "recurso";
+export type TipoSel = "face" | "aresta" | "vertice" | "plano" | "eixo" | "esboco" | "recurso" | "curva";
 
 type Vis<F> = { vis?: (f: F) => boolean };
 export type Campo<F> = Vis<F> & (
@@ -17,6 +17,8 @@ export type Campo<F> = Vis<F> & (
   | { t: "refs"; rot: string; cam: string; aceita: TipoSel[]; multiplo: boolean; dica?: string; cor?: "rosa" | "azul"; ordenavel?: boolean }
   | { t: "lista"; rot: string; cam: string; opcoes: (f: F) => [string, string][] }
   | { t: "info"; texto: (f: F) => string }
+  /** Texto em várias linhas (ex.: tabela de pontos XYZ); grava ao sair da caixa. */
+  | { t: "texto"; rot: string; cam: string; linhas?: number; dica?: string }
   | { t: "botao"; rot: string; acao: (f: F) => void; destaque?: boolean }
 );
 
@@ -150,6 +152,20 @@ function campo<F>(f: F, c: Campo<F>, ctx: ContextoFormulario): HTMLElement {
   switch (c.t) {
     case "info":
       return el("p", "dica", c.texto(f));
+    case "texto": {
+      const l = el("label", "campo");
+      l.append(el("span", "campo-rotulo", c.rot));
+      const ta = el("textarea", "campo-texto");
+      ta.rows = c.linhas ?? 5;
+      ta.value = String(ler(f, c.cam) ?? "");
+      if (c.dica) ta.placeholder = c.dica;
+      ta.onchange = () => {
+        gravar(f, c.cam, ta.value);
+        ctx.aoMudar(true);
+      };
+      l.append(ta);
+      return l;
+    }
     case "botao": {
       const b = el("button", c.destaque ? "destaque largo" : "largo", c.rot);
       b.onclick = () => c.acao(f);

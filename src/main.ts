@@ -18,6 +18,7 @@ import {
   type Documento,
   type Feature,
   type FeatureEsboco,
+  type FeatureCurva,
   type FeatureExtrusao,
   type FeatureFuro,
   type FeatureRevolucao,
@@ -429,6 +430,12 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
+  helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
+};
+
+/** Modo de curva de cada item do menu Curvas ▾. */
+const MODO_CURVA: Record<string, FeatureCurva["modo"]> = {
+  helice: "helice", "curva-xyz": "xyz", "curva-pontos": "pontosRef", "curva-composta": "composta", "curva-projetada": "projetada",
 };
 
 function ultimoEsbocoLivre(): FeatureEsboco | null {
@@ -584,6 +591,24 @@ function criarRecurso(id: string) {
       } else if (r) {
         f.ref1 = r;
         if (r.tipo === "face") f.modo = r.ass.geom === "cilindro" ? "cilindro" : "aresta";
+      }
+      break;
+    }
+    case "curva": {
+      f.modo = MODO_CURVA[id];
+      // pré-seleção: esboço (base da hélice / esboço a projetar), vértices, arestas e faces tocados
+      const esb = esbocoSel ?? ultimoEsbocoLivre();
+      if (f.modo === "helice" && esb) f.base = { tipo: "esboco", id: esb.id };
+      if (f.modo === "projetada") {
+        if (esbocoSel) f.esboco = { tipo: "esboco", id: esbocoSel.id };
+        f.faces = faces;
+      }
+      if (f.modo === "pontosRef") f.pontos = selPeca.filter((x) => x.tipo === "vertice");
+      if (f.modo === "composta") {
+        f.itens = [
+          ...featsSel.flatMap((x): Referencia[] => (x.tipo === "esboco" ? [{ tipo: "esboco", id: x.id }] : x.tipo === "curva" ? [{ tipo: "curva", id: x.id }] : [])),
+          ...selPeca.filter((x) => x.tipo === "aresta"),
+        ];
       }
       break;
     }
@@ -792,6 +817,7 @@ function rotuloRef(r: Referencia, i: number): string {
     case "esboco": return doc.features.find((f) => f.id === r.id)?.nome ?? "Esboço?";
     case "linhaEsboco": return "Linha do esboço";
     case "recurso": return doc.features.find((f) => f.id === r.id)?.nome ?? "Recurso?";
+    case "curva": return doc.features.find((f) => f.id === r.id)?.nome ?? "Curva?";
   }
 }
 
@@ -1420,7 +1446,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   esboco: "esboco", extrusao: "extrusao", revolucao: "revolucao", filete: "filete", chanfro: "chanfro",
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
-  varredura: "varredura", loft: "loft",
+  varredura: "varredura", loft: "loft", curva: "helice",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -1428,6 +1454,7 @@ function iconeFeature(f: Feature): NomeIcone {
   if (f.tipo === "revolucao" && f.operacao === "cortar") return "corteRevolucao";
   if (f.tipo === "varredura" && f.operacao === "cortar") return "corteVarredura";
   if (f.tipo === "loft" && f.operacao === "cortar") return "corteLoft";
+  if (f.tipo === "curva") return ({ helice: "helice", xyz: "curvaXYZ", pontosRef: "curvaPontos", composta: "curvaComposta", projetada: "curvaProjetada" } as const)[f.modo];
   return ICONE_FEATURE[f.tipo];
 }
 
@@ -1521,6 +1548,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       const mover = (ev.target as HTMLElement).closest<HTMLElement>("[data-mover]");
       if (mover) return moverFeature(i, Number(mover.dataset.mover));
       if (comando?.campo && comando.campo.aceita.includes("esboco") && f.tipo === "esboco" && f.id !== comando.f.id) return adicionarAoCampo({ tipo: "esboco", id: f.id });
+      if (comando?.campo && comando.campo.aceita.includes("curva") && f.tipo === "curva" && f.id !== comando.f.id) return adicionarAoCampo({ tipo: "curva", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("plano") && f.tipo === "planoRef") return adicionarAoCampo({ tipo: "plano", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("eixo") && f.tipo === "eixoRef") return adicionarAoCampo({ tipo: "eixo", id: f.id });
       if (aguardando && f.tipo === "planoRef") return void suporteEscolhido({ tipo: "planoRef", id: f.id }, null);
@@ -1566,10 +1594,10 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     const li = document.createElement("li");
     li.className = "item filho usado";
     li.style.setProperty("--nivel", String(nivel));
-    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
+    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || ref.tipo === "curva" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
       ? doc.features.find((x) => x.id === (ref as { id: string }).id) : undefined;
     const icone: NomeIcone = alvo ? iconeFeature(alvo)
-      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca" } as const)[ref.tipo];
+      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice" } as const)[ref.tipo];
     li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
     li.querySelector("strong")!.textContent = rotuloRef(ref, k);
     li.querySelector("small")!.textContent = descricaoUsado(ref);
@@ -1656,6 +1684,7 @@ function descricaoUsado(r: Referencia): string {
     case "linhaEsboco": return "Linha do esboço";
     case "esboco": return "Esboço";
     case "recurso": return "Recurso";
+    case "curva": return "Curva 3D";
   }
 }
 

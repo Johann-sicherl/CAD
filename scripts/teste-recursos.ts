@@ -24,6 +24,10 @@ function confere(nome: string, obtido: number | null | undefined, esperado: numb
   if (!ok) falhas++;
   console.log(`${ok ? "ok  " : "FALHA"} ${nome}: ${v.toFixed(2)} (esperado ${esperado.toFixed(2)})`);
 }
+function verdade(nome: string, v: boolean) {
+  if (!v) falhas++;
+  console.log(`${v ? "ok  " : "FALHA"} ${nome}`);
+}
 function semErros(nome: string, r: ReturnType<typeof regenerar>) {
   if (r.erros.length) {
     falhas++;
@@ -383,6 +387,85 @@ const bloco = ext(base, 10);
   semErros("loft: fechar loft (anel)", regenerar([qa, q3, q4, lf({ perfis: [E(qa), E(q3), E(q4)], fecharLoft: false })]));
   const corteL = lf({ operacao: "cortar", perfis: [E(circ(5, 0)), E(circ(5, 10))] });
   void corteL;
+}
+
+// ---------- curvas 3D (hélice, pontos XYZ, pontos de referência, composta, projetada) ----------
+{
+  const curva = (o: object) => ({ ...(novaFeature("curva", 1) as any), ...o });
+  const sw = (o: object) => ({ ...(novaFeature("varredura", 1) as any), ...o });
+  const esb = (e: FeatureEsboco) => ({ tipo: "esboco", id: e.id }) as Referencia;
+  const comp = (pl: number[][]) => pl.reduce((t, p, k) => (k ? t + Math.hypot(p[0] - pl[k - 1][0], p[1] - pl[k - 1][1], p[2] - pl[k - 1][2]) : 0), 0);
+  const linhasDe = (r: ReturnType<typeof regenerar>, id: string) => (r.referencias.find((x) => x.id === id) as { linhas: number[][][] } | undefined)?.linhas ?? [];
+
+  // hélice: círculo R10 no plano Superior (normal +Y), passo 5, 4 voltas → sobe 20 em Y
+  const base = circulo(10, 0, 0, "XZ");
+  const h = curva({ modo: "helice", base: esb(base), definicao: "passoRevolucao", passo: 5, revolucoes: 4 });
+  const rh = regenerar([base, h]);
+  semErros("hélice", rh);
+  const lh = linhasDe(rh, h.id).flat();
+  confere("hélice: comprimento 4·√((2π·10)² + 5²)", comp(lh), 4 * Math.hypot(2 * Math.PI * 10, 5), 5e-3);
+  confere("hélice: altura final", lh[lh.length - 1][1], 20);
+  confere("hélice: raio constante", Math.hypot(lh[37][0], lh[37][2]), 10);
+  // mola: perfil circular Ø2 varrido ao longo da hélice ≈ π·1²·comprimento
+  const mola = regenerar([base, h, sw({ tipoPerfil: "circular", diametro: 2, trajetoria: [{ tipo: "curva", id: h.id }] })]);
+  semErros("mola (varredura na hélice)", mola);
+  confere("mola: volume ≈ π·1²·comprimento da hélice", mola.volume, Math.PI * 4 * Math.hypot(2 * Math.PI * 10, 5), 1e-2);
+  const hc = curva({ modo: "helice", base: esb(base), definicao: "alturaRevolucao", altura: 20, revolucoes: 2, conica: { ativa: true, angulo: 10, paraFora: true } });
+  const lc = linhasDe(regenerar([base, hc]), hc.id).flat();
+  confere("hélice cônica: raio no topo = 10 + 20·tan 10°", Math.hypot(lc[lc.length - 1][0], lc[lc.length - 1][2]), 10 + 20 * Math.tan(Math.PI / 18));
+  const esp = curva({ modo: "helice", base: esb(base), definicao: "espiral", passo: 3, revolucoes: 2 });
+  const le = linhasDe(regenerar([base, esp]), esp.id).flat();
+  confere("espiral: raio final 10 + 2·3", Math.hypot(le[le.length - 1][0], le[le.length - 1][2]), 16);
+  confere("espiral: plana", Math.max(...le.map((p) => Math.abs(p[1]))), 0);
+
+  // curva por pontos XYZ como trajetória: reta (0,0,0)→(0,30,0), perfil Ø4 no plano Superior
+  const xyz = curva({ modo: "xyz", pontosTexto: "0; 0; 0\n0; 30; 0" });
+  confere("curva XYZ como trajetória da varredura", regenerar([xyz, sw({ tipoPerfil: "circular", diametro: 4, trajetoria: [{ tipo: "curva", id: xyz.id }] })]).volume, Math.PI * 4 * 30);
+  const xyz3 = curva({ modo: "xyz", pontosTexto: "0;0;0\n10;20;5\n30,5\t25\t-5\n40; 40; 0" });
+  const l3 = linhasDe(regenerar([xyz3]), xyz3.id);
+  const fimDe = (pl: number[][]) => pl[pl.length - 1];
+  confere("curva XYZ passa pelo 3º ponto (x)", fimDe(l3[1])[0], 30.5);
+  confere("curva XYZ passa pelo 3º ponto (z)", fimDe(l3[1])[2], -5);
+  verdade("curva XYZ: tabela inválida vira erro", regenerar([curva({ modo: "xyz", pontosTexto: "1; 2" })]).erros.length === 1);
+
+  // curva composta de dois esboços que se tocam (L) = mesma varredura que o esboço em L único
+  const e1 = novoEsboco(3, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e1, op.ponto(e1, { x: 0, y: 0 }), op.ponto(e1, { x: 0, y: 50 }));
+  const e2 = novoEsboco(4, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e2, op.ponto(e2, { x: 0, y: 50 }), op.ponto(e2, { x: 40, y: 50 }));
+  const cmp = curva({ modo: "composta", itens: [esb(e2), esb(e1)] });
+  confere("curva composta como trajetória (L 50 + 40)", regenerar([e1, e2, cmp, sw({ tipoPerfil: "circular", diametro: 10, trajetoria: [{ tipo: "curva", id: cmp.id }] })]).volume, Math.PI * 25 * 90);
+  const e3 = novoEsboco(5, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e3, op.ponto(e3, { x: 100, y: 0 }), op.ponto(e3, { x: 120, y: 0 }));
+  verdade("curva composta com vão vira erro", regenerar([e1, e3, curva({ modo: "composta", itens: [esb(e1), esb(e3)] })]).erros.length === 1);
+
+  // pontos de referência: cantos de um bloco
+  const blocoE = retangulo(40, 40, "XZ");
+  const bloco = ext(blocoE, 20);
+  const pr = curva({ modo: "pontosRef", pontos: [[-20, 20, -20], [20, 20, -20], [20, 20, 20]].map((p) => ({ tipo: "vertice", p })) });
+  const lpr = linhasDe(regenerar([blocoE, bloco, pr]), pr.id);
+  confere("curva por pontos de referência: termina no último vértice", fimDe(lpr[lpr.length - 1])[2], 20);
+
+  // projetada: círculo R10 no plano Superior (y = 0) projetado na face de cima do bloco (y = 20)
+  const cp = circulo(10, 0, 0, "XZ");
+  const topo = face([blocoE, bloco], [0, 1, 0], [0, 20, 0]);
+  const proj = curva({ modo: "projetada", projecao: "esbocoEmFaces", esboco: esb(cp), faces: [topo] });
+  const rp = regenerar([blocoE, bloco, cp, proj]);
+  semErros("curva projetada em face", rp);
+  const lp = linhasDe(rp, proj.id).flat();
+  confere("curva projetada: na face de cima (y = 20)", Math.min(...lp.map((p) => p[1])), 20);
+  confere("curva projetada: raio 10", Math.hypot(lp[5][0], lp[5][2]), 10);
+
+  // esboço em esboço: cilindro R10 (círculo no Frontal) × plano y = 5 (linha no Lateral)
+  const s1 = circulo(10, 0, 0, "XY");
+  const s2 = novoEsboco(6, { tipo: "plano", plano: "YZ", deslocamento: 0 });
+  op.linha(s2, op.ponto(s2, { x: -30, y: 5 }), op.ponto(s2, { x: 30, y: 5 }));
+  const cx = curva({ modo: "projetada", projecao: "esbocoEmEsboco", esboco: esb(s1), esboco2: esb(s2) });
+  const rx = regenerar([s1, s2, cx]);
+  semErros("esboço em esboço", rx);
+  const lx = linhasDe(rx, cx.id).flat();
+  confere("esboço em esboço: y = 5", Math.max(...lx.map((p) => Math.abs(p[1] - 5))) + 5, 5);
+  confere("esboço em esboço: |x| = √(100 − 25)", Math.abs(lx[0][0]), Math.sqrt(75));
 }
 
 if (falhas) {

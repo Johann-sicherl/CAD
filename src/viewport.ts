@@ -35,6 +35,7 @@ const NORMAL_PLANO: Record<Plano, Vista> = { XY: "frontal", XZ: "superior", YZ: 
 const COR_EIXO = { x: 0xd9443f, y: 0x3c9a4f, z: 0x2f7fd0 };
 const COR_PLANO = 0x5b8fc7;
 const COR_DESTAQUE = 0x2f7fd0;
+const COR_CURVA = 0xb0561c; // curvas 3D (hélice, por pontos…)
 const TAM_TRIADE = 112; // px CSS
 
 interface Referencia {
@@ -606,7 +607,7 @@ export class Viewport {
    * Plano (principal ou criado) ou eixo de referência sob o ponteiro. Planos: toque dentro do
    * retângulo visível; eixos: perto da linha. A peça na frente tem prioridade (teste de profundidade).
    */
-  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo"; id: string; borda: boolean } | null {
+  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo" | "curva"; id: string; borda: boolean } | null {
     const ray = this.raio(clientX, clientY);
     const r = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - r.left, my = clientY - r.top;
@@ -630,6 +631,23 @@ export class Viewport {
       if (d < dm) { dm = d; melhorEixo = id.id; }
     });
     if (melhorEixo) return { tipo: "eixo", id: melhorEixo, borda: true };
+    // curvas 3D: distância na tela até a polilinha
+    let melhorCurva: string | null = null, dc = tolPx;
+    this.grupoRefsExtras.traverse((o) => {
+      const id = o.userData.idRef;
+      if (!id || id.tipo !== "curva" || !visivel(o)) return;
+      const pos = ((o as THREE.Line).geometry.getAttribute("position") as THREE.BufferAttribute);
+      let ant = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, 0));
+      for (let i = 1; i < pos.count; i++) {
+        const b = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, i));
+        const dx = b.x - ant.x, dy = b.y - ant.y, l2 = dx * dx + dy * dy;
+        const k = l2 ? Math.max(0, Math.min(1, ((mx - ant.x) * dx + (my - ant.y) * dy) / l2)) : 0;
+        const d = Math.hypot(ant.x + dx * k - mx, ant.y + dy * k - my);
+        if (d < dc) { dc = d; melhorCurva = id.id; }
+        ant = b;
+      }
+    });
+    if (melhorCurva) return { tipo: "curva", id: melhorCurva, borda: true };
     const quads: THREE.Mesh[] = [];
     for (const g of [this.grupoRefs, this.grupoRefsExtras]) {
       g.traverse((o) => { if (o.userData.idRef?.tipo === "plano" && visivel(o)) quads.push(o as THREE.Mesh); });
@@ -877,6 +895,18 @@ export class Viewport {
         );
         quad.userData.idRef = { tipo: "plano", id: r.id };
         g.add(quad, borda);
+        this.grupoRefsExtras.add(g);
+      } else if (r.tipo === "curva") {
+        // curva 3D: traço contínuo e mais grosso que um eixo (tocável como referência)
+        const g = new THREE.Group();
+        for (const pl of r.linhas) {
+          const l = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pl.map((p) => new THREE.Vector3(...p))),
+            new THREE.LineBasicMaterial({ color: ativo ? COR_DESTAQUE : COR_CURVA }),
+          );
+          l.userData.idRef = { tipo: "curva", id: r.id };
+          g.add(l);
+        }
         this.grupoRefsExtras.add(g);
       } else {
         const a = new THREE.Vector3(...r.origem).addScaledVector(new THREE.Vector3(...r.dir), -r.comprimento / 2);

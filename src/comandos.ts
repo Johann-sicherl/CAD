@@ -71,11 +71,11 @@ export const ABAS: Aba[] = [
       {
         id: "grupo-curvas", rotulo: "Curvas", icone: "helice", dica: "Curvas 3D: trajetórias e guias para varredura e loft", grupo: 3,
         itens: [
-          { id: "curva-projetada", rotulo: "Curva projetada", icone: "curvaProjetada", dica: "Projeta um esboço em faces ou cruza dois esboços", grupo: 3, emBreve: true },
-          { id: "curva-composta", rotulo: "Curva composta", icone: "curvaComposta", dica: "Junta esboços, arestas e curvas numa só curva", grupo: 3, emBreve: true },
-          { id: "curva-xyz", rotulo: "Curva por pontos XYZ", icone: "curvaXYZ", dica: "Curva suave por uma tabela de coordenadas", grupo: 3, emBreve: true },
-          { id: "curva-pontos", rotulo: "Curva por pontos de referência", icone: "curvaPontos", dica: "Curva por vértices e pontos escolhidos", grupo: 3, emBreve: true },
-          { id: "helice", rotulo: "Hélice e espiral", icone: "helice", dica: "Hélice (molas, roscas) ou espiral a partir de um círculo", grupo: 3, emBreve: true },
+          { id: "curva-projetada", rotulo: "Curva projetada", icone: "curvaProjetada", dica: "Projeta um esboço em faces ou cruza dois esboços", grupo: 3 },
+          { id: "curva-composta", rotulo: "Curva composta", icone: "curvaComposta", dica: "Junta esboços, arestas e curvas numa só curva", grupo: 3 },
+          { id: "curva-xyz", rotulo: "Curva por pontos XYZ", icone: "curvaXYZ", dica: "Curva suave por uma tabela de coordenadas", grupo: 3 },
+          { id: "curva-pontos", rotulo: "Curva por pontos de referência", icone: "curvaPontos", dica: "Curva por vértices e pontos escolhidos", grupo: 3 },
+          { id: "helice", rotulo: "Hélice e espiral", icone: "helice", dica: "Hélice (molas, roscas) ou espiral a partir de um círculo", grupo: 3 },
         ],
       },
     ],

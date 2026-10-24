@@ -57,7 +57,9 @@ export type Referencia =
   | { tipo: "esboco"; id: string }
   /** Linha de um esboço (eixo de revolução, direção). */
   | { tipo: "linhaEsboco"; esboco: string; geo: string }
-  | { tipo: "recurso"; id: string };
+  | { tipo: "recurso"; id: string }
+  /** Recurso de curva 3D (hélice, composta, por pontos, projetada). */
+  | { tipo: "curva"; id: string };
 
 // ---------- esboço ----------
 
@@ -425,10 +427,42 @@ export interface FeatureEixoRef extends FeatureBase {
   ref2?: Referencia;
 }
 
+/**
+ * Curva 3D (menu Curvas ▾): usada como trajetória, guia ou linha de centro em varredura e loft.
+ * Campos e comportamento: docs/funcional/features.md §16.
+ */
+export interface FeatureCurva extends FeatureBase {
+  tipo: "curva";
+  modo: "helice" | "xyz" | "pontosRef" | "composta" | "projetada";
+  // hélice e espiral: base = esboço com um círculo (centro, raio e plano)
+  base?: Referencia;
+  definicao: "passoRevolucao" | "alturaRevolucao" | "alturaPasso" | "espiral";
+  passo: number;
+  revolucoes: number;
+  altura: number;
+  anguloInicial: number; // graus
+  horario: boolean;
+  inverter: boolean;
+  conica: { ativa: boolean; angulo: number; paraFora: boolean };
+  /** Pontos XYZ, um por linha: "x; y; z" (mm). */
+  pontosTexto: string;
+  fechada: boolean;
+  /** Pontos de referência (vértices) em ordem. */
+  pontos: Referencia[];
+  /** Composta: esboços, arestas e curvas que se ligam pelas pontas. */
+  itens: Referencia[];
+  // projetada
+  projecao: "esbocoEmFaces" | "esbocoEmEsboco";
+  esboco?: Referencia;
+  esboco2?: Referencia;
+  faces: Referencia[];
+  bidirecional: boolean;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
-  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef;
+  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva;
 
 export interface Variavel {
   nome: string;
@@ -587,6 +621,13 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Plano${indice}`, modo: "deslocamento", distancia: 20, angulo: 45, inverter: false };
     case "eixoRef":
       return { ...base, tipo, nome: `Eixo${indice}`, modo: "aresta" };
+    case "curva":
+      return {
+        ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
+        anguloInicial: 0, horario: false, inverter: false, conica: { ativa: false, angulo: 10, paraFora: false },
+        pontosTexto: "0; 0; 0\n20; 0; 10\n40; 20; 10", fechada: false, pontos: [], itens: [],
+        projecao: "esbocoEmFaces", faces: [], bidirecional: false,
+      };
   }
 }
 
@@ -607,6 +648,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   espelhar: "Espelhar",
   planoRef: "Plano",
   eixoRef: "Eixo",
+  curva: "Curva",
 };
 
 /**
@@ -623,6 +665,9 @@ export function esbocosAbsorvidos(f: Feature): string[] {
     return [f.perfil, ...f.trajetoria, ...f.guias]
       .flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []))
       .filter((id, i, a) => a.indexOf(id) === i);
+  }
+  if (f.tipo === "curva") {
+    return [f.base, f.esboco, f.esboco2].flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []));
   }
   return "esboco" in f && f.esboco ? [f.esboco] : [];
 }

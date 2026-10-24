@@ -25,8 +25,8 @@ Arquivos:
 
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
-  equações/variáveis globais, material. Pendentes: varredura, loft, ressalto por contorno
-  (especificados em features.md §4–6), filete variável/de face,
+  equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,
+  composta, projetada). Pendentes: filete variável/de face,
   furo avançado, combinar/excluir corpo, rosca cosmética, Instant3D.
 - **Sketch** ✅ Fase 2 + ponto, variantes de retângulo/círculo/arco/rasgo/polígono, filete e chanfro
   de esboço, estender, mover/copiar/girar, padrões de esboço, contornos sombreados.

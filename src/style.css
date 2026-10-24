@@ -928,3 +928,4 @@ textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font
 .cota-modelo-edicao.invalido { border-color: var(--erro); }
 body.disp-tablet .cota-modelo, body.disp-celular .cota-modelo { min-height: 40px; font-size: 16px; }
 .aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }
+textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-monospace, monospace; padding: 8px; border: 1px solid var(--linha); border-radius: 8px; resize: vertical; }

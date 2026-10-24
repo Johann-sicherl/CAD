@@ -437,14 +437,24 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 
 ### Centro de massa · Caixa delimitadora — 🟡 (mostrados em Avaliar → Massa)
 
-## 16. Curvas — planejado junto com varredura/loft (hélice, composta, XYZ, projetada) / ⏸ (linha de partição)
+## 16. Curvas (menu Curvas ▾) — ✅ (linha de partição ⏸)
 
-- **Hélice e espiral**: definido por (passo e revolução · altura e revolução · altura e passo ·
-  espiral); passo constante/variável; altura; revoluções; ângulo inicial; horário/anti-horário;
-  hélice cônica (ângulo, para fora)
-- Linha de partição (silhueta, projeção, interseção)
-- Curva projetada (esboço em faces / esboço em esboço; bidirecional)
-- Curva composta · Curva por pontos XYZ · Curva por pontos de referência
+Recurso **Curva** na árvore; aparece em laranja no modelo e pode ser tocada no viewport ou na
+árvore para entrar na **trajetória**, nas **curvas-guia** da varredura/loft e na **linha de
+centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
+
+- **Hélice e espiral** ✅: círculo de base = esboço com um círculo (centro, diâmetro e plano;
+  pré-selecionado); definido por **passo e revolução · altura e revolução · altura e passo ·
+  espiral**; passo, altura, revoluções, **inverter direção**, **ângulo inicial**, sentido
+  **horário/anti-horário**; caixa **Hélice cônica** (ângulo, para fora). Passo variável ⏸.
+- **Curva por pontos XYZ** ✅: tabela "x; y; z" (um ponto por linha; aceita colar de planilha,
+  vírgula decimal); passa por todos os pontos; **curva fechada**. Importar arquivo de pontos ⏸.
+- **Curva por pontos de referência** ✅: vértices em ordem (↑ ↓); curva fechada.
+- **Curva composta** ✅: esboços, arestas e curvas ligados pelas pontas numa cadeia única
+  (erro claro se houver vão ou ramificação).
+- **Curva projetada** ✅: **esboço em faces** (normal do esboço, inverter, bidirecional) e
+  **esboço em esboço** (dois esboços em planos que se cruzam).
+- Linha de partição (silhueta, projeção, interseção) ⏸
 
 ## 17. Gerais da peça
 

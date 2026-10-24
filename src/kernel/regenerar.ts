@@ -19,14 +19,15 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureCurva, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
-import { trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
+import { arestaDe, encadear, trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
+import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe, projetarEmFaces } from "./curvas";
 import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
@@ -51,7 +52,9 @@ export interface MalhaPeca {
 
 export type InfoReferencia =
   | { id: string; tipo: "plano"; ref: Referencial; tamanho: number }
-  | { id: string; tipo: "eixo"; origem: Vec3; dir: Vec3; comprimento: number };
+  | { id: string; tipo: "eixo"; origem: Vec3; dir: Vec3; comprimento: number }
+  /** Curva 3D: polilinhas para desenhar e tocar no viewport. */
+  | { id: string; tipo: "curva"; linhas: Vec3[][] };
 
 export interface ResultadoRegeneracao {
   malha: MalhaPeca | null;
@@ -89,6 +92,8 @@ interface Ctx {
   ferramentas: Map<string, Ferramenta[]>;
   planos: Map<string, Referencial>;
   eixos: Map<string, { origem: Vec3; dir: Vec3 }>;
+  /** Curvas 3D já calculadas (recursos de curva), como trechos. */
+  curvas: Map<string, Trecho[]>;
   refsSaida: InfoReferencia[];
 }
 
@@ -100,7 +105,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, refsSaida: [] };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), refsSaida: [] };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -551,6 +556,67 @@ function revolucaoRapida(f: FeatureRevolucao): Shape3D {
   return esboco.revolve(r.y, { origin: [0, 0, 0], angle: Math.min(360, Math.max(1, f.angulo)) });
 }
 
+// ---------- curvas 3D ----------
+
+function curvaRecurso(f: FeatureCurva, ctx: Ctx): Trecho[] {
+  switch (f.modo) {
+    case "helice": {
+      if (f.base?.tipo !== "esboco") throw new Error("Escolha o esboço com o círculo de base da hélice.");
+      const esb = esbocoDe(f.base.id, ctx);
+      const r = referencial(esb.suporte, ctx.planos);
+      const pts = mapaPontos(esb);
+      const c = esb.geos.find((g) => g.tipo === "circulo") ?? esb.geos.find((g) => g.tipo === "arco");
+      if (!c || (c.tipo !== "circulo" && c.tipo !== "arco")) throw new Error("O esboço da hélice precisa de um círculo (diâmetro e centro da hélice).");
+      const cc = pts.get(c.c)!;
+      const raio = c.tipo === "circulo" ? c.r : Math.hypot(pts.get(c.ini)!.x - cc.x, pts.get(c.ini)!.y - cc.y);
+      return [{ tipo: "pontos", pts: pontosHelice(f, { c: paraMundo(r, cc.x, cc.y), r: raio, normal: r.normal, x: r.x }) }];
+    }
+    case "xyz":
+      return curvaPorPontos(lerPontosXYZ(f.pontosTexto), f.fechada);
+    case "pontosRef": {
+      if (f.pontos.length < 2) throw new Error("Escolha pelo menos 2 pontos (vértices) em ordem.");
+      return curvaPorPontos(f.pontos.map((p) => pontoDeRef(p, ctx)), f.fechada);
+    }
+    case "composta": {
+      if (!f.itens.length) throw new Error("Escolha os esboços, arestas ou curvas a juntar.");
+      // ligadas pelas pontas numa cadeia única (erro claro se houver vão ou ramificação)
+      return encadear(trechosDe(f.itens, ctx, "A curva composta"), null).trechos;
+    }
+    case "projetada": {
+      if (f.esboco?.tipo !== "esboco") throw new Error("Escolha o esboço a projetar.");
+      const e1 = esbocoDe(f.esboco.id, ctx);
+      const r1 = referencial(e1.suporte, ctx.planos);
+      const arestas1 = trechosDoEsboco(e1, r1).map(arestaDe);
+      if (!arestas1.length) throw new Error("O esboço a projetar não tem curvas (só construção?).");
+      const L = tamanhoCena(ctx);
+      if (f.projecao === "esbocoEmEsboco") {
+        if (f.esboco2?.tipo !== "esboco") throw new Error("Escolha o segundo esboço.");
+        const e2 = esbocoDe(f.esboco2.id, ctx);
+        const r2 = referencial(e2.suporte, ctx.planos);
+        return cruzarEsbocos(arestas1, r1.normal, trechosDoEsboco(e2, r2).map(arestaDe), r2.normal, L);
+      }
+      const peca = exigirPeca(ctx, "A curva projetada em faces");
+      if (!f.faces.length) throw new Error("Escolha as faces onde projetar.");
+      const faces = f.faces.map((x) => {
+        if (x.tipo !== "face") throw new Error("Escolha faces da peça.");
+        return acharFace(peca, x.ass);
+      });
+      return projetarEmFaces(arestas1, f.inverter ? mul3(r1.normal, -1) : r1.normal, faces, L, f.bidirecional);
+    }
+  }
+}
+
+/** Comprimento seguro para "paredes" de projeção: bem maior que a peça. */
+function tamanhoCena(ctx: Ctx): number {
+  try {
+    const b = (ctx.peca?.boundingBox as unknown as { bounds: [Vec3, Vec3] } | undefined)?.bounds;
+    if (b) return Math.max(100, 4 * Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]));
+  } catch {
+    /* sem peça: valor padrão */
+  }
+  return 2000;
+}
+
 // ---------- varredura ----------
 
 /** Trechos de curva de uma lista de referências: esboços e/ou arestas do modelo. */
@@ -562,7 +628,11 @@ function trechosDe(refs: Referencia[], ctx: Ctx, oque: string): Trecho[] {
       out.push(...trechosDoEsboco(esb, referencial(esb.suporte, ctx.planos)));
     } else if (r.tipo === "aresta") {
       out.push(trechoDaAresta(acharAresta(exigirPeca(ctx, oque), r.ass)));
-    } else throw new Error(`${oque}: use esboços ou arestas.`);
+    } else if (r.tipo === "curva") {
+      const c = ctx.curvas.get(r.id);
+      if (!c) throw new Error(`${oque}: a curva precisa vir antes deste recurso (e não estar suprimida ou com erro).`);
+      out.push(...c);
+    } else throw new Error(`${oque}: use esboços, arestas ou curvas.`);
   }
   return out;
 }
@@ -767,7 +837,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
   const tam = (caixa(ctx)?.diag ?? 100) * 0.6;
   for (const ri of ctx.refsSaida) {
     if (ri.tipo === "plano") ri.tamanho = Math.max(30, tam);
-    else ri.comprimento = Math.max(40, tam * 1.4);
+    else if (ri.tipo === "eixo") ri.comprimento = Math.max(40, tam * 1.4);
   }
 
   const peca = ctx.peca;
@@ -976,6 +1046,13 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       }
       ctx.planos.set(f.id, r);
       ctx.refsSaida.push({ id: f.id, tipo: "plano", ref: r, tamanho: 0 });
+      return;
+    }
+
+    case "curva": {
+      const t = curvaRecurso(f, ctx);
+      ctx.curvas.set(f.id, t);
+      ctx.refsSaida.push({ id: f.id, tipo: "curva", linhas: polilinhasDe(t, arestaDe) });
       return;
     }
 
