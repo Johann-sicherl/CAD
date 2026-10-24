@@ -75,41 +75,179 @@ Igual à Extrusão, mais:
 **Caixa "Recurso fino"**: Uma direção / Plano médio / Duas direções, espessura(s)
 **Caixa "Contornos selecionados"**, **Escopo do recurso**
 
-## 4. Varredura / Corte por varredura (Swept Boss/Cut) — F3 (final)
+## 4. Varredura / Corte por varredura (Swept Boss/Base · Swept Cut) — planejado
+
+Leva um **perfil** ao longo de uma **trajetória**. Usos: tubos e mangueiras, cabos, molas e roscas
+(com hélice), canais e rasgos curvos, perfis de vedação, corrimãos.
+
+Seleção inicial: esboço fechado + esboço aberto/aresta já selecionados → vão para Perfil e
+Trajetória (nessa ordem). Sem seleção, o primeiro campo rosa (Perfil) fica ativo.
+Regra: o perfil deve estar **no início da trajetória**, de preferência num plano normal a ela
+(aviso amarelo se não estiver; a varredura parte de onde o perfil está).
 
 **Caixa "Perfil e trajetória"**
-- Tipo de perfil: **Perfil de esboço** · **Perfil circular** (diâmetro)
-- Perfil (esboço), Trajetória (esboço/aresta/curva)
-- Corte: opção **Varredura de corpo sólido** (ferramenta = corpo)
+- **Tipo de perfil** (lista): Perfil de esboço *(padrão)* · Perfil circular
+  - Perfil de esboço → campo rosa **Perfil**: esboço fechado, região/contorno de esboço ou face plana
+    (perfil aberto só com Recurso fino)
+  - Perfil circular → campo **Diâmetro** (mm) — o círculo é criado sozinho, normal à trajetória
+- Campo azul **Trajetória**: linha/arco/spline de esboço (aberto ou fechado), aresta(s) do modelo,
+  hélice/espiral, curva composta ou curva 3D
+  - **Selecionar cadeia**: toque numa aresta pega as arestas tangentes encadeadas
+- Corte: **Tipo** (lista) Perfil · **Corpo sólido** (ferramenta = sólido de revolução varrido;
+  simula fresa/rebolo) — corpo sólido: ⏸
+
 **Caixa "Opções"**
-- Orientação do perfil: Seguir trajetória · Manter normal constante
-- Torção do perfil: Nenhuma · Minimizar torção · Seguir trajetória e 1ª guia · Seguir 1ª e 2ª guias ·
-  Especificar valor de torção (graus/radianos/voltas, sentido) · Especificar vetor de direção ·
-  Tangente às faces adjacentes · Natural
-- Mesclar faces tangentes · Mostrar pré-visualização · Mesclar resultado · Alinhar com faces finais
-**Caixa "Curvas-guia"**: lista (ordem ↑↓), mesclar faces suaves, mostrar seções (nº)
-**Caixa "Tangência inicial/final"**: Nenhuma · Tangente à trajetória
-**Caixa "Recurso fino"**, **Exibição de curvatura** (malha, zebra, pentes), **Escopo**
+- **Orientação/torção do perfil** (lista):
+  - Seguir trajetória *(padrão)* — perfil mantém o mesmo ângulo em relação à trajetória
+  - Manter normal constante — perfil sempre paralelo ao plano inicial
+  - Seguir trajetória e 1ª curva-guia *(com curvas-guia)*
+  - Seguir 1ª e 2ª curvas-guia *(com 2 curvas-guia)*
+- **Tipo de torção** (lista, trajetória 3D):
+  - Nenhuma · **Minimizar torção** · Natural
+  - **Especificar valor de torção** → unidade (lista: Graus · Radianos · Voltas) + valor + **Inverter**
+  - **Especificar vetor de direção** → campo azul (plano, face plana, aresta reta, eixo): o perfil
+    mantém o alinhamento com o vetor
+  - **Tangente às faces adjacentes** — quando a trajetória corre sobre arestas do modelo
+- **Mesclar faces tangentes** (caixa) — junta faces que ficariam tangentes em várias faces
+- **Mostrar pré-visualização** (caixa)
+- **Mesclar resultado** (caixa, ressalto) — une ao corpo existente
+- **Alinhar com faces finais** (caixa) — estende/ajusta a varredura até as faces que ela encontra
 
-## 5. Loft / Corte por loft (Lofted Boss/Cut) — F3 (final)
+**Caixa "Curvas-guia"** (caixa de seleção no título)
+- Lista rosa de **curvas-guia** (esboços ou arestas que tocam o perfil) com **↑ ↓** (ordem) e remover
+- O perfil **escala/deforma** para seguir as guias ao longo da trajetória
+- **Mesclar faces suaves** (caixa) — desligado: faces separadas em cada segmento da guia
+- **Mostrar seções** (olho + nº da seção) — inspeciona o perfil intermediário
 
-**Caixa "Perfis"**: lista ordenada (↑↓), conectores (mapeamento de pontos) arrastáveis
-**Caixa "Restrições de início/fim"**
-- Padrão · Nenhuma · Vetor de direção (+ referência) · Normal ao perfil · Tangente à face ·
-  Curvatura com a face
-- Ângulo de inclinação, comprimento de tangência, aplicar a todos, inverter
-**Caixa "Curvas-guia"**: lista, influência (até a próxima guia, até a próxima aresta viva,
-  até a próxima aresta, global), tangência por guia
-**Caixa "Parâmetros de linha de centro"**: curva de centro, nº de seções
-**Caixa "Ferramentas de esboço"**: arrastar esboço
-**Caixa "Opções"**: mesclar faces tangentes, fechar loft, mostrar pré-visualização,
-  mesclar resultado, microtolerância
-**Recurso fino**, **Exibição de curvatura**, **Escopo**
+**Caixa "Tangência de início/fim"**
+- **Tangência inicial** (lista): Nenhuma · Tangente à trajetória
+- **Tangência final** (lista): Nenhuma · Tangente à trajetória
 
-## 6. Ressalto/Corte por limite (Boundary) — ⏸
+**Caixa "Recurso fino"** (caixa no título) — como na extrusão: Uma direção · Plano médio ·
+Duas direções; espessura T1 (T2); inverter lado. Perfil aberto exige recurso fino.
 
-Direção 1 e 2 (curvas, tipo de tangência, alinhamento, influência, inclinação),
-opções (mesclar tangentes, fechar, aparar pela direção 1), recurso fino, curvatura.
+**Caixa "Exibição de curvatura"** — Pré-visualização de malha (densidade) · Listras zebra ·
+Pentes de curvatura (direção 1/2, escala, densidade)
+
+**Caixa "Escopo do recurso"** (corte/multicorpo) — Todos os corpos · Corpos selecionados ·
+Seleção automática
+
+Kernel: `BRepOffsetAPI_MakePipeShell` — Seguir trajetória (Frenet), Minimizar torção (Frenet
+corrigido), Manter normal / Vetor de direção (direção fixa), Seguir 1ª guia (espinha auxiliar),
+lei de escala; valor de torção = perfil girado em seções intermediárias; 2 guias e tangência
+com faces adjacentes = seções calculadas por nós (mais trabalho).
+
+## 5. Loft / Corte por loft (Lofted Boss/Base · Lofted Cut) — planejado
+
+Transição suave entre **dois ou mais perfis** em planos diferentes. Usos: dutos e funis de
+transição (quadrado → redondo), bicos, alças, cascos, peças de chapa grossa conformada.
+
+Seleção inicial: perfis já selecionados (esboços/faces) entram na lista **na ordem de seleção**.
+
+**Caixa "Perfis"**
+- Lista rosa ordenada com **↑ ↓** e remover: esboços fechados, regiões de esboço, faces planas;
+  **vértice/ponto** aceito como **primeiro ou último** perfil (loft até um ponto — bico)
+- Tocar o perfil **perto do vértice** que deve se ligar ao vértice correspondente do outro perfil
+  (define a sincronização)
+- **Conectores** (linhas entre perfis com alças arrastáveis no viewport):
+  - Mostrar conectores · arrastar alça ao longo do contorno · Adicionar conector · Excluir conector
+  - Perfis com nº diferente de vértices: divisão automática das arestas
+
+**Caixa "Restrição de início/fim"** (uma lista para o início e outra para o fim)
+- Restrição (lista):
+  - **Padrão** — aproxima uma parábola usando o 1º e o último perfil
+  - **Nenhuma** — sem restrição de tangência
+  - **Vetor de direção** → campo azul (plano, aresta, eixo) + Ângulo de inclinação + Comprimento da
+    tangente + Inverter
+  - **Normal ao perfil** → Ângulo de inclinação + Comprimento da tangente + Inverter
+  - **Tangente à face** (perfil sobre face existente) → Comprimento da tangente
+  - **Curvatura com a face** (continuidade de curvatura) → Comprimento da tangente
+- **Aplicar a todos** (caixa) — desligado: uma alça de comprimento por segmento do perfil
+- **Próxima face** (botão) — alterna a face de referência quando há mais de uma
+
+**Caixa "Curvas-guia"** (caixa no título)
+- Lista rosa de **curvas-guia** com **↑ ↓** — devem tocar todos os perfis (relação perfurar)
+- **Influência da curva-guia** (lista): Até a próxima guia · Até a próxima aresta viva ·
+  Até a próxima aresta · Global (linear)
+- **Tangência** por guia (lista): Nenhuma · Normal ao perfil · Vetor de direção · Tangente à face +
+  Ângulo de inclinação + Inverter
+
+**Caixa "Parâmetros de linha de centro"** (alternativa às guias)
+- Campo azul **Curva de linha de centro** (esboço/aresta) — os perfis seguem essa espinha
+- **Número de seções** (deslizante) + Mostrar seções
+
+**Caixa "Ferramentas de esboço"** — **Arrastar esboço** (move um perfil 3D e vê o loft mudar) ·
+Desfazer arrasto
+
+**Caixa "Opções"**
+- **Mesclar faces tangentes** (caixa)
+- **Fechar loft** (caixa) — liga o último perfil ao primeiro (anel; mín. 3 perfis)
+- **Mostrar pré-visualização** (caixa)
+- **Mesclar resultado** (caixa, ressalto)
+- **Microtolerância** (caixa) — para perfis com arestas muito pequenas
+- **Faces regradas** (caixa, nossa) — retas entre perfis em vez de transição suave
+
+**Caixa "Recurso fino"** · **Caixa "Exibição de curvatura"** · **Caixa "Escopo do recurso"** —
+como na varredura.
+
+Kernel: `BRepOffsetAPI_ThruSections` — perfis, ponto inicial/final, faces regradas, suavização,
+continuidade, fechar loft (repete o 1º perfil); conectores = escolhemos o vértice inicial e o
+sentido de cada contorno. Restrições de início/fim, curvas-guia e linha de centro não existem
+prontas: geramos seções intermediárias (amostrando guias/linha de centro) — mais trabalho.
+
+## 6. Ressalto por contorno / Corte por contorno (Boundary Boss/Base · Boundary Cut) — planejado
+
+Sólido definido por uma **rede de curvas em duas direções**, com as duas direções de mesmo
+peso e controle fino de tangência/curvatura nas bordas. Mais preciso e suave que o loft:
+carcaças ergonômicas, cabos de ferramenta, carenagens, bocais. (Recurso **sólido**: entra em
+Features; as superfícies continuam fora do escopo.)
+
+Seleção inicial: curvas/esboços/arestas selecionados entram na **Direção 1**, em ordem.
+
+**Caixa "Direção 1"**
+- Lista rosa de **curvas** (esboços, arestas, bordas de face) com **↑ ↓** e remover; ponto aceito
+  no início/fim
+- Por curva selecionada na lista — **Tipo de tangência** (lista):
+  - Padrão · Nenhuma
+  - **Direção de tangência** → Alinhar com a próxima seção · Alinhar normal ao perfil · Vetor de
+    direção (campo azul)
+  - **Tangência com a face** · **Curvatura com a face** (curva sobre aresta de face existente)
+  - Campos: **Comprimento da tangente** · **Ângulo de inclinação** · **Inverter** · **Aplicar a todos**
+- **Conectores** — Mostrar · arrastar alças · Adicionar · Excluir (como no loft)
+
+**Caixa "Direção 2"** (caixa no título)
+- Lista azul de **curvas cruzando** as da Direção 1 (formam a rede)
+- Mesmo **Tipo de tangência** por curva da Direção 1
+- **Influência da curva** (lista, para curvas que não fecham a rede): Global · Até a próxima curva ·
+  Até a próxima aresta viva · Até a próxima aresta · Linear
+
+**Caixa "Opções e visualização"**
+- **Mesclar faces tangentes** (caixa)
+- **Fechar superfície** (caixa) — fecha a Direção 1 em anel
+- **Mostrar pré-visualização** (caixa)
+- **Aparar pela direção 1** (caixa) — corta o que as curvas da Direção 2 passarem além
+- **Mesclar resultado** (caixa, ressalto)
+- **Mostrar conectores** (caixa)
+
+**Caixa "Recurso fino"** · **Caixa "Exibição de curvatura"** (malha, zebra, pentes por direção,
+escala e densidade) · **Caixa "Escopo do recurso"** — como na varredura.
+
+Kernel: `BRepOffsetAPI_MakeFilling` (preenchimento com restrições de borda C0/G1/G2 e curvas
+internas = Direção 2) gera as faces; tampas planas + `Sewing` + `MakeSolid` fecham o sólido.
+É o mais complexo dos três: implementar por último.
+
+### Pré-requisitos para os três
+
+- **Curvas** (seção 16): hélice/espiral, curva composta, curva por pontos XYZ, curva projetada —
+  trajetórias e guias 3D
+- **Esboço 3D** ou relação **Perfurar** no esboço (perfil tocando a trajetória/guia fora do plano)
+- Seleção de **regiões** de esboço e **cadeias de arestas** (já existem em parte)
+
+### Ordem sugerida
+1. Varredura (perfil de esboço/circular, seguir trajetória, manter normal, torção por valor,
+   tangência início/fim, recurso fino) + hélice
+2. Loft (perfis, ponto, conectores, fechar, faces regradas; depois restrições e guias)
+3. Ressalto por contorno
 
 ## 7. Filete (Fillet) — 🟡
 
@@ -295,7 +433,7 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 
 ### Centro de massa · Caixa delimitadora — 🟡 (mostrados em Avaliar → Massa)
 
-## 16. Curvas — F3 (hélice) / ⏸ (demais)
+## 16. Curvas — planejado junto com varredura/loft (hélice, composta, XYZ, projetada) / ⏸ (linha de partição)
 
 - **Hélice e espiral**: definido por (passo e revolução · altura e revolução · altura e passo ·
   espiral); passo constante/variável; altura; revoluções; ângulo inicial; horário/anti-horário;
