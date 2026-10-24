@@ -51,6 +51,7 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
+- **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
 - **Também precisa funcionar no computador** (Chrome/Edge com mouse e teclado), com o mouse dos CADs
@@ -70,6 +71,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   Continua proibido copiar ícones, cores da marca, logotipos, textos e nomes registrados.
   A especificação campo a campo de cada comando está em **`docs/funcional/`** — consultar antes de
   implementar qualquer comando e atualizar o status (✅/🟡/fase) ao entregar.
+  O Johann forneceu o guia introdutório oficial do CAD de referência (PDF no Drive dele, **não
+  versionar**); a comparação e as lacunas priorizadas estão em `docs/funcional/referencia-introducao.md`
+  — usar como base para os próximos pedidos.
 - Layout de referência (genérico de CAD): barra superior com menus/ações rápidas → linha de ícones
   da aba ativa → abas Features / Sketch / Sheet Metal / Avaliar; árvore à esquerda com planos Frontal,
   Superior, Lateral, Origem e features; barra de vistas flutuante no topo do viewport;
@@ -96,8 +100,10 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
    análises de inclinação, espessura, zebra e curvatura, tempo de reconstrução por recurso.
    Medir, propriedades de massa e vista de seção podem ser antecipados se forem úteis antes.
 
-Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); próxima: **Fase 4**
-(Sheet Metal). Pendentes da Fase 3: varredura, loft, filete variável/de face, furo avançado.
+Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
+com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
+próprio em `src/kernel/chapa.ts`). Pendentes da Fase 4: dobra esboçada, junta, meia-esquadria,
+cantos, desdobrar/dobrar, converter em chapa. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
 a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.

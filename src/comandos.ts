@@ -71,11 +71,11 @@ export const ABAS: Aba[] = [
       {
         id: "grupo-curvas", rotulo: "Curvas", icone: "helice", dica: "Curvas 3D: trajetórias e guias para varredura e loft", grupo: 3,
         itens: [
-          { id: "curva-projetada", rotulo: "Curva projetada", icone: "curvaProjetada", dica: "Projeta um esboço em faces ou cruza dois esboços", grupo: 3, emBreve: true },
-          { id: "curva-composta", rotulo: "Curva composta", icone: "curvaComposta", dica: "Junta esboços, arestas e curvas numa só curva", grupo: 3, emBreve: true },
-          { id: "curva-xyz", rotulo: "Curva por pontos XYZ", icone: "curvaXYZ", dica: "Curva suave por uma tabela de coordenadas", grupo: 3, emBreve: true },
-          { id: "curva-pontos", rotulo: "Curva por pontos de referência", icone: "curvaPontos", dica: "Curva por vértices e pontos escolhidos", grupo: 3, emBreve: true },
-          { id: "helice", rotulo: "Hélice e espiral", icone: "helice", dica: "Hélice (molas, roscas) ou espiral a partir de um círculo", grupo: 3, emBreve: true },
+          { id: "curva-projetada", rotulo: "Curva projetada", icone: "curvaProjetada", dica: "Projeta um esboço em faces ou cruza dois esboços", grupo: 3 },
+          { id: "curva-composta", rotulo: "Curva composta", icone: "curvaComposta", dica: "Junta esboços, arestas e curvas numa só curva", grupo: 3 },
+          { id: "curva-xyz", rotulo: "Curva por pontos XYZ", icone: "curvaXYZ", dica: "Curva suave por uma tabela de coordenadas", grupo: 3 },
+          { id: "curva-pontos", rotulo: "Curva por pontos de referência", icone: "curvaPontos", dica: "Curva por vértices e pontos escolhidos", grupo: 3 },
+          { id: "helice", rotulo: "Hélice e espiral", icone: "helice", dica: "Hélice (molas, roscas) ou espiral a partir de um círculo", grupo: 3 },
         ],
       },
     ],
@@ -163,7 +163,7 @@ export const ABAS: Aba[] = [
           { id: "chanfroEsboco", rotulo: "Chanfro de esboço", icone: "chanfroEsboco", dica: "Chanfra um canto do esboço", grupo: 2 },
         ],
       },
-      { id: "texto", rotulo: "Texto", icone: "texto", dica: "Texto de esboço (gravação, marcação)", grupo: 2, emBreve: true },
+      { id: "texto", rotulo: "Texto", icone: "texto", dica: "Texto de esboço (gravação, marcação)", grupo: 2 },
       { id: "ponto", rotulo: "Ponto", icone: "ponto", dica: "Ponto solto (posição de furo, referência)", grupo: 2 },
       {
         id: "grupo-aparar", rotulo: "Aparar", icone: "aparar", dica: "Aparar e estender", grupo: 3,
@@ -181,7 +181,13 @@ export const ABAS: Aba[] = [
         ],
       },
       { id: "offset", rotulo: "Offset", icone: "offset", dica: "Copia uma cadeia de entidades a uma distância (O)", grupo: 3 },
-      { id: "espelhar", rotulo: "Espelhar", icone: "espelharEsboco", dica: "Espelha a seleção em torno de uma linha (M)", grupo: 3 },
+      {
+        id: "grupo-espelhar-esboco", rotulo: "Espelhar", icone: "espelharEsboco", dica: "Espelhar entidades", grupo: 3,
+        itens: [
+          { id: "espelhar", rotulo: "Espelhar entidades", icone: "espelharEsboco", dica: "Espelha a seleção em torno de uma linha (M)", grupo: 3 },
+          { id: "espelhoDinamico", rotulo: "Espelhamento dinâmico", icone: "espelhoDinamico", dica: "Desenha de um lado e aparece do outro (liga/desliga)", grupo: 3 },
+        ],
+      },
       {
         id: "grupo-padrao-esboco", rotulo: "Padrão", icone: "padraoLinearEsboco", dica: "Padrões de esboço", grupo: 3,
         itens: [
@@ -203,13 +209,16 @@ export const ABAS: Aba[] = [
     id: "chapa",
     rotulo: "Sheet Metal",
     comandos: [
-      { id: "flange-base", rotulo: "Flange base", icone: "flangeBase", dica: "Chapa a partir de um esboço fechado", grupo: 0, fase: 4 },
-      { id: "flange-aresta", rotulo: "Flange de aresta", icone: "flangeAresta", dica: "Dobra uma aba a partir de uma aresta", grupo: 0, fase: 4 },
-      { id: "dobra", rotulo: "Dobra por esboço", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha", grupo: 0, fase: 4 },
-      { id: "alivio", rotulo: "Alívios", icone: "alivio", dica: "Alívios de dobra e de canto", grupo: 1, fase: 4 },
-      { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, fator K e raio", grupo: 1, fase: 4 },
-      { id: "planificar", rotulo: "Planificar", icone: "planificar", dica: "Mostra a chapa planificada", grupo: 2, fase: 4 },
-      { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Planificado em DXF para corte", grupo: 2, fase: 4 },
+      { id: "flange-base", rotulo: "Flange base", icone: "flangeBase", dica: "Chapa a partir de um esboço: fechado vira placa, aberto vira perfil dobrado", grupo: 0 },
+      { id: "aba-chapa", rotulo: "Aba", icone: "aba", dica: "Esboço fechado numa face da chapa vira aba com a mesma espessura", grupo: 0 },
+      { id: "flange-aresta", rotulo: "Flange de aresta", icone: "flangeAresta", dica: "Dobra uma aba a partir de arestas da chapa", grupo: 0 },
+      { id: "bainha", rotulo: "Bainha", icone: "bainha", dica: "Dobra a borda sobre ela mesma (fechada, aberta, enrolada)", grupo: 0 },
+      { id: "dobra", rotulo: "Dobra por esboço", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha", grupo: 0, emBreve: true },
+      { id: "corte-chapa", rotulo: "Corte na chapa", icone: "corteChapa", dica: "Corta através da chapa (normal à chapa) a partir de um esboço numa face", grupo: 1 },
+      { id: "alivio", rotulo: "Alívios de canto", icone: "alivio", dica: "Alívios de canto e fechar canto", grupo: 1, emBreve: true },
+      { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, raio de dobra e fator K", grupo: 1 },
+      { id: "planificar", rotulo: "Planificar", icone: "planificar", dica: "Liga/desliga a vista da chapa planificada", grupo: 2 },
+      { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Planificado em DXF (R12, mm) e lista de corte", grupo: 2 },
     ],
   },
   {

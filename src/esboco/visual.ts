@@ -9,7 +9,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import type { CotaEsboco, FeatureEsboco } from "../model";
 import { ehCota } from "../model";
 import { desenharCota } from "./cotas";
-import { amostrar, aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, type P2 } from "./geometria";
+import { aninhamento, EIXO_H, EIXO_V, encontrarLacos, mapaPontos, ORIGEM, pontoNoPoligono, pontosDaGeo, tracosDaGeo, type P2 } from "./geometria";
 import type { Referencial } from "./referencial";
 
 export const CORES = {
@@ -39,6 +39,8 @@ export interface OpcoesCamada {
   mostrarEixos?: boolean;
   /** Cota sendo posicionada (segue o cursor). */
   cotaPrevia?: CotaEsboco | null;
+  /** Fora da edição: desenhar as cotas (duplo clique num recurso mostra as cotas no modelo). */
+  mostrarCotas?: boolean;
 }
 
 type Traco = { cor: number; largura: number; tracejado: boolean };
@@ -78,14 +80,13 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
   }
 
   for (const g of esb.geos) {
-    const pl = amostrar(g, pts, passo);
     const seg: P2[] = [];
-    for (let i = 0; i + 1 < pl.length; i++) seg.push(pl[i], pl[i + 1]);
+    for (const pl of tracosDaGeo(g, pts, passo)) for (let i = 0; i + 1 < pl.length; i++) seg.push(pl[i], pl[i + 1]);
     const largura = o.editando ? (g.construcao ? 1.4 : 2.4) : 1.6;
     adicionar({ cor: corDe(g.id), largura, tracejado: !!g.construcao }, seg);
   }
 
-  if (o.editando) {
+  if (o.editando || o.mostrarCotas) {
     for (const c of esb.restricoes) {
       if (!ehCota(c)) continue;
       const d = desenharCota(c, esb, o.mmPx);

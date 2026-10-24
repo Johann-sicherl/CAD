@@ -19,19 +19,27 @@ Arquivos:
 | Sketch (esboço: entidades, ferramentas, cotas, relações) | [sketch.md](sketch.md) |
 | Sheet Metal (chapa metálica) | [chapa.md](chapa.md) |
 | Avaliar (medições, propriedades de massa, análises) | [avaliar.md](avaliar.md) |
+| Comparação com o guia introdutório do CAD de referência (lacunas priorizadas) | [referencia-introducao.md](referencia-introducao.md) |
 
 ## Estado da implementação (22/10/2026)
 
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
-  equações/variáveis globais, material. Pendentes: varredura, loft, ressalto por contorno
-  (especificados em features.md §4–6), filete variável/de face,
+  equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,
+  composta, projetada). Pendentes: filete variável/de face,
   furo avançado, combinar/excluir corpo, rosca cosmética, Instant3D.
 - **Sketch** ✅ Fase 2 + ponto, variantes de retângulo/círculo/arco/rasgo/polígono, filete e chanfro
   de esboço, estender, mover/copiar/girar, padrões de esboço, contornos sombreados.
 - **Avaliar** ✅ medir, massa, vista de seção, verificar, inclinação, espessura, zebra, curvatura,
   desempenho. Pendente: propriedades de seção.
-- **Sheet Metal**: Fase 4 (ainda não começou).
+- **Sheet Metal** 🟡 Fase 4 (núcleo): flange base (placa ou perfil aberto), aba, flange de aresta,
+  bainha (fechada, aberta, enrolada), corte na chapa, tabela material/espessura/K, planificar,
+  DXF com lista de corte. Pendentes: dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar,
+  converter em chapa, conformação. Detalhe em [chapa.md](chapa.md).
+- **Barra de vistas** (topo do viewport) ✅ recolhida numa setinha; aberta mostra: ampliar para caber,
+  zoom por área (arrastar retângulo; Esc cancela), vista de seção, orientação ▾ (vistas padrão e
+  normal a), ocultar/mostrar itens ▾ (ocultar todos os tipos; planos, eixos, origem, esboços) e
+  configurações de vista ▾ (estilo de exibição). Pendentes: vista anterior, aparência, cena.
 
 Legenda de status em cada campo/comando:
 

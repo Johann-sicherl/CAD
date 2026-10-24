@@ -43,7 +43,7 @@ function inverter(t: Trecho): Trecho {
   return { ...t, pts: [...t.pts].reverse() };
 }
 
-function arestaDe(t: Trecho): Edge {
+export function arestaDe(t: Trecho): Edge {
   switch (t.tipo) {
     case "linha": return makeLine(t.a, t.b);
     case "arco": return makeThreePointArc(t.a, t.m, t.b);

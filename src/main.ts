@@ -7,17 +7,22 @@ import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
   documentoVazio,
+  ehCota,
   esbocosAbsorvidos,
   MATERIAIS,
   NOME_PLANO,
   novaFeature,
   novoEsboco,
   ROTULO_TIPO,
+  TABELA_CHAPA,
   validarDocumento,
   type Documento,
   type Feature,
   type FeatureEsboco,
+  type FeatureCurva,
+  type FeatureExtrusao,
   type FeatureFuro,
+  type FeatureFlangeBase,
   type Plano,
   type Referencia,
   type SuporteEsboco,
@@ -26,7 +31,15 @@ import {
 import { Viewport, type Entidade, type EstiloExibicao, type IdReferencia, type TipoEntidade, type Vista } from "./viewport";
 import { EditorEsboco, type Ferramenta, type Hospedeiro } from "./esboco/editor";
 import { renderizarPainelEsboco } from "./esboco/painel";
-import { eixoXParaNormal, escalar, planosResolvidos, referencial } from "./esboco/referencial";
+import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
+import { desenharCota, textoCota } from "./esboco/cotas";
+import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
+import {
+  ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
+  excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
+  valorNaConfiguracao,
+} from "./configuracoes";
+import type * as THREE from "three";
 import { SolverEsboco } from "./esboco/solver";
 import { construirCamada, descartarCamada } from "./esboco/visual";
 import { aninhamento, encontrarLacos } from "./esboco/geometria";
@@ -62,7 +75,17 @@ interface Prefs {
   dispositivo?: Dispositivo;
   /** Botões com menu ▾: última subfunção usada de cada um (id do botão → id da subfunção). */
   ultimoMenu?: Record<string, string>;
+  /** Barra de vistas aberta (recolhida, só a setinha aparece). */
+  barraVistasAberta?: boolean;
+  /** Ocultar/mostrar itens: tipos ocultos de uma vez e "ocultar todos os tipos". */
+  tiposOcultos?: TipoItem[];
+  ocultarTudo?: boolean;
+  /** Filtro de seleção: só estes tipos podem ser tocados no modelo (vazio = desligado). */
+  filtroSelecao?: TipoFiltro[];
+  filtroAnterior?: TipoFiltro[];
 }
+type TipoFiltro = "face" | "aresta" | "vertice" | "plano" | "eixo" | "curva";
+type TipoItem = "planos" | "eixos" | "origem" | "esbocos";
 type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
   aba: "features",
@@ -72,6 +95,16 @@ const prefs: Prefs = {
   ...lerJSON<Partial<Prefs>>(CHAVE_PREFS),
 };
 const salvarPrefs = () => gravarJSON(CHAVE_PREFS, prefs);
+
+/** O tipo de item está oculto pela barra de vistas (por tipo ou por "ocultar todos os tipos")? */
+const tipoOculto = (t: TipoItem) => !!prefs.ocultarTudo || (prefs.tiposOcultos ?? []).includes(t);
+
+/** Planos padrão e origem: visibilidade de cada um (árvore) combinada com a dos tipos. */
+function aplicarVisibilidadeRefs() {
+  for (const id of Object.keys(prefs.refsVisiveis) as IdReferencia[]) {
+    viewport.definirVisibilidadeReferencia(id, prefs.refsVisiveis[id] && !tipoOculto(id === "origem" ? "origem" : "planos"));
+  }
+}
 
 // ---------- estado ----------
 /** Item selecionado na árvore (recurso ou plano principal). */
@@ -135,7 +168,7 @@ const viewport = new Viewport($("viewport"));
 const kernel = new ClienteKernel(aoRegenerar);
 
 viewport.definirEstilo(prefs.estilo);
-for (const [id, vis] of Object.entries(prefs.refsVisiveis)) viewport.definirVisibilidadeReferencia(id as IdReferencia, vis);
+aplicarVisibilidadeRefs();
 aplicarMaterial();
 
 kernel.pronto
@@ -170,7 +203,7 @@ function regenerar(atraso = 0) {
     }
     if (estadoKernel === "pronto") estadoKernel = "regenerando";
     atualizarStatus();
-    kernel.regenerar(ativas());
+    kernel.regenerar(ativas(), planificado);
   }, atraso);
 }
 
@@ -201,9 +234,20 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
     else if (el) msg ? (el.textContent = msg) : el.remove();
   }
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
+  // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
+  if (recursoComCotas) {
+    const f = doc.features.find((x) => x.id === recursoComCotas);
+    if (f) mostrarCotasNoModelo(f);
+    else fecharCotasNoModelo();
+  }
+  atualizarAlcas();
 }
 
 function atualizarStatus() {
+  // filtro de seleção ligado: aviso fixo na barra de status (toque desliga)
+  const fs = $("st-filtro");
+  fs.hidden = !filtroLigado();
+  if (filtroLigado()) fs.textContent = `Filtro: ${prefs.filtroSelecao!.map((x) => TIPOS_FILTRO.find((y) => y[0] === x)![1].toLowerCase()).join(", ")} ✕`;
   const k = $("st-kernel");
   k.textContent = {
     iniciando: "Kernel: iniciando…",
@@ -370,6 +414,7 @@ function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
       (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
     b.setAttribute("aria-pressed", String(ativo));
   }
+  if (aba === "chapa" && c.id === "planificar") b.setAttribute("aria-pressed", String(planificado));
   if (sairDoEsboco) b.classList.add("cmd-sair");
   b.onclick = () => executarComando(c, aba, b);
   return b;
@@ -387,7 +432,9 @@ function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
   esconderBarraContexto();
   if (aba === "sketch") return void comandoEsboco(c, botao);
   if (aba === "avaliar") return comandoAvaliar(c.id);
+  if (aba === "chapa" && ["planificar", "dxf", "material"].includes(c.id)) return comandoChapa(c.id);
   if (editor) sairEsboco();
+  if (planificado) alternarPlanificado(false);
   if (comando) confirmarComando();
   criarRecurso(c.id);
 }
@@ -400,6 +447,13 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
+  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa",
+  helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
+};
+
+/** Modo de curva de cada item do menu Curvas ▾. */
+const MODO_CURVA: Record<string, FeatureCurva["modo"]> = {
+  helice: "helice", "curva-xyz": "xyz", "curva-pontos": "pontosRef", "curva-composta": "composta", "curva-projetada": "projetada",
 };
 
 function ultimoEsbocoLivre(): FeatureEsboco | null {
@@ -419,6 +473,8 @@ function nomeNovo(tipo: Feature["tipo"]) {
 }
 
 function criarRecurso(id: string) {
+  // com a chapa já criada, a Flange base vira Aba (como nos CADs profissionais)
+  if (id === "flange-base" && ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida)) id = "aba-chapa";
   const tipo = TIPO_POR_COMANDO[id];
   if (!tipo) return;
   if (tipo === "furo") return iniciarFuro();
@@ -506,11 +562,18 @@ function criarRecurso(id: string) {
       f.faces = faces;
       f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XZ" }; // Superior
       break;
-    case "nervura": {
+    case "nervura":
+    case "flangeBase":
+    case "abaChapa":
+    case "corteChapa": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
       if (perfil) f.esboco = perfil.id;
       break;
     }
+    case "flangeAresta":
+    case "bainha":
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      break;
     case "padraoLinear":
     case "padraoCircular":
     case "espelhar":
@@ -555,6 +618,24 @@ function criarRecurso(id: string) {
       } else if (r) {
         f.ref1 = r;
         if (r.tipo === "face") f.modo = r.ass.geom === "cilindro" ? "cilindro" : "aresta";
+      }
+      break;
+    }
+    case "curva": {
+      f.modo = MODO_CURVA[id];
+      // pré-seleção: esboço (base da hélice / esboço a projetar), vértices, arestas e faces tocados
+      const esb = esbocoSel ?? ultimoEsbocoLivre();
+      if (f.modo === "helice" && esb) f.base = { tipo: "esboco", id: esb.id };
+      if (f.modo === "projetada") {
+        if (esbocoSel) f.esboco = { tipo: "esboco", id: esbocoSel.id };
+        f.faces = faces;
+      }
+      if (f.modo === "pontosRef") f.pontos = selPeca.filter((x) => x.tipo === "vertice");
+      if (f.modo === "composta") {
+        f.itens = [
+          ...featsSel.flatMap((x): Referencia[] => (x.tipo === "esboco" ? [{ tipo: "esboco", id: x.id }] : x.tipo === "curva" ? [{ tipo: "curva", id: x.id }] : [])),
+          ...selPeca.filter((x) => x.tipo === "aresta"),
+        ];
       }
       break;
     }
@@ -623,6 +704,7 @@ function dadosEsquema(f: Feature): DadosEsquema {
 
 function abrirComando(f: Feature, novo: boolean) {
   if (editor) sairEsboco();
+  fecharCotasNoModelo();
   fecharAvaliacao();
   comando = {
     f, novo, snapshot: JSON.stringify(doc), campo: null, recolhidas: new Set(),
@@ -692,6 +774,7 @@ function renderizarComando() {
     recolhidas: c.recolhidas,
   });
   atualizarDestaques();
+  atualizarAlcas();
 }
 
 function confirmarComando() {
@@ -718,6 +801,7 @@ function cancelarComando() {
 
 function fecharComando() {
   comando = null;
+  viewport.mostrarAlcas([]);
   mostrarPainel(editor ? "esboco" : "arvore");
   atualizarDestaques();
 }
@@ -735,6 +819,10 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   abrirGaveta(modo === "comando");
 }
 
+$("st-filtro").onclick = () => {
+  prefs.filtroAnterior = prefs.filtroSelecao;
+  alternarFiltro("limpar");
+};
 $("cc-ok").onclick = () => (editor ? sairEsboco() : avaliacao && !comando ? fecharAvaliacaoMantendo() : confirmarComando());
 $("cc-cancelar").onclick = () => (editor ? descartarEsboco() : avaliacao && !comando ? fecharAvaliacao() : cancelarComando());
 $("btn-arvore-flutuante").innerHTML = ICONES.peca;
@@ -760,6 +848,7 @@ function rotuloRef(r: Referencia, i: number): string {
     case "esboco": return doc.features.find((f) => f.id === r.id)?.nome ?? "Esboço?";
     case "linhaEsboco": return "Linha do esboço";
     case "recurso": return doc.features.find((f) => f.id === r.id)?.nome ?? "Recurso?";
+    case "curva": return doc.features.find((f) => f.id === r.id)?.nome ?? "Curva?";
   }
 }
 
@@ -847,7 +936,12 @@ function facesDosSelecionados(): Entidade[] {
 
 function mostrarReferenciasExtras(destaque?: string) {
   const sel = destaque ?? idSelecionado();
-  viewport.mostrarReferenciasExtras(referenciasKernel, (id) => !prefs.refsOcultas.includes(id), sel ?? null);
+  const tipo = new Map(referenciasKernel.map((r) => [r.id, r.tipo]));
+  viewport.mostrarReferenciasExtras(
+    referenciasKernel,
+    (id) => !prefs.refsOcultas.includes(id) && !tipoOculto(tipo.get(id) === "eixo" ? "eixos" : "planos"),
+    sel ?? null,
+  );
 }
 
 // ---------- toques no modelo ----------
@@ -862,11 +956,71 @@ function filtroEntidades(aceita: TipoSel[]): Set<TipoEntidade> {
 
 const TODAS: Set<TipoEntidade> = new Set(["face", "aresta", "vertice"]);
 
+// ---------- filtro de seleção ----------
+
+const TIPOS_FILTRO: [TipoFiltro, string, NomeIcone, string][] = [
+  ["face", "Faces", "face", "X"], ["aresta", "Arestas", "aresta", "E"], ["vertice", "Vértices", "vertice", "V"],
+  ["plano", "Planos", "plano", ""], ["eixo", "Eixos", "eixoRef", ""], ["curva", "Curvas 3D", "helice", ""],
+];
+const filtroLigado = () => !!prefs.filtroSelecao?.length;
+/** Tira do conjunto pedido os tipos que o filtro de seleção bloqueia. */
+function filtrar(s: Set<TipoEntidade>): Set<TipoEntidade> {
+  if (!filtroLigado()) return s;
+  return new Set([...s].filter((t) => prefs.filtroSelecao!.includes(t)));
+}
+const refPermitida = (tipo: "plano" | "eixo" | "curva") => !filtroLigado() || prefs.filtroSelecao!.includes(tipo);
+
+function alternarFiltro(t: TipoFiltro | "limpar") {
+  if (t === "limpar") prefs.filtroSelecao = [];
+  else {
+    const l = new Set(prefs.filtroSelecao ?? []);
+    if (l.has(t)) l.delete(t);
+    else l.add(t);
+    prefs.filtroSelecao = [...l];
+  }
+  salvarPrefs();
+  renderizarBarraVistas();
+  atualizarStatus();
+  const lig = prefs.filtroSelecao!;
+  avisar(lig.length ? `Filtro de seleção: só ${lig.map((x) => TIPOS_FILTRO.find((y) => y[0] === x)![1].toLowerCase()).join(", ")}` : "Filtro de seleção desligado: tudo pode ser selecionado.");
+}
+
+function abrirFiltroSelecao(b: HTMLElement) {
+  abrirPopover(b, [
+    ...TIPOS_FILTRO.map(([t, r, ic, k]) => ({
+      rotulo: `${r}${k ? `  ·  ${k}` : ""}`,
+      icone: ic,
+      marcado: !!prefs.filtroSelecao?.includes(t),
+      acao: () => alternarFiltro(t),
+    })),
+    { rotulo: "Limpar filtros", icone: "fechar" as NomeIcone, acao: () => alternarFiltro("limpar") },
+  ]);
+}
+
 function instalarToqueCurto() {
+  viewport.aoToqueDuplo = (e) => {
+    // duplo clique numa face: mostra as cotas do recurso que a criou, para editar no modelo
+    if (editor || comando || aguardando) return;
+    const ent = viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face"]), e.pointerType === "touch" ? 22 : 9);
+    const f = ent?.tipo === "face" ? recursoDaFace(ent.indice) : null;
+    if (!f) {
+      fecharCotasNoModelo();
+      viewport.enquadrar();
+      return;
+    }
+    esconderBarraContexto();
+    limparSelPeca();
+    definirSel({ tipo: "feature", id: f.id });
+    renderizarTudo();
+    mostrarCotasNoModelo(f);
+  };
   viewport.aoToqueCurto = (e) => {
     const tol = e.pointerType === "touch" ? 22 : 9;
     esconderBarraContexto();
-    const refViewport = viewport.picarReferencia(e.clientX, e.clientY, tol);
+    if (!comando) fecharCotasNoModelo();
+    const refBruta = viewport.picarReferencia(e.clientX, e.clientY, tol);
+    // escolher plano/face para um esboço não passa pelo filtro; o resto, sim
+    const refViewport = refBruta && (aguardando || refPermitida(refBruta.tipo)) ? refBruta : null;
     // prioridade sobre a peça: borda de qualquer plano, ou a área de um plano/eixo criado pelo
     // usuário que esteja na frente (os planos principais atravessam a peça: só pela borda)
     const refPrioritaria = refViewport && (refViewport.borda || !["XY", "XZ", "YZ"].includes(refViewport.id)) ? refViewport : null;
@@ -882,7 +1036,7 @@ function instalarToqueCurto() {
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
       const refAceita = refViewport && c.aceita.includes(refViewport.tipo) ? refViewport : null;
       if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
-      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtroEntidades(c.aceita), tol);
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(filtroEntidades(c.aceita)), tol);
       if (!ent) {
         // planos e eixos de referência clicados no viewport
         if (refViewport && c.aceita.includes(refViewport.tipo)) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
@@ -894,7 +1048,7 @@ function instalarToqueCurto() {
       return;
     }
     if (avaliacao?.tipo === "medir") {
-      const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
       if (!ent) {
         avaliacao.refs = [];
       } else {
@@ -911,7 +1065,7 @@ function instalarToqueCurto() {
       return;
     }
     // modo peça: pré-seleção (Ctrl/Shift soma)
-    const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+    const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
     if (!ent && refViewport) {
       // plano/eixo de referência: seleciona como na árvore (Esboço, Normal a, Ocultar…)
       const somar = e.ctrlKey || e.shiftKey || e.metaKey;
@@ -994,10 +1148,11 @@ viewport.canvas().addEventListener("pointermove", (e) => {
   if (quadroRealce) return;
   quadroRealce = requestAnimationFrame(() => {
     quadroRealce = 0;
-    const filtro = comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS;
+    const filtro = filtrar(comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS);
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
     viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados());
-    const ref = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    const refB = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo" || a === "curva")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    const ref = refB && refPermitida(refB.tipo) ? refB : null;
     viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
   });
 });
@@ -1114,8 +1269,16 @@ function esconderBarraContexto() {
 }
 
 viewport.aoMenuContexto = (e) => {
-  if (editor || comando) return;
-  const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, 9);
+  if (editor) return;
+  const outros = viewport.entidadesSobCursor(e.clientX, e.clientY, 9).filter((x) => !filtroLigado() || prefs.filtroSelecao!.includes(x.tipo));
+  const itemOutro = outros.length > 1
+    ? [{ rotulo: "Selecionar outro…", icone: "selecionar" as NomeIcone, acao: () => selecionarOutro(outros, e.clientX, e.clientY) }]
+    : [];
+  if (comando) {
+    if (itemOutro.length) mostrarBarra(itemOutro, e.clientX, e.clientY);
+    return;
+  }
+  const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), 9);
   if (ent) {
     const r = refDeEntidade(ent)!;
     if (!selPeca.some((x) => mesmaRef(x, r))) selPeca = [r];
@@ -1123,10 +1286,421 @@ viewport.aoMenuContexto = (e) => {
   }
   mostrarBarra([
     ...(selPeca.length ? acoesDoModelo() : []),
+    ...itemOutro,
     { rotulo: "Enquadrar", icone: "enquadrar", acao: () => viewport.enquadrar() },
     { rotulo: "Orientação…", icone: "vistas", acao: () => abrirSeletorVistas($("barra-vistas")) },
   ], e.clientX, e.clientY);
 };
+
+/** Lista as entidades sob o cursor (inclusive escondidas); passar o dedo/mouse realça cada uma. */
+function selecionarOutro(lista: ReturnType<Viewport["entidadesSobCursor"]>, x: number, y: number) {
+  const nomeGeom: Record<string, string> = { plano: "plana", cilindro: "cilíndrica", cone: "cônica", esfera: "esférica", toro: "toroidal", linha: "reta", circulo: "circular" };
+  const cont = { face: 0, aresta: 0, vertice: 0 };
+  const itens = lista.map((ent) => {
+    const r = refDeEntidade(ent)!;
+    const n = ++cont[ent.tipo];
+    const geom = "ass" in r ? nomeGeom[(r.ass as { geom?: string }).geom ?? ""] : undefined;
+    const tipo = ent.tipo === "face" ? "Face" : ent.tipo === "aresta" ? "Aresta" : "Vértice";
+    return {
+      rotulo: `${tipo} ${n}${geom ? ` (${geom})` : ""}${n === 1 && ent.tipo === "face" ? " · frente" : ""}`,
+      icone: (ent.tipo === "face" ? "face" : ent.tipo === "aresta" ? "aresta" : "vertice") as NomeIcone,
+      aoPassar: () => atualizarDestaques(r),
+      acao: () => {
+        if (comando?.campo) {
+          const c = comando.campo;
+          if (!c.aceita.includes(ent.tipo)) return avisar("Esse tipo de entidade não serve para o campo ativo.");
+          adicionarAoCampo(r);
+          return;
+        }
+        selPeca = [r];
+        definirSel(null);
+        renderizarArvore();
+        atualizarStatus();
+        atualizarDestaques();
+        mostrarBarra(acoesDoModelo(), x, y);
+      },
+    };
+  });
+  abrirPopover({ x, y }, itens);
+}
+
+// ---------- configurações da peça ----------
+
+function menuConfiguracoes(ancora: HTMLElement) {
+  prepararConfiguracoes(doc);
+  abrirPopover(ancora, [
+    ...doc.configuracoes!.map((c) => ({
+      rotulo: c.nome,
+      icone: "configuracoes" as NomeIcone,
+      marcado: c.id === doc.configAtiva,
+      acao: () => void trocarConfiguracao(c.id),
+    })),
+    { rotulo: "Nova configuração…", icone: "nova" as NomeIcone, acao: () => criarConfiguracao() },
+    { rotulo: "Tabela de configurações…", icone: "equacoes" as NomeIcone, acao: () => abrirTabelaConfiguracoes() },
+  ]);
+}
+
+/** Resolve os esboços cujas cotas mudaram e reconstrói. */
+async function aplicarMudancaDeConfiguracao(esbocos: string[]) {
+  if (esbocos.length) {
+    const s = await obterSolver();
+    for (const id of esbocos) {
+      const e = doc.features.find((f) => f.id === id);
+      if (e?.tipo === "esboco") s.resolver(e);
+    }
+  }
+  registrarPasso();
+  salvarAutosave();
+  renderizarTudo();
+  regenerar();
+}
+
+async function trocarConfiguracao(id: string) {
+  if (id === doc.configAtiva) return;
+  fecharCotasNoModelo();
+  const esbocos = ativarConfiguracao(doc, id);
+  await aplicarMudancaDeConfiguracao(esbocos);
+  avisar(`Configuração ativa: ${doc.configuracoes!.find((c) => c.id === id)!.nome}`);
+  if (!$("janela").hidden && $("janela-titulo").textContent === "Tabela de configurações") abrirTabelaConfiguracoes();
+}
+
+function criarConfiguracao() {
+  prepararConfiguracoes(doc);
+  const nome = prompt("Nome da nova configuração (ela começa igual à ativa):", `Configuração ${doc.configuracoes!.length + 1}`)?.trim();
+  if (!nome) return;
+  const c = novaConfiguracao(doc, nome);
+  void trocarConfiguracao(c.id).then(() => abrirTabelaConfiguracoes());
+}
+
+/**
+ * Tabela: colunas = configurações; linhas = parâmetros que variam (cotas e valores dos recursos)
+ * e recursos que podem ser suprimidos. Editar a coluna da configuração ativa muda a peça na hora.
+ */
+function abrirTabelaConfiguracoes() {
+  prepararConfiguracoes(doc);
+  capturarAtiva(doc);
+  limparConfiguracoes(doc);
+  const cs = doc.configuracoes!;
+  abrirJanela("Tabela de configurações", "");
+  $("janela").classList.add("larga");
+  const corpo = $("janela-corpo");
+  const el = <K extends keyof HTMLElementTagNameMap>(t: K, cls = "", txt?: string) => {
+    const e = document.createElement(t);
+    if (cls) e.className = cls;
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  };
+  const fmt = (v: number | undefined) => (v === undefined ? "" : String(Number(v.toFixed(4))));
+  const todos = listarParametros(doc);
+  const nomeDe = new Map(todos.map((p) => [p.chave, p]));
+  const recarregar = () => abrirTabelaConfiguracoes();
+
+  corpo.append(el("p", "dica", "Cada coluna é uma configuração. A ativa (★) é a que está na tela; mudar um valor nela atualiza a peça. Toque no nome de uma coluna para ativá-la."));
+  const wrap = el("div", "tabela-config-wrap");
+  const tab = el("table", "tabela-config");
+  const cab = el("tr");
+  cab.append(el("th", "", "Parâmetro"));
+  for (const c of cs) {
+    const th = el("th", c.id === doc.configAtiva ? "ativa" : "");
+    const nome = el("button", "nome-config", `${c.id === doc.configAtiva ? "★ " : ""}${c.nome}`);
+    nome.title = c.id === doc.configAtiva ? "Configuração ativa" : "Ativar esta configuração";
+    nome.onclick = () => void trocarConfiguracao(c.id);
+    th.append(nome);
+    const ren = el("button", "btn-mini", "✎");
+    ren.title = "Renomear";
+    ren.onclick = () => {
+      const n = prompt("Novo nome da configuração:", c.nome)?.trim();
+      if (!n) return;
+      c.nome = n;
+      registrarPasso();
+      salvarAutosave();
+      renderizarArvore();
+      recarregar();
+    };
+    th.append(ren);
+    if (cs.length > 1) {
+      const x = el("button", "btn-mini", "✕");
+      x.title = "Excluir configuração";
+      x.onclick = () => {
+        if (!confirm(`Excluir a configuração "${c.nome}"?`)) return;
+        void aplicarMudancaDeConfiguracao(excluirConfiguracao(doc, c.id)).then(recarregar);
+      };
+      th.append(x);
+    }
+    cab.append(th);
+  }
+  tab.append(cab);
+
+  // parâmetros que variam
+  for (const k of doc.parametrosConfigurados ?? []) {
+    const p = nomeDe.get(k);
+    if (!p) continue;
+    const tr = el("tr");
+    const td0 = el("td", "rotulo-param");
+    td0.append(el("span", "", `${p.rotulo}${p.unidade ? ` (${p.unidade})` : ""}`));
+    const x = el("button", "btn-mini", "✕");
+    x.title = "Parar de variar (o valor atual vale para todas)";
+    x.onclick = () => {
+      desconfigurarParametro(doc, k);
+      registrarPasso();
+      salvarAutosave();
+      recarregar();
+    };
+    td0.append(x);
+    tr.append(td0);
+    for (const c of cs) {
+      const td = el("td", c.id === doc.configAtiva ? "ativa" : "");
+      const inp = el("input");
+      inp.inputMode = "decimal";
+      inp.value = fmt(valorNaConfiguracao(doc, c, k));
+      inp.onchange = () => {
+        const v = avaliarExpressao(inp.value, resolverVariaveis(doc.variaveis).valores);
+        if (!Number.isFinite(v)) return inp.classList.add("invalido");
+        inp.classList.remove("invalido");
+        const e = definirValorNaConfiguracao(doc, c, k, k.endsWith("instancias") ? Math.max(1, Math.round(v)) : v);
+        if (c.id === doc.configAtiva) void aplicarMudancaDeConfiguracao(e ? [e] : []);
+        else {
+          registrarPasso();
+          salvarAutosave();
+        }
+      };
+      td.append(inp);
+      tr.append(td);
+    }
+    tab.append(tr);
+  }
+
+  // adicionar parâmetro
+  const livres = todos.filter((p) => !(doc.parametrosConfigurados ?? []).includes(p.chave));
+  if (livres.length) {
+    const tr = el("tr", "linha-adicionar");
+    const td = el("td");
+    td.colSpan = cs.length + 1;
+    const sel = el("select");
+    sel.add(new Option("+ Variar um parâmetro…", ""));
+    for (const p of livres) sel.add(new Option(`${p.rotulo} = ${fmt(p.valor)}${p.unidade ? ` ${p.unidade}` : ""}`, p.chave));
+    sel.onchange = () => {
+      if (!sel.value) return;
+      configurarParametro(doc, sel.value);
+      registrarPasso();
+      salvarAutosave();
+      recarregar();
+    };
+    td.append(sel);
+    tr.append(td);
+    tab.append(tr);
+  }
+
+  // supressão por configuração
+  const recursos = doc.features.filter((f) => f.tipo !== "esboco");
+  if (recursos.length) {
+    const sep = el("tr", "secao");
+    sep.append(Object.assign(el("td", "", "Suprimido em"), { colSpan: cs.length + 1 }));
+    tab.append(sep);
+    for (const f of recursos) {
+      const tr = el("tr");
+      tr.append(el("td", "rotulo-param", f.nome));
+      for (const c of cs) {
+        const td = el("td", c.id === doc.configAtiva ? "ativa" : "");
+        const cb = el("input");
+        cb.type = "checkbox";
+        cb.checked = c.suprimidos.includes(f.id);
+        cb.onchange = () => {
+          definirSupressao(doc, c, f.id, cb.checked);
+          if (c.id === doc.configAtiva) void aplicarMudancaDeConfiguracao([]);
+          else {
+            registrarPasso();
+            salvarAutosave();
+          }
+        };
+        td.append(cb);
+        tr.append(td);
+      }
+      tab.append(tr);
+    }
+  }
+  wrap.append(tab);
+  corpo.append(wrap);
+  const nova = el("button", "largo", "+ Nova configuração");
+  nova.onclick = () => criarConfiguracao();
+  corpo.append(nova);
+}
+
+// ---------- cotas do recurso sobre o modelo (duplo clique) ----------
+
+let recursoComCotas: string | null = null;
+const camadaCotasModelo = Object.assign(document.createElement("div"), { className: "camada-cotas-modelo" });
+$("viewport").parentElement!.appendChild(camadaCotasModelo);
+const cotasNoModelo = new CotasNoModelo(viewport, camadaCotasModelo);
+let camadasCotasModelo: THREE.Group[] = [];
+
+/** O recurso mais recente que tem a face entre as "suas" faces. */
+function recursoDaFace(indice: number): Feature | null {
+  let achado: Feature | null = null;
+  for (const f of ativas()) if (facesPorRecurso[f.id]?.includes(indice)) achado = f;
+  return achado;
+}
+
+/** Valores do próprio recurso mostrados no modelo: os mesmos que as configurações podem variar. */
+const PARAMETROS_NO_MODELO = PARAMETROS_RECURSO;
+
+function fecharCotasNoModelo() {
+  recursoComCotas = null;
+  cotasNoModelo.limpar();
+  for (const c of camadasCotasModelo) {
+    viewport.grupoEsboco.remove(c);
+    descartarCamada(c);
+  }
+  camadasCotasModelo = [];
+  viewport.pedirRender();
+}
+
+function mostrarCotasNoModelo(f: Feature) {
+  fecharCotasNoModelo();
+  recursoComCotas = f.id;
+  const valores = () => resolverVariaveis(doc.variaveis).valores;
+  const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  const rotulos: RotuloModelo[] = [];
+  const { w, h } = viewport.tamanho();
+
+  // cotas dos esboços usados pelo recurso (ou do próprio esboço)
+  const ids = f.tipo === "esboco" ? [f.id] : esbocosAbsorvidos(f);
+  for (const id of ids) {
+    const esb = doc.features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco");
+    if (!esb) continue;
+    let ref;
+    try {
+      ref = referencial(esb.suporte);
+    } catch {
+      continue;
+    }
+    const mmPx = viewport.mmPorPixel(ref);
+    const camada = construirCamada(esb, { ref, mmPx, resolucao: { w, h }, editando: false, mostrarCotas: true });
+    viewport.grupoEsboco.add(camada);
+    camadasCotasModelo.push(camada);
+    for (const c of esb.restricoes) {
+      if (!ehCota(c)) continue;
+      const d = desenharCota(c, esb, mmPx);
+      if (!d) continue;
+      rotulos.push({
+        texto: textoCota(c),
+        edicao: c.expr ?? String(Number(c.valor.toFixed(4))),
+        pos: paraMundo(ref, d.texto.x, d.texto.y),
+        fixo: !!c.referencia,
+        aplicar: (t) => {
+          const v = avaliarExpressao(t, valores());
+          if (!Number.isFinite(v) || v <= 0) return false;
+          c.valor = v;
+          if (t.trim().startsWith("=")) c.expr = t.trim();
+          else delete c.expr;
+          void obterSolver().then((s) => {
+            s.resolver(esb);
+            alterou(true);
+          });
+          return true;
+        },
+      });
+    }
+  }
+
+  // valores do recurso, no centro das faces dele
+  const centro = viewport.centroFaces(facesPorRecurso[f.id] ?? []);
+  const params = (PARAMETROS_NO_MODELO[f.tipo] ?? []).filter(([, , , vis]) => !vis || vis(f as never));
+  params.forEach(([cam, rot, un], i) => {
+    const v = ler(f as unknown as Record<string, unknown>, cam) as number | undefined;
+    if (typeof v !== "number" || !centro) return;
+    const chave = `${f.id}.${cam}`;
+    rotulos.push({
+      texto: `${rot} ${fmt(v)}${un ? (un === "°" ? "°" : ` ${un}`) : ""}`,
+      edicao: doc.equacoes?.[chave] ?? String(v),
+      pos: centro,
+      desloc: (i - (params.length - 1) / 2) * 30,
+      aplicar: (t) => {
+        const n = avaliarExpressao(t, valores());
+        if (!Number.isFinite(n) || n <= 0) return false;
+        gravarCaminho(f as unknown as Record<string, unknown>, cam, cam.endsWith("instancias") ? Math.max(1, Math.round(n)) : n);
+        doc.equacoes ??= {};
+        if (t.trim().startsWith("=")) doc.equacoes[chave] = t.trim();
+        else delete doc.equacoes[chave];
+        alterou(true);
+        return true;
+      },
+    });
+  });
+  if (!rotulos.length) {
+    recursoComCotas = null;
+    return avisar(`${f.nome}: sem cotas para mostrar.`);
+  }
+  cotasNoModelo.mostrar(rotulos);
+  viewport.pedirRender();
+}
+
+// ---------- alças de arrasto do comando (profundidade da extrusão) ----------
+
+let valorNoInicioDaAlca = 0;
+
+/** Setas nas pontas da extrusão (direção 1 e 2), em cego ou plano médio. */
+function atualizarAlcas() {
+  const f = comando?.f;
+  if (!f || f.tipo !== "extrusao" || !f.esboco) return viewport.mostrarAlcas([]);
+  const esb = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
+  if (!esb) return viewport.mostrarAlcas([]);
+  let ref, lacos;
+  try {
+    ref = referencial(esb.suporte);
+    lacos = encontrarLacos(esb);
+  } catch {
+    return viewport.mostrarAlcas([]);
+  }
+  const pts = lacos.flatMap((l) => l.poligono);
+  if (!pts.length) return viewport.mostrarAlcas([]);
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const c2 = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+  const de = f.de ?? { tipo: "plano", dist: 0, inverter: false };
+  const s0 = de.tipo === "deslocamento" ? (de.inverter ? -1 : 1) * de.dist : 0;
+  const base = paraMundo(ref, c2.x, c2.y);
+  const n = ref.normal;
+  const sentido = f.inverter ? -1 : 1;
+  const em = (s: number): Vec3 => [base[0] + n[0] * s, base[1] + n[1] * s, base[2] + n[2] * s];
+  const dir = (sg: number): Vec3 => [n[0] * sg, n[1] * sg, n[2] * sg];
+  const cond = f.condicao?.tipo ?? "cego";
+  const alcas: { id: string; pos: Vec3; dir: Vec3 }[] = [];
+  if (cond === "cego") alcas.push({ id: "profundidade", pos: em(s0 + sentido * f.profundidade), dir: dir(sentido) });
+  else if (cond === "planoMedio") alcas.push({ id: "profundidade", pos: em(s0 + sentido * (f.profundidade / 2)), dir: dir(sentido) });
+  if (f.direcao2?.ativa && cond !== "planoMedio" && f.direcao2.condicao.tipo === "cego") {
+    alcas.push({ id: "direcao2.condicao.dist", pos: em(s0 - sentido * f.direcao2.condicao.dist), dir: dir(-sentido) });
+  }
+  viewport.mostrarAlcas(alcas);
+}
+
+viewport.aoArrastarAlca = (id, delta, fim) => {
+  const f = comando?.f as unknown as Record<string, unknown> | undefined;
+  if (!f) return;
+  const atual = ler(f, id) as number;
+  if (!fim && !alcaEmArraste) {
+    alcaEmArraste = true;
+    valorNoInicioDaAlca = atual;
+  }
+  // plano médio: a seta fica na metade, então o arraste vale o dobro
+  const fator = id === "profundidade" && (comando!.f as FeatureExtrusao).condicao?.tipo === "planoMedio" ? 2 : 1;
+  const passo = viewport.mmPorPixel(referencialPadrao()) < 0.05 ? 0.1 : 0.5;
+  const v = Math.max(passo, Math.round((valorNoInicioDaAlca + delta * fator) / passo) * passo);
+  gravarCaminho(f, id, Number(v.toFixed(4)));
+  delete doc.equacoes?.[`${comando!.f.id}.${id}`];
+  avisar(`${id === "profundidade" ? "D1" : "D2"}: ${v.toLocaleString("pt-BR")} mm`);
+  if (fim) {
+    alcaEmArraste = false;
+    renderizarComando();
+    regenerarPrevia(0);
+  } else {
+    atualizarAlcas();
+    regenerarPrevia(120);
+  }
+};
+let alcaEmArraste = false;
+
+/** Referencial qualquer (plano frontal) para medir mm por pixel na tela. */
+const referencialPadrao = () => referencial({ tipo: "plano", plano: "XY", deslocamento: 0 });
 
 // ---------- árvore do modelo ----------
 const REFERENCIAS: IdReferencia[] = ["XY", "XZ", "YZ", "origem"]; // Frontal, Superior, Lateral
@@ -1135,7 +1709,8 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   esboco: "esboco", extrusao: "extrusao", revolucao: "revolucao", filete: "filete", chanfro: "chanfro",
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
-  varredura: "varredura", loft: "loft",
+  varredura: "varredura", loft: "loft", curva: "helice",
+  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -1143,6 +1718,7 @@ function iconeFeature(f: Feature): NomeIcone {
   if (f.tipo === "revolucao" && f.operacao === "cortar") return "corteRevolucao";
   if (f.tipo === "varredura" && f.operacao === "cortar") return "corteVarredura";
   if (f.tipo === "loft" && f.operacao === "cortar") return "corteLoft";
+  if (f.tipo === "curva") return ({ helice: "helice", xyz: "curvaXYZ", pontosRef: "curvaPontos", composta: "curvaComposta", projetada: "curvaProjetada" } as const)[f.modo];
   return ICONE_FEATURE[f.tipo];
 }
 
@@ -1169,6 +1745,19 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       if (!editor && !comando) escolherMaterial(mat);
     };
     lista.appendChild(mat);
+    // configuração ativa (só aparece o nome quando há mais de uma)
+    const cfg = document.createElement("li");
+    cfg.className = "item ref item-config";
+    const ativa = doc.configuracoes?.find((c) => c.id === doc.configAtiva);
+    const n = doc.configuracoes?.length ?? 0;
+    cfg.innerHTML = `<span class="item-ic">${ICONES.configuracoes}</span><span class="item-texto"><strong></strong><small></small></span>`;
+    cfg.querySelector("strong")!.textContent = `Configuração: ${ativa?.nome ?? "Padrão"}`;
+    cfg.querySelector("small")!.textContent = n > 1 ? `${n} configurações` : "toque para criar variações";
+    cfg.onclick = () => {
+      if (editor || comando) return avisar("Conclua o comando atual (✓) antes de trocar de configuração.");
+      menuConfiguracoes(cfg);
+    };
+    lista.appendChild(cfg);
   }
 
   for (const id of REFERENCIAS) {
@@ -1236,6 +1825,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       const mover = (ev.target as HTMLElement).closest<HTMLElement>("[data-mover]");
       if (mover) return moverFeature(i, Number(mover.dataset.mover));
       if (comando?.campo && comando.campo.aceita.includes("esboco") && f.tipo === "esboco" && f.id !== comando.f.id) return adicionarAoCampo({ tipo: "esboco", id: f.id });
+      if (comando?.campo && comando.campo.aceita.includes("curva") && f.tipo === "curva" && f.id !== comando.f.id) return adicionarAoCampo({ tipo: "curva", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("plano") && f.tipo === "planoRef") return adicionarAoCampo({ tipo: "plano", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("eixo") && f.tipo === "eixoRef") return adicionarAoCampo({ tipo: "eixo", id: f.id });
       if (aguardando && f.tipo === "planoRef") return void suporteEscolhido({ tipo: "planoRef", id: f.id }, null);
@@ -1281,10 +1871,10 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     const li = document.createElement("li");
     li.className = "item filho usado";
     li.style.setProperty("--nivel", String(nivel));
-    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
+    const alvo = ref.tipo === "recurso" || ref.tipo === "esboco" || ref.tipo === "curva" || (ref.tipo === "plano" || ref.tipo === "eixo") && !["XY", "XZ", "YZ", "X", "Y", "Z"].includes(ref.id)
       ? doc.features.find((x) => x.id === (ref as { id: string }).id) : undefined;
     const icone: NomeIcone = alvo ? iconeFeature(alvo)
-      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca" } as const)[ref.tipo];
+      : ({ face: "peca", aresta: "linha", vertice: "ponto", plano: "plano", eixo: "eixoRef", linhaEsboco: "linha", esboco: "esboco", recurso: "peca", curva: "helice" } as const)[ref.tipo];
     li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
     li.querySelector("strong")!.textContent = rotuloRef(ref, k);
     li.querySelector("small")!.textContent = descricaoUsado(ref);
@@ -1371,6 +1961,7 @@ function descricaoUsado(r: Referencia): string {
     case "linhaEsboco": return "Linha do esboço";
     case "esboco": return "Esboço";
     case "recurso": return "Recurso";
+    case "curva": return "Curva 3D";
   }
 }
 
@@ -1476,7 +2067,7 @@ function excluirFeature(f: Feature) {
 function alternarReferencia(id: IdReferencia) {
   prefs.refsVisiveis[id] = !prefs.refsVisiveis[id];
   salvarPrefs();
-  viewport.definirVisibilidadeReferencia(id, prefs.refsVisiveis[id]);
+  aplicarVisibilidadeRefs();
   renderizarTudo();
 }
 
@@ -1566,6 +2157,10 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
         renderizarAbas();
         renderizarPainelEdicaoEsboco();
       }
+      return;
+    case "espelhoDinamico":
+      if (!editor) return avisar("Espelhamento dinâmico: abra um esboço primeiro.");
+      editor.alternarEspelhoDinamico();
       return;
     case "exibirRelacoes":
       if (!editor) return avisar("Relações: abra um esboço primeiro.");
@@ -1764,6 +2359,7 @@ function desenharEsbocos() {
   for (const f of ativas()) {
     if (f.tipo !== "esboco" || f.suprimida) continue;
     if (usados.has(f.id) && f.id !== idSelecionado()) continue;
+    if (tipoOculto("esbocos") && f.id !== idSelecionado()) continue;
     let ref;
     try {
       ref = referencial(f.suporte);
@@ -2056,17 +2652,87 @@ function mostrarLegendaAnalise() {
 }
 
 function abrirJanela(titulo: string, html: string) {
+  $("janela").classList.remove("larga");
   $("janela-titulo").textContent = titulo;
   $("janela-corpo").innerHTML = html;
   $("janela").hidden = false;
 }
 function fecharJanela() {
   $("janela").hidden = true;
+  $("janela").classList.remove("larga");
 }
 $("janela-fechar").onclick = () => {
   fecharJanela();
   if (avaliacao?.tipo === "medir") fecharAvaliacao();
 };
+
+// ---------- chapa metálica: planificar, DXF, tabela ----------
+
+/** Vista planificada da chapa ligada (o kernel troca a peça pelo planificado). */
+let planificado = false;
+const temChapa = () => ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida);
+
+function alternarPlanificado(liga = !planificado) {
+  if (liga && !temChapa()) return avisar("Planificar: a peça não tem chapa metálica (comece por uma Flange base).");
+  if (liga === planificado) return;
+  planificado = liga;
+  limparSelPeca();
+  renderizarAbas();
+  regenerar();
+  primeiraRegeneracao = true; // enquadra a peça na nova forma
+  avisar(liga ? "Vista planificada (linhas de dobra em laranja). Toque Planificar de novo para dobrar." : "Chapa dobrada.");
+}
+
+async function comandoChapa(id: string) {
+  if (editor) sairEsboco();
+  if (comando) confirmarComando();
+  if (id === "planificar") return alternarPlanificado();
+  if (id === "material") return abrirTabelaChapa();
+  if (!temChapa()) return avisar("Exportar DXF: a peça não tem chapa metálica (comece por uma Flange base).");
+  try {
+    const { dxf, resumo } = await kernel.dxf(doc.nome);
+    baixar(new Blob([dxf], { type: "application/dxf" }), "dxf");
+    const mat = MATERIAIS[doc.material ?? ""];
+    const massa = mat ? (resumo.area * resumo.espessura * mat.densidade) / 1000 : null;
+    abrirJanela("Lista de corte (planificado)", `
+      <table class="tabela">
+        <tr><td>Caixa delimitadora</td><td>${num(resumo.largura)} × ${num(resumo.altura)} mm</td></tr>
+        <tr><td>Espessura</td><td>${num(resumo.espessura)} mm</td></tr>
+        <tr><td>Raio de dobra · fator K</td><td>${num(resumo.raio)} mm · ${num(resumo.fatorK)}</td></tr>
+        <tr><td>Nº de dobras</td><td>${resumo.dobras}</td></tr>
+        <tr><td>Comprimento de corte</td><td>${num(resumo.comprimentoCorte)} mm</td></tr>
+        <tr><td>Recortes internos</td><td>${resumo.recortes}</td></tr>
+        <tr><td>Área da chapa</td><td>${num(resumo.area)} mm²</td></tr>
+        <tr><td>Material · massa</td><td>${mat ? `${escapar(mat.nome)} · ${num(massa!)} g` : "— (defina em Avaliar → Massa)"}</td></tr>
+      </table>
+      <p class="dica">DXF R12 em mm baixado. Camadas: CONTORNO, DOBRA_CIMA, DOBRA_BAIXO e NOTAS (ângulo, raio e sentido de cada dobra).</p>`);
+  } catch (e) {
+    avisar("Exportar DXF: " + (e as Error).message);
+  }
+}
+
+/** Tabela de material/espessura: toca numa linha para aplicar na Flange base. */
+function abrirTabelaChapa() {
+  const fb = ativas().find((x): x is FeatureFlangeBase => x.tipo === "flangeBase" && !x.suprimida);
+  const atual = fb ? `${fb.espessura}|${fb.raio}|${fb.fatorK}` : "";
+  const linhas = TABELA_CHAPA.map((l, i) => {
+    const sel = atual === `${l.espessura}|${l.raio}|${l.k}` && fb?.tabela.startsWith(l.material);
+    return `<tr data-i="${i}" class="${sel ? "sel" : ""}" style="cursor:pointer"><td>${l.material}</td><td>${num(l.espessura)}</td><td>${num(l.raio)}</td><td>${num(l.k)}</td></tr>`;
+  }).join("");
+  abrirJanela("Material / espessura / fator K", `
+    <p class="dica">${fb ? `Toque numa linha para aplicar em <b>${escapar(fb.nome)}</b> (vale para toda a chapa). Valores próprios: edite a Flange base.` : "Crie uma Flange base para aplicar a tabela."}</p>
+    <table class="tabela"><tr><th>Material</th><th>Espessura</th><th>Raio interno</th><th>Fator K</th></tr>${linhas}</table>
+    <p class="dica">Referência para dobra no ar com raio ≈ espessura. Ajuste raio e K ao ferramental de quem vai dobrar.</p>`);
+  if (!fb) return;
+  $("janela-corpo").querySelectorAll<HTMLTableRowElement>("tr[data-i]").forEach((tr) => {
+    tr.onclick = () => {
+      const l = TABELA_CHAPA[Number(tr.dataset.i)];
+      Object.assign(fb, { tabela: `${l.material}|${l.espessura}`, espessura: l.espessura, raio: l.raio, fatorK: l.k });
+      alterou(true);
+      abrirTabelaChapa();
+    };
+  });
+}
 
 // ---------- equações ----------
 
@@ -2171,54 +2837,156 @@ function abrirSeletorVistas(ancora: HTMLElement) {
   ]);
 }
 
+const TIPOS_ITENS: [TipoItem, string][] = [["planos", "Planos"], ["eixos", "Eixos"], ["origem", "Origem"], ["esbocos", "Esboços"]];
+
+/**
+ * Barra de vistas no topo do viewport, recolhida numa setinha para não ocupar a tela:
+ * ampliar para caber, zoom por área, vista de seção, orientação, ocultar/mostrar itens e
+ * configurações de vista.
+ */
 function renderizarBarraVistas() {
   const barra = $("barra-vistas");
   barra.innerHTML = "";
-  const botao = (icone: NomeIcone, titulo: string, acao: (b: HTMLButtonElement) => void, pressionado = false) => {
+  const aberta = !!prefs.barraVistasAberta;
+  barra.classList.toggle("aberta", aberta);
+  const seta = document.createElement("button");
+  seta.className = "btn-ic seta-vistas";
+  seta.title = aberta ? "Recolher a barra de vistas" : "Ferramentas de vista";
+  seta.setAttribute("aria-label", seta.title);
+  seta.setAttribute("aria-expanded", String(aberta));
+  seta.innerHTML = ICONES[aberta ? "setaCima" : "setaBaixo"];
+  seta.onclick = () => {
+    prefs.barraVistasAberta = !aberta;
+    salvarPrefs();
+    fecharPopover();
+    renderizarBarraVistas();
+  };
+  barra.appendChild(seta);
+  if (!aberta) return;
+
+  const caixa = document.createElement("div");
+  caixa.className = "caixa-vistas";
+  barra.appendChild(caixa);
+  const botao = (icone: NomeIcone, titulo: string, acao: (b: HTMLButtonElement) => void, pressionado = false, menu = false) => {
     const b = document.createElement("button");
-    b.className = "btn-ic";
+    b.className = `btn-ic${menu ? " com-menu" : ""}`;
     b.title = titulo;
     b.setAttribute("aria-label", titulo);
     b.setAttribute("aria-pressed", String(pressionado));
-    b.innerHTML = ICONES[icone];
+    b.innerHTML = ICONES[icone] + (menu ? `<span class="mini-seta">▾</span>` : "");
     b.onclick = () => acao(b);
-    barra.appendChild(b);
+    caixa.appendChild(b);
     return b;
   };
-  const sep = () => barra.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
 
   botao("enquadrar", "Ampliar para caber (F)", () => viewport.enquadrar());
+  botao("zoomArea", "Zoom por área: arraste um retângulo", () => iniciarZoomArea(), zoomAreaAtivo);
   botao("vistaSecao", "Vista de seção", () => comandoAvaliar("vista-secao"), avaliacao?.tipo === "secao");
-  sep();
-  botao("vistas", "Orientação da vista (Espaço)", (b) => abrirSeletorVistas(b));
-  botao("normalA", "Normal a (Ctrl+8)", normalA);
-  sep();
-  const estiloAtual = ESTILOS.find((e) => e[0] === prefs.estilo)!;
-  botao(estiloAtual[2], `Estilo: ${estiloAtual[1]}`, (b) =>
-    abrirPopover(
-      b,
-      ESTILOS.map(([e, r, ic]) => ({
-        rotulo: r,
-        icone: ic,
-        marcado: e === prefs.estilo,
-        acao: () => {
-          prefs.estilo = e;
-          salvarPrefs();
-          viewport.definirEstilo(e);
-          renderizarBarraVistas();
-        },
-      })),
-    ),
-  );
-  const algumPlano = (["XY", "XZ", "YZ"] as const).some((p) => prefs.refsVisiveis[p]);
-  botao(algumPlano ? "plano" : "olhoFechado", algumPlano ? "Ocultar planos" : "Mostrar planos", () => {
-    for (const p of ["XY", "XZ", "YZ"] as const) {
-      prefs.refsVisiveis[p] = !algumPlano;
-      viewport.definirVisibilidadeReferencia(p, !algumPlano);
-    }
-    salvarPrefs();
-    renderizarTudo();
-  });
+  botao("vistas", "Orientação da vista (Espaço)", (b) => abrirSeletorVistas(b), false, true);
+  const algoOculto = !!prefs.ocultarTudo || !!prefs.tiposOcultos?.length;
+  botao(algoOculto ? "olhoFechado" : "olho", "Ocultar/mostrar itens", (b) => abrirOcultarItens(b), algoOculto, true);
+  botao("configVista", "Configurações de vista", (b) => abrirConfigVista(b), false, true);
+  botao("filtroSelecao", filtroLigado() ? "Filtro de seleção (ligado) · F5" : "Filtro de seleção · F5", (b) => abrirFiltroSelecao(b), filtroLigado(), true);
+}
+
+function alternarTipoOculto(t: TipoItem | "tudo") {
+  if (t === "tudo") prefs.ocultarTudo = !prefs.ocultarTudo;
+  else {
+    const lista = new Set(prefs.tiposOcultos ?? []);
+    if (lista.has(t)) lista.delete(t);
+    else lista.add(t);
+    prefs.tiposOcultos = [...lista];
+  }
+  salvarPrefs();
+  aplicarVisibilidadeRefs();
+  mostrarReferenciasExtras();
+  if (!editor) desenharEsbocos();
+  renderizarBarraVistas();
+}
+
+function abrirOcultarItens(b: HTMLElement) {
+  abrirPopover(b, [
+    {
+      rotulo: prefs.ocultarTudo ? "Mostrar os tipos de novo" : "Ocultar todos os tipos",
+      icone: prefs.ocultarTudo ? "olho" : "olhoFechado",
+      marcado: !!prefs.ocultarTudo,
+      acao: () => alternarTipoOculto("tudo"),
+    },
+    ...TIPOS_ITENS.map(([t, r]) => ({
+      rotulo: `${r}${prefs.ocultarTudo ? " (ocultos por \"todos os tipos\")" : ""}`,
+      icone: (tipoOculto(t) ? "olhoFechado" : "olho") as NomeIcone,
+      marcado: !tipoOculto(t),
+      acao: () => alternarTipoOculto(t),
+    })),
+  ]);
+}
+
+function abrirConfigVista(b: HTMLElement) {
+  abrirPopover(b, [
+    ...ESTILOS.map(([e, r, ic]) => ({
+      rotulo: r,
+      icone: ic,
+      marcado: e === prefs.estilo,
+      acao: () => {
+        prefs.estilo = e;
+        salvarPrefs();
+        viewport.definirEstilo(e);
+        renderizarBarraVistas();
+      },
+    })),
+  ]);
+}
+
+// ---------- zoom por área ----------
+
+let zoomAreaAtivo = false;
+
+/** Arrastar um retângulo no viewport para ampliá-lo (Esc ou toque sem arrastar cancela). */
+function iniciarZoomArea() {
+  if (zoomAreaAtivo) return;
+  zoomAreaAtivo = true;
+  renderizarBarraVistas();
+  avisar("Zoom por área: arraste um retângulo sobre a região a ampliar.");
+  const vp = $("viewport");
+  const capa = document.createElement("div");
+  capa.className = "capa-zoom-area";
+  const ret = document.createElement("div");
+  ret.className = "retangulo-zoom";
+  capa.appendChild(ret);
+  vp.appendChild(capa);
+  let ini: { x: number; y: number } | null = null;
+  const fim = () => {
+    zoomAreaAtivo = false;
+    capa.remove();
+    document.removeEventListener("keydown", esc, true);
+    renderizarBarraVistas();
+  };
+  const esc = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    fim();
+  };
+  document.addEventListener("keydown", esc, true);
+  capa.onpointerdown = (e) => {
+    ini = { x: e.clientX, y: e.clientY };
+    capa.setPointerCapture(e.pointerId);
+  };
+  capa.onpointermove = (e) => {
+    if (!ini) return;
+    const r = vp.getBoundingClientRect();
+    Object.assign(ret.style, {
+      display: "block",
+      left: `${Math.min(ini.x, e.clientX) - r.left}px`,
+      top: `${Math.min(ini.y, e.clientY) - r.top}px`,
+      width: `${Math.abs(e.clientX - ini.x)}px`,
+      height: `${Math.abs(e.clientY - ini.y)}px`,
+    });
+  };
+  capa.onpointerup = (e) => {
+    if (ini) viewport.ampliarArea(ini.x, ini.y, e.clientX, e.clientY);
+    fim();
+  };
+  capa.onpointercancel = fim;
 }
 
 interface ItemPopover {
@@ -2226,6 +2994,8 @@ interface ItemPopover {
   icone?: NomeIcone;
   marcado?: boolean;
   acao: () => void;
+  /** Ponteiro sobre o item (ex.: realçar a entidade no modelo). */
+  aoPassar?: () => void;
 }
 
 let popoverAberto: HTMLElement | null = null;
@@ -2249,6 +3019,7 @@ function abrirPopover(ancora: HTMLElement | { x: number; y: number }, itens: Ite
       fecharPopover();
       it.acao();
     };
+    if (it.aoPassar) b.onpointerenter = it.aoPassar;
     p.appendChild(b);
   }
   document.body.appendChild(p);
@@ -2295,7 +3066,11 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     rotulo: "Salvar (.jlscad)",
     icone: "salvar",
     // octet-stream: o Android não troca a extensão .jlscad por .json
-    fazer: () => baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad"),
+    fazer: () => {
+      capturarAtiva(doc);
+      limparConfiguracoes(doc);
+      baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad");
+    },
   },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
@@ -2305,7 +3080,22 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
   dispositivo: { rotulo: "Dispositivo (celular, tablet, computador)…", icone: "tablet", fazer: () => escolherDispositivo(false) },
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
+  sobre: { rotulo: "Sobre e licenças", icone: "menu", fazer: mostrarSobre },
 };
+
+/** Componentes de terceiros usados no app (com as licenças). */
+function mostrarSobre() {
+  abrirJanela("Sobre o JLSCAD", `<p>JLSCAD — CAD paramétrico para tablet, celular e computador. Funciona offline.</p>
+  ${tabela([
+    ["OpenCascade (replicad-opencascadejs)", "Núcleo de sólidos — LGPL 2.1 com exceção"],
+    ["replicad", "Ponte com o OpenCascade — MIT"],
+    ["PlaneGCS (@salusoft89/planegcs, do FreeCAD)", "Solver do esboço — LGPL 2.0 ou posterior"],
+    ["Three.js", "Visualização 3D — MIT"],
+    ["opentype.js", "Leitura de fontes do texto de esboço — MIT"],
+    ["Noto Sans (@fontsource/noto-sans)", "Fonte do texto de esboço — SIL Open Font License 1.1, © The Noto Project Authors"],
+  ])}
+  <p class="dica">As fontes OFL podem ser usadas, embutidas e redistribuídas livremente com o programa; não podem ser vendidas sozinhas.</p>`);
+}
 
 document.querySelectorAll<HTMLButtonElement>("[data-acao]").forEach((b) => {
   const a = ACOES[b.dataset.acao!];
@@ -2341,6 +3131,7 @@ function mostrarAtalhos() {
     ["Espaço", "Orientação da vista"],
     ["F", "Ampliar para caber"],
     ["S", "Barra de atalhos no cursor"],
+    ["F5 · X · E · V", "Filtro de seleção: liga/desliga · só faces · só arestas · só vértices"],
     ["Ctrl+B", "Reconstruir"],
     ["Enter / Esc", "OK / Cancelar no comando"],
     ["Ctrl+Z / Ctrl+Y / Ctrl+S", "Desfazer / Refazer / Salvar"],
@@ -2406,6 +3197,7 @@ function abrirDocumento(d: Documento) {
   fecharAvaliacao();
   fecharJanela();
   doc = d;
+  planificado = false;
   aberto = true;
   definirSel(null);
   selPeca = [];
@@ -2617,6 +3409,20 @@ document.addEventListener("keydown", (e) => {
     /* atalhos do esboço */
   } else if (e.key === " ") abrirSeletorVistas($("barra-vistas"));
   else if (k === "f" && !ctrl) viewport.enquadrar();
+  else if (e.key === "F5") {
+    // liga/desliga o filtro guardando a última escolha
+    e.preventDefault();
+    if (filtroLigado()) {
+      prefs.filtroAnterior = prefs.filtroSelecao;
+      alternarFiltro("limpar");
+    } else if (prefs.filtroAnterior?.length) {
+      prefs.filtroSelecao = [...prefs.filtroAnterior];
+      salvarPrefs();
+      renderizarBarraVistas();
+      atualizarStatus();
+      avisar("Filtro de seleção ligado de novo.");
+    } else abrirFiltroSelecao($("barra-vistas"));
+  } else if (!ctrl && (k === "x" || k === "e" || k === "v")) alternarFiltro(k === "x" ? "face" : k === "e" ? "aresta" : "vertice");
   else if (k === "s" && !ctrl) barraDeAtalhos();
   else if (e.key === "Enter" && comando) confirmarComando();
   else if (e.key === "Delete" && !comando) {
@@ -2625,6 +3431,7 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     fecharPopover();
     esconderBarraContexto();
+    fecharCotasNoModelo();
     if (comando) cancelarComando();
     else if (avaliacao) fecharAvaliacao();
     else if (aguardando) {
@@ -2658,7 +3465,9 @@ function barraDeAtalhos() {
 
 // ---------- persistência local ----------
 function salvarAutosave() {
-  if (aberto) gravarJSON(CHAVE_AUTOSAVE, doc);
+  if (!aberto) return;
+  capturarAtiva(doc);
+  gravarJSON(CHAVE_AUTOSAVE, doc);
 }
 
 function carregarAutosave(): Documento | null {
@@ -2689,7 +3498,7 @@ function gravarJSON(chave: string, valor: unknown) {
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()) };
+  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)) };
 }
 
 // ---------- início ----------

@@ -8,6 +8,8 @@ export type Plano = "XY" | "XZ" | "YZ";
 /** Y para cima (como nos CADs profissionais): Frontal = XY, Superior = XZ, Lateral = YZ. */
 export const NOME_PLANO: Record<Plano, string> = { XY: "Frontal", XZ: "Superior", YZ: "Lateral" };
 
+import type { Configuracao } from "./configuracoes";
+
 export type Vec3 = [number, number, number];
 
 export type Perfil =
@@ -57,7 +59,9 @@ export type Referencia =
   | { tipo: "esboco"; id: string }
   /** Linha de um esboço (eixo de revolução, direção). */
   | { tipo: "linhaEsboco"; esboco: string; geo: string }
-  | { tipo: "recurso"; id: string };
+  | { tipo: "recurso"; id: string }
+  /** Recurso de curva 3D (hélice, composta, por pontos, projetada). */
+  | { tipo: "curva"; id: string };
 
 // ---------- esboço ----------
 
@@ -96,8 +100,40 @@ export type GeoEsboco =
   | (GeoBase & { tipo: "arcoElipse"; c: string; m1: string; m2: string; n1: string; n2: string; ini: string; fim: string })
   /** Arco de parábola pelo vértice `v` e foco `f`, de `ini` a `fim` (parâmetro crescente). */
   | (GeoBase & { tipo: "parabola"; v: string; f: string; ini: string; fim: string })
+  /**
+   * Texto: contornos das letras (gerados da fonte no editor e guardados, para o arquivo abrir
+   * igual em qualquer aparelho), relativos ao ponto `p`. Com `curva`, segue a linha/arco/círculo.
+   * `transf` é a matriz 2×2 de cópias giradas/espelhadas.
+   */
+  | (GeoBase & { tipo: "texto"; p: string; opc: OpcoesTexto; curva?: string; contornos: ComandoTexto[][]; transf?: [number, number, number, number] })
   /** Ponto solto (posição de furo, referência). */
   | (GeoBase & { tipo: "ponto"; p: string });
+
+export interface OpcoesTexto {
+  texto: string;
+  /** Altura das maiúsculas (mm). */
+  altura: number;
+  negrito: boolean;
+  italico: boolean;
+  /** Giro do texto (graus); sem curva. */
+  angulo: number;
+  alinhamento: "esquerda" | "centro" | "direita" | "justificado";
+  inverterV: boolean;
+  inverterH: boolean;
+  /** Fator de largura das letras (%). */
+  largura: number;
+  /** Espaçamento entre letras (%). */
+  espacamento: number;
+  fonte: "noto-sans";
+}
+
+/** Comandos de contorno (como no SVG): mover, linha, Bézier quadrática e cúbica, fechar. */
+export type ComandoTexto =
+  | ["M", number, number]
+  | ["L", number, number]
+  | ["Q", number, number, number, number]
+  | ["C", number, number, number, number, number, number]
+  | ["Z"];
 
 /** Relações geométricas e cotas. Referências são ids de pontos ou de geometrias. */
 export type RestricaoEsboco =
@@ -393,10 +429,108 @@ export interface FeatureEixoRef extends FeatureBase {
   ref2?: Referencia;
 }
 
+/**
+ * Curva 3D (menu Curvas ▾): usada como trajetória, guia ou linha de centro em varredura e loft.
+ * Campos e comportamento: docs/funcional/features.md §16.
+ */
+export interface FeatureCurva extends FeatureBase {
+  tipo: "curva";
+  modo: "helice" | "xyz" | "pontosRef" | "composta" | "projetada";
+  // hélice e espiral: base = esboço com um círculo (centro, raio e plano)
+  base?: Referencia;
+  definicao: "passoRevolucao" | "alturaRevolucao" | "alturaPasso" | "espiral";
+  passo: number;
+  revolucoes: number;
+  altura: number;
+  anguloInicial: number; // graus
+  horario: boolean;
+  inverter: boolean;
+  conica: { ativa: boolean; angulo: number; paraFora: boolean };
+  /** Pontos XYZ, um por linha: "x; y; z" (mm). */
+  pontosTexto: string;
+  fechada: boolean;
+  /** Pontos de referência (vértices) em ordem. */
+  pontos: Referencia[];
+  /** Composta: esboços, arestas e curvas que se ligam pelas pontas. */
+  itens: Referencia[];
+  // projetada
+  projecao: "esbocoEmFaces" | "esbocoEmEsboco";
+  esboco?: Referencia;
+  esboco2?: Referencia;
+  faces: Referencia[];
+  bidirecional: boolean;
+}
+
+// ---------- chapa metálica (Fase 4, docs/funcional/chapa.md) ----------
+
+export type PosicaoFlange = "materialInterno" | "materialExterno" | "dobraExterna";
+
+/** Flange base: esboço fechado (placa) ou aberto (perfil dobrado, extrudado na profundidade). */
+export interface FeatureFlangeBase extends FeatureBase {
+  tipo: "flangeBase";
+  esboco?: string;
+  /** Linha da tabela de chapas ("material|espessura") ou vazio = personalizado. */
+  tabela: string;
+  espessura: number;
+  raio: number;
+  fatorK: number;
+  /** Lado do material em relação ao esboço. */
+  inverter: boolean;
+  /** Perfil aberto: profundidade (Direção 1) e plano médio. */
+  profundidade: number;
+  planoMedio: boolean;
+  inverterDirecao: boolean;
+}
+
+/** Flange de aresta: aba dobrada a partir de arestas retas da chapa. */
+export interface FeatureFlangeAresta extends FeatureBase {
+  tipo: "flangeAresta";
+  arestas: Referencia[];
+  angulo: number;
+  comprimento: number;
+  medicao: "externoVirtual" | "internoVirtual" | "tangente";
+  posicao: PosicaoFlange;
+  inverter: boolean;
+  raioProprio: boolean;
+  raio: number;
+  deslocInicio: number;
+  deslocFim: number;
+}
+
+/** Bainha: dobra a borda sobre ela mesma. */
+export interface FeatureBainha extends FeatureBase {
+  tipo: "bainha";
+  arestas: Referencia[];
+  estilo: "fechada" | "aberta" | "enrolada";
+  comprimento: number;
+  folga: number;
+  angulo: number;
+  raio: number;
+  inverter: boolean;
+  posicao: "materialInterno" | "materialExterno";
+}
+
+/** Aba (esboço fechado numa face da chapa, mesma espessura) e corte através da chapa. */
+export interface FeatureAbaChapa extends FeatureBase {
+  tipo: "abaChapa" | "corteChapa";
+  esboco?: string;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
-  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef;
+  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa;
+
+/**
+ * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
+ * Ajuste raio e fator K conforme a dobradeira/ferramental de quem vai fabricar.
+ */
+export const TABELA_CHAPA: { material: string; espessura: number; raio: number; k: number }[] = [
+  ...[0.5, 0.75, 0.9, 1.2, 1.5, 1.9, 2, 2.65, 3, 3.35, 4.25, 4.75, 6.3].map((e) => ({ material: "Aço carbono", espessura: e, raio: e, k: 0.44 })),
+  ...[0.5, 0.8, 1, 1.2, 1.5, 2, 2.5, 3].map((e) => ({ material: "Aço inox", espessura: e, raio: Number((1.5 * e).toFixed(2)), k: 0.45 })),
+  ...[0.5, 0.8, 1, 1.5, 2, 2.5, 3, 4].map((e) => ({ material: "Alumínio", espessura: e, raio: e, k: 0.43 })),
+];
 
 export interface Variavel {
   nome: string;
@@ -417,6 +551,11 @@ export interface Documento {
   equacoes?: Record<string, string>;
   /** Barra de retrocesso: só as primeiras N features regeneram (ausente = todas). */
   retrocesso?: number;
+  /** Configurações da peça (variações no mesmo arquivo); ausente = só a "Padrão". */
+  configuracoes?: Configuracao[];
+  configAtiva?: string;
+  /** Parâmetros que mudam de uma configuração para outra (chaves de `configuracoes.ts`). */
+  parametrosConfigurados?: string[];
 }
 
 export interface Material {
@@ -555,6 +694,32 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Plano${indice}`, modo: "deslocamento", distancia: 20, angulo: 45, inverter: false };
     case "eixoRef":
       return { ...base, tipo, nome: `Eixo${indice}`, modo: "aresta" };
+    case "flangeBase":
+      return {
+        ...base, tipo, nome: `FlangeBase${indice}`, tabela: "Aço carbono|2", espessura: 2, raio: 2, fatorK: 0.44,
+        inverter: false, profundidade: 50, planoMedio: false, inverterDirecao: false,
+      };
+    case "flangeAresta":
+      return {
+        ...base, tipo, nome: `FlangeAresta${indice}`, arestas: [], angulo: 90, comprimento: 20, medicao: "externoVirtual",
+        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0,
+      };
+    case "bainha":
+      return {
+        ...base, tipo, nome: `Bainha${indice}`, arestas: [], estilo: "fechada", comprimento: 10, folga: 1, angulo: 270, raio: 3,
+        inverter: false, posicao: "materialInterno",
+      };
+    case "abaChapa":
+      return { ...base, tipo, nome: `Aba${indice}` };
+    case "corteChapa":
+      return { ...base, tipo, nome: `CorteChapa${indice}` };
+    case "curva":
+      return {
+        ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
+        anguloInicial: 0, horario: false, inverter: false, conica: { ativa: false, angulo: 10, paraFora: false },
+        pontosTexto: "0; 0; 0\n20; 0; 10\n40; 20; 10", fechada: false, pontos: [], itens: [],
+        projecao: "esbocoEmFaces", faces: [], bidirecional: false,
+      };
   }
 }
 
@@ -575,6 +740,12 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   espelhar: "Espelhar",
   planoRef: "Plano",
   eixoRef: "Eixo",
+  curva: "Curva",
+  flangeBase: "Flange base",
+  flangeAresta: "Flange de aresta",
+  bainha: "Bainha",
+  abaChapa: "Aba",
+  corteChapa: "Corte na chapa",
 };
 
 /**
@@ -591,6 +762,9 @@ export function esbocosAbsorvidos(f: Feature): string[] {
     return [f.perfil, ...f.trajetoria, ...f.guias]
       .flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []))
       .filter((id, i, a) => a.indexOf(id) === i);
+  }
+  if (f.tipo === "curva") {
+    return [f.base, f.esboco, f.esboco2].flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []));
   }
   return "esboco" in f && f.esboco ? [f.esboco] : [];
 }

@@ -1,12 +1,14 @@
 // Painéis de cada recurso, campo a campo, conforme docs/funcional/features.md.
 
 import type {
-  Feature, FeatureChanfro, FeatureCasca, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
+  Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa,
 } from "../model";
+import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
-import type { Campo, Esquema } from "./formulario";
+import type { Caixa, Campo, Esquema } from "./formulario";
 
 export interface DadosEsquema {
   esbocosAntes: [string, string][];
@@ -86,9 +88,127 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return planoRef() as Esquema<Feature>;
     case "eixoRef":
       return eixoRef() as Esquema<Feature>;
+    case "curva":
+      return curva(f) as Esquema<Feature>;
+    case "flangeBase":
+      return flangeBase(d) as Esquema<Feature>;
+    case "flangeAresta":
+      return flangeAresta() as Esquema<Feature>;
+    case "bainha":
+      return bainha() as Esquema<Feature>;
+    case "abaChapa":
+    case "corteChapa":
+      return abaChapa(f.tipo === "corteChapa", d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
+}
+
+// ---------- chapa metálica (docs/funcional/chapa.md) ----------
+
+const POSICOES: [string, string][] = [["materialInterno", "Material interno"], ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"]];
+
+function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
+  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
+  return {
+    titulo: "Flange base",
+    caixas: [
+      { titulo: "Perfil", campos: [
+        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
+      ] },
+      { titulo: "Direção 1", vis: aberto, campos: [
+        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
+        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
+        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
+      ] },
+      { titulo: "Bitolas de chapa", campos: [
+        { t: "sel", rot: "Tabela", cam: "tabela",
+          opcoes: [["", "Personalizado"], ...TABELA_CHAPA.map((l): [string, string] => [`${l.material}|${l.espessura}`, `${l.material} — ${l.espessura} mm (R${l.raio}, K ${l.k})`])],
+          // valores mexidos à mão: a tabela mostra "Personalizado"
+          valor: (f) => {
+            const l = TABELA_CHAPA.find((x) => `${x.material}|${x.espessura}` === f.tabela);
+            return l && l.espessura === f.espessura && l.raio === f.raio && l.k === f.fatorK ? f.tabela : "";
+          },
+          aoMudar: (f, v) => {
+            f.tabela = v;
+            const l = TABELA_CHAPA.find((x) => `${x.material}|${x.espessura}` === v);
+            if (l) {
+              f.espessura = l.espessura;
+              f.raio = l.raio;
+              f.fatorK = l.k;
+            }
+          } },
+      ] },
+      { titulo: "Parâmetros de chapa", campos: [
+        { t: "num", rot: "Espessura", cam: "espessura", un: "mm", min: 0.01, passo: 0.1 },
+        { t: "inverter", rot: "Inverter direção (lado do material)", cam: "inverter" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5 },
+      ] },
+      { titulo: "Margem de dobra", campos: [
+        { t: "info", texto: () => "Fator K (margem = ângulo × (R + K·t))." },
+        { t: "num", rot: "Fator K", cam: "fatorK", min: 0, max: 1, passo: 0.01 },
+      ] },
+      { titulo: "Alívio automático", campos: [{ t: "info", texto: () => "Retangular, largura = espessura, nas pontas de flanges parciais." }] },
+    ],
+  };
+}
+
+function flangeAresta(): Esquema<FeatureFlangeAresta> {
+  return {
+    titulo: "Flange de aresta",
+    caixas: [
+      { titulo: "Parâmetros da flange", campos: [
+        { t: "refs", rot: "Arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "Toque nas arestas retas compridas da chapa (face de cima ou de baixo)" },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Ângulo", campos: [{ t: "num", rot: "Ângulo da flange", cam: "angulo", un: "°", min: 0.1, max: 180 }] },
+      { titulo: "Comprimento da flange", campos: [
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Comprimento", cam: "comprimento", un: "mm", min: 0.001 },
+        { t: "sel", rot: "Medição", cam: "medicao", opcoes: [["externoVirtual", "Externo virtual"], ["internoVirtual", "Interno virtual"], ["tangente", "Tangente à dobra"]] },
+      ] },
+      { titulo: "Posição da flange", campos: [{ t: "sel", rot: "Posição", cam: "posicao", opcoes: POSICOES }] },
+      { titulo: "Deslocamentos (largura parcial)", campos: [
+        { t: "num", rot: "Do início da aresta", cam: "deslocInicio", un: "mm", min: 0 },
+        { t: "num", rot: "Do fim da aresta", cam: "deslocFim", un: "mm", min: 0 },
+        { t: "info", texto: (f) => (f.deslocInicio > 0 || f.deslocFim > 0 ? "Flange parcial: alívio retangular automático nas pontas." : "") },
+      ] },
+    ],
+  };
+}
+
+function bainha(): Esquema<FeatureBainha> {
+  return {
+    titulo: "Bainha",
+    caixas: [
+      { titulo: "Arestas", campos: [
+        { t: "refs", rot: "Arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "Toque nas arestas retas da chapa" },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "sel", rot: "Posição", cam: "posicao", opcoes: [["materialInterno", "Material interno"], ["materialExterno", "Material externo"]] },
+      ] },
+      { titulo: "Tipo e tamanho", campos: [
+        { t: "sel", rot: "Tipo", cam: "estilo", opcoes: [["fechada", "Fechada"], ["aberta", "Aberta"], ["enrolada", "Enrolada"]] },
+        { t: "num", rot: "Comprimento", cam: "comprimento", un: "mm", min: 0.001, vis: (f) => f.estilo !== "enrolada" },
+        { t: "num", rot: "Folga", cam: "folga", un: "mm", min: 0.001, passo: 0.1, vis: (f) => f.estilo === "aberta" },
+        { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 1, max: 359, vis: (f) => f.estilo === "enrolada" },
+        { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.estilo === "enrolada" },
+      ] },
+    ],
+  };
+}
+
+function abaChapa(corte: boolean, d: DadosEsquema): Esquema<FeatureAbaChapa> {
+  return {
+    titulo: corte ? "Corte na chapa" : "Aba",
+    caixas: [{ titulo: "Perfil", campos: [
+      { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+      { t: "info", texto: () => corte
+        ? "Esboço fechado numa face plana da chapa: corta através da espessura (normal à chapa) e aparece no planificado."
+        : "Esboço fechado numa face plana da chapa, encostado na borda: vira aba com a mesma espessura." },
+    ] }],
+  };
 }
 
 function extrusao(corte: boolean, d: DadosEsquema): Esquema<FeatureExtrusao> {
@@ -300,7 +420,7 @@ function varredura(corte: boolean): Esquema<FeatureVarredura> {
           { t: "sel", rot: "Tipo de perfil", cam: "tipoPerfil", opcoes: [["esboco", "Perfil de esboço"], ["circular", "Perfil circular"]] },
           { t: "refs", rot: "Perfil", cam: "perfil", aceita: ["esboco"], multiplo: false, vis: deEsboco,
             dica: "Toque o esboço do perfil na árvore (esboço fechado)" },
-          { t: "refs", rot: "Trajetória", cam: "trajetoria", aceita: ["esboco", "aresta"], multiplo: true, cor: "azul",
+          { t: "refs", rot: "Trajetória", cam: "trajetoria", aceita: ["esboco", "aresta", "curva"], multiplo: true, cor: "azul",
             dica: "Toque o esboço da trajetória na árvore, ou arestas encadeadas no modelo" },
           { t: "num", rot: "Diâmetro", cam: "diametro", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !deEsboco(f) },
         ],
@@ -308,7 +428,7 @@ function varredura(corte: boolean): Esquema<FeatureVarredura> {
       {
         titulo: "Curvas-guia",
         campos: [
-          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta"], multiplo: true, ordenavel: true,
+          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta", "curva"], multiplo: true, ordenavel: true,
             dica: "Opcional: esboços ou arestas que tocam o perfil (o perfil escala para segui-las)" },
           { t: "check", rot: "Mesclar faces suaves", cam: "mesclarFacesSuaves", vis: (f) => f.guias.length > 0 },
         ],
@@ -352,7 +472,7 @@ function loft(corte: boolean): Esquema<FeatureLoft> {
       {
         titulo: "Curvas-guia",
         campos: [
-          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta"], multiplo: true, ordenavel: true,
+          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta", "curva"], multiplo: true, ordenavel: true,
             dica: "Opcional: esboços ou arestas que tocam os perfis" },
           { t: "sel", rot: "Influência da curva-guia", cam: "influenciaGuias", vis: (f) => f.guias.length > 0,
             opcoes: [["proximaGuia", "Até a próxima guia"], ["proximaArestaViva", "Até a próxima aresta viva"], ["proximaAresta", "Até a próxima aresta"], ["global", "Global"]] },
@@ -361,7 +481,7 @@ function loft(corte: boolean): Esquema<FeatureLoft> {
       {
         titulo: "Parâmetros de linha de centro",
         campos: [
-          { t: "refs", rot: "Linha de centro", cam: "linhaCentro", aceita: ["esboco", "aresta"], multiplo: true, cor: "azul",
+          { t: "refs", rot: "Linha de centro", cam: "linhaCentro", aceita: ["esboco", "aresta", "curva"], multiplo: true, cor: "azul",
             dica: "Opcional: curva que os perfis seguem" },
           { t: "num", rot: "Número de seções", cam: "secoesLinhaCentro", min: 2, max: 200, passo: 1, vis: (f) => f.linhaCentro.length > 0 },
         ],
@@ -515,6 +635,71 @@ function planoRef(): Esquema<FeaturePlanoRef> {
       ] },
     ],
   };
+}
+
+const TITULO_CURVA: Record<FeatureCurva["modo"], string> = {
+  helice: "Hélice e espiral", xyz: "Curva por pontos XYZ", pontosRef: "Curva por pontos de referência",
+  composta: "Curva composta", projetada: "Curva projetada",
+};
+
+/** Curvas 3D (features.md §16): o modo vem do item escolhido no menu Curvas ▾. */
+function curva(f0: FeatureCurva): Esquema<FeatureCurva> {
+  const caixas: Caixa<FeatureCurva>[] = [];
+  if (f0.modo === "helice") {
+    const def = (...ds: FeatureCurva["definicao"][]) => (f: FeatureCurva) => ds.includes(f.definicao);
+    caixas.push(
+      { titulo: "Círculo de base", campos: [
+        { t: "refs", rot: "Esboço com o círculo", cam: "base", aceita: ["esboco"], multiplo: false, dica: "Esboço com um círculo: centro e diâmetro da hélice" },
+      ] },
+      { titulo: "Definido por", campos: [
+        { t: "sel", rot: "Tipo", cam: "definicao", opcoes: [["passoRevolucao", "Passo e revolução"], ["alturaRevolucao", "Altura e revolução"], ["alturaPasso", "Altura e passo"], ["espiral", "Espiral"]] },
+      ] },
+      { titulo: "Parâmetros", campos: [
+        { t: "num", rot: "Passo", cam: "passo", un: "mm", min: 0.01, vis: def("passoRevolucao", "alturaPasso", "espiral") },
+        { t: "num", rot: "Altura", cam: "altura", un: "mm", min: 0.01, vis: def("alturaRevolucao", "alturaPasso") },
+        { t: "num", rot: "Revoluções", cam: "revolucoes", min: 0.05, passo: 0.5, vis: def("passoRevolucao", "alturaRevolucao", "espiral") },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Ângulo inicial", cam: "anguloInicial", un: "°", passo: 15 },
+        { t: "sel", rot: "Sentido", cam: "horario", opcoes: [["false", "Anti-horário"], ["true", "Horário"]], valor: (f) => String(f.horario), aoMudar: (f, v) => (f.horario = v === "true") },
+      ] },
+      { titulo: "Hélice cônica", opcional: "conica.ativa", vis: (f) => f.definicao !== "espiral", campos: [
+        { t: "num", rot: "Ângulo do cone", cam: "conica.angulo", un: "°", min: 0.1, max: 80 },
+        { t: "check", rot: "Cônica para fora", cam: "conica.paraFora" },
+      ] },
+    );
+  } else if (f0.modo === "xyz") {
+    caixas.push({ titulo: "Pontos", campos: [
+      { t: "texto", rot: "X; Y; Z (mm), um ponto por linha", cam: "pontosTexto", linhas: 8, dica: "0; 0; 0\n20; 0; 10" },
+      { t: "check", rot: "Curva fechada", cam: "fechada" },
+      { t: "info", texto: () => "A curva passa por todos os pontos, na ordem da lista. Dá para colar uma coluna de planilha." },
+    ] });
+  } else if (f0.modo === "pontosRef") {
+    caixas.push({ titulo: "Pontos de referência", campos: [
+      { t: "refs", rot: "Pontos (em ordem)", cam: "pontos", aceita: ["vertice"], multiplo: true, ordenavel: true, dica: "Toque os vértices na ordem da curva" },
+      { t: "check", rot: "Curva fechada", cam: "fechada" },
+    ] });
+  } else if (f0.modo === "composta") {
+    caixas.push({ titulo: "Entidades a juntar", campos: [
+      { t: "refs", rot: "Esboços, arestas e curvas", cam: "itens", aceita: ["esboco", "aresta", "curva"], multiplo: true, dica: "Toque os trechos: precisam se ligar pelas pontas" },
+    ] });
+  } else {
+    caixas.push(
+      { titulo: "Tipo de projeção", campos: [
+        { t: "sel", rot: "Tipo", cam: "projecao", opcoes: [["esbocoEmFaces", "Esboço em faces"], ["esbocoEmEsboco", "Esboço em esboço"]] },
+      ] },
+      { titulo: "Seleções", campos: [
+        { t: "refs", rot: "Esboço a projetar", cam: "esboco", aceita: ["esboco"], multiplo: false },
+        { t: "refs", rot: "Segundo esboço", cam: "esboco2", aceita: ["esboco"], multiplo: false, cor: "azul", vis: (f) => f.projecao === "esbocoEmEsboco" },
+        { t: "refs", rot: "Faces de destino", cam: "faces", aceita: ["face"], multiplo: true, cor: "azul", vis: (f) => f.projecao === "esbocoEmFaces" },
+        { t: "inverter", rot: "Inverter projeção", cam: "inverter", vis: (f) => f.projecao === "esbocoEmFaces" && !f.bidirecional },
+        { t: "check", rot: "Bidirecional", cam: "bidirecional", vis: (f) => f.projecao === "esbocoEmFaces" },
+        { t: "info", texto: (f) => f.projecao === "esbocoEmEsboco"
+          ? "Os dois esboços (em planos que se cruzam) são estendidos na normal de cada um; a curva é onde se encontram."
+          : "O esboço é levado na direção da normal dele até as faces." },
+      ] },
+    );
+  }
+  return { titulo: TITULO_CURVA[f0.modo], caixas };
 }
 
 function eixoRef(): Esquema<FeatureEixoRef> {

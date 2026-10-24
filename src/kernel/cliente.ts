@@ -4,6 +4,7 @@
 import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { ResultadoRegeneracao } from "./regenerar";
+import type { ResumoPlanificado } from "./dxf";
 import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
 
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
@@ -43,9 +44,14 @@ export class ClienteKernel {
     });
   }
 
-  regenerar(features: Feature[]) {
+  regenerar(features: Feature[], planificar = false) {
     this.ultimaRegeneracao = ++this.seq;
-    this.enviar({ tipo: "regenerar", seq: this.seq, features });
+    this.enviar({ tipo: "regenerar", seq: this.seq, features, planificar });
+  }
+
+  /** DXF do planificado (da última regeneração) e o resumo da lista de corte. */
+  dxf(nome: string) {
+    return this.pedir<{ dxf: string; resumo: ResumoPlanificado }>({ tipo: "dxf", nome });
   }
 
   private pedir<T>(p: SemSeq<PedidoKernel>): Promise<T> {

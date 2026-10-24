@@ -1,7 +1,7 @@
 // Painel lateral durante a edição de um esboço: estado de definição, opções da ferramenta,
 // seleção (relações, construção, exclusão) e saída do esboço.
 
-import { ehCota, type RestricaoEsboco } from "../model";
+import { ehCota, type OpcoesTexto, type RestricaoEsboco } from "../model";
 import { textoCota } from "./cotas";
 import { EIXO_H, EIXO_V, ORIGEM } from "./geometria";
 import { avaliar, ROTULO_FERRAMENTA, type EditorEsboco } from "./editor";
@@ -91,6 +91,14 @@ export function renderizarPainelEsboco(
   painel.append(def);
   if (ed.estado.definicao === "superdefinido") {
     painel.append(botao("Excluir relações em conflito", () => ed.excluirConflitos(), "perigo largo"));
+  }
+
+  // espelhamento dinâmico ligado: aviso fixo com botão para desligar
+  if (ed.espelhoDinamico || ed.escolhendoEspelho) {
+    const caixa = el("div", "aviso-dinamico");
+    caixa.append(el("span", "", ed.espelhoDinamico ? `Espelhamento dinâmico ligado (espelho: ${ed.nomeEspelhoDinamico})` : "Espelhamento dinâmico: toque a linha de espelho"));
+    caixa.append(botao("Desligar", () => ed.alternarEspelhoDinamico()));
+    painel.append(caixa);
   }
 
   // ferramenta
@@ -216,6 +224,57 @@ export function renderizarPainelEsboco(
     painel.append(pular);
     if (n) painel.append(botao("Aplicar padrão", () => ed.aplicarPadrao(), "destaque largo"));
   }
+  if (ed.ferramenta === "texto") {
+    const o = ed.textoOpc;
+    const curva = ed.curvaTexto;
+    painel.append(...campoSelecao("Curvas", false, ed.campoTexto === "curva", "Nenhuma (toque para escolher)", curva ? [curva] : [],
+      () => ed.definirCampoTexto(ed.campoTexto === "curva" ? "posicao" : "curva"), () => ed.soltarTextoDaCurva()));
+    const lt = el("label", "campo");
+    lt.append(el("span", "campo-rotulo", "Texto"));
+    const ta = el("textarea", "texto-esboco");
+    ta.rows = 2;
+    ta.value = o.texto;
+    ta.oninput = () => void ed.mudarTexto({ texto: ta.value }, true);
+    // ao sair da caixa só grava o passo de desfazer: refazer o painel aqui engoliria o clique
+    // que tirou o foco (ex.: no botão Negrito)
+    ta.onchange = () => ed.confirmarTexto();
+    lt.append(ta);
+    painel.append(lt);
+    // estilo: negrito, itálico e alinhamento como botões de alternar
+    const alternar = (rot: string, titulo: string, ativo: boolean, acao: () => void, cls = "") => {
+      const b = botao(rot, acao, `alternar ${cls}`);
+      b.title = titulo;
+      b.setAttribute("aria-pressed", String(ativo));
+      return b;
+    };
+    const estilo = el("div", "barra-alternar");
+    estilo.append(
+      alternar("N", "Negrito", o.negrito, () => void ed.mudarTexto({ negrito: !o.negrito }).then(() => ed.definirCampoTexto(ed.campoTexto)), "negrito"),
+      alternar("I", "Itálico", o.italico, () => void ed.mudarTexto({ italico: !o.italico }).then(() => ed.definirCampoTexto(ed.campoTexto)), "italico"),
+    );
+    for (const [v, r, t] of [["esquerda", "⇤", "Alinhar à esquerda"], ["centro", "↔", "Centralizar"], ["direita", "⇥", "Alinhar à direita"], ["justificado", "⇹", "Justificar (ao longo da curva)"]] as const) {
+      estilo.append(alternar(r, t, o.alinhamento === v, () => void ed.mudarTexto({ alinhamento: v }).then(() => ed.definirCampoTexto(ed.campoTexto))));
+    }
+    painel.append(estilo);
+    const num = (rot: string, v: number, un: string, mudar: (x: number) => Partial<OpcoesTexto>) =>
+      campoNumero(rot, Number(v.toFixed(4)), un, (x) => void ed.mudarTexto(mudar(x)));
+    painel.append(
+      num("Altura das letras", o.altura, "mm", (x) => ({ altura: Math.max(0.01, Math.abs(x)) })),
+      num("Girar", o.angulo, "°", (x) => ({ angulo: x })),
+      interruptor("Inverter vertical", o.inverterV, (v) => void ed.mudarTexto({ inverterV: v })),
+      interruptor("Inverter horizontal", o.inverterH, (v) => void ed.mudarTexto({ inverterH: v })),
+      num("Largura", o.largura, "%", (x) => ({ largura: Math.max(1, x) })),
+      num("Espaçamento", o.espacamento, "%", (x) => ({ espacamento: Math.max(0, x) })),
+    );
+    const lf = el("label", "campo");
+    lf.append(el("span", "campo-rotulo", "Fonte"));
+    const sf = el("select");
+    sf.add(new Option("Noto Sans (licença SIL OFL)", "noto-sans"));
+    sf.value = o.fonte;
+    lf.append(sf);
+    painel.append(lf);
+    if (ed.ultimoTexto) painel.append(botao("Novo texto", () => ed.definirFerramenta("texto"), "largo"));
+  }
   if (ed.ferramenta === "exibirRelacoes") {
     const f = el("label", "campo");
     f.append(el("span", "campo-rotulo", "Filtro"));
@@ -309,6 +368,8 @@ export function renderizarPainelEsboco(
     rel.disabled = !ed.relacoesPossiveis().length;
     acoes.append(rel);
     if (ed.geosSelecionadas().length) acoes.append(botao("Alternar construção", () => ed.alternarConstrucaoSelecao()));
+    const txt = sel.length === 1 ? esb.geos.find((g) => g.id === sel[0] && g.tipo === "texto") : undefined;
+    if (txt) acoes.append(botao("Editar texto", () => ed.editarTexto(txt.id)));
     const excluiveis = sel.filter((id) => id !== ORIGEM && id !== EIXO_H && id !== EIXO_V);
     if (excluiveis.length) acoes.append(botao("Excluir", () => ed.excluirSelecao(), "perigo"));
     painel.append(acoes);

@@ -57,6 +57,11 @@ Usamos **pnpm** em vez de npm por segurança contra pacotes maliciosos
 - **Versões travadas**: `pnpm-lock.yaml` fixa versão e hash de cada pacote; o deploy usa
   `pnpm install --frozen-lockfile`, que falha se algo não bater.
 
+Texto de esboço: `opentype.js` (MIT, sem dependências) lê a fonte **Noto Sans** do pacote
+`@fontsource/noto-sans` (OFL); os arquivos `.woff` entram no build e no cache offline — nada é
+baixado de fora. Os contornos das letras ficam gravados no `.jlscad`, então o arquivo abre igual
+mesmo se a fonte mudar numa versão futura.
+
 Regras: poucas dependências, só de projetos conhecidos; revisar mudanças no `pnpm-lock.yaml`;
 rodar `pnpm audit` de vez em quando.
 
@@ -110,4 +115,6 @@ O comportamento esperado de cada comando (caixas, campos, opções e status) est
 ## Licenças de terceiros
 
 OpenCascade / replicad-opencascadejs: LGPL-2.1 · PlaneGCS (@salusoft89/planegcs, do FreeCAD):
-LGPL-2.0+ · replicad: MIT · Three.js: MIT
+LGPL-2.0+ · replicad: MIT · Three.js: MIT · opentype.js: MIT · fonte Noto Sans
+(@fontsource/noto-sans): SIL Open Font License 1.1. A lista também aparece no app, em
+☰ → Sobre e licenças.

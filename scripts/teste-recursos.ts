@@ -7,12 +7,16 @@ import { createRequire } from "node:module";
 import {
   documentoExemplo, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
-import { regenerar } from "../src/kernel/regenerar";
+import { exportarDxf, regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
 import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
 import { ORIGEM } from "../src/esboco/geometria";
 import { absorvidosDe, excluirRecursos, filhosDe } from "../src/dependencias";
+import {
+  ativarConfiguracao, configurarParametro, definirSupressao, definirValorNaConfiguracao, excluirConfiguracao, listarParametros,
+  novaConfiguracao, prepararConfiguracoes,
+} from "../src/configuracoes";
 
 const require = createRequire(import.meta.url);
 setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
@@ -23,6 +27,10 @@ function confere(nome: string, obtido: number | null | undefined, esperado: numb
   const ok = Math.abs(v - esperado) <= tol * Math.max(1, Math.abs(esperado));
   if (!ok) falhas++;
   console.log(`${ok ? "ok  " : "FALHA"} ${nome}: ${v.toFixed(2)} (esperado ${esperado.toFixed(2)})`);
+}
+function verdade(nome: string, v: boolean) {
+  if (!v) falhas++;
+  console.log(`${v ? "ok  " : "FALHA"} ${nome}`);
 }
 function semErros(nome: string, r: ReturnType<typeof regenerar>) {
   if (r.erros.length) {
@@ -383,6 +391,189 @@ const bloco = ext(base, 10);
   semErros("loft: fechar loft (anel)", regenerar([qa, q3, q4, lf({ perfis: [E(qa), E(q3), E(q4)], fecharLoft: false })]));
   const corteL = lf({ operacao: "cortar", perfis: [E(circ(5, 0)), E(circ(5, 10))] });
   void corteL;
+}
+
+// ---------- curvas 3D (hélice, pontos XYZ, pontos de referência, composta, projetada) ----------
+{
+  const curva = (o: object) => ({ ...(novaFeature("curva", 1) as any), ...o });
+  const sw = (o: object) => ({ ...(novaFeature("varredura", 1) as any), ...o });
+  const esb = (e: FeatureEsboco) => ({ tipo: "esboco", id: e.id }) as Referencia;
+  const comp = (pl: number[][]) => pl.reduce((t, p, k) => (k ? t + Math.hypot(p[0] - pl[k - 1][0], p[1] - pl[k - 1][1], p[2] - pl[k - 1][2]) : 0), 0);
+  const linhasDe = (r: ReturnType<typeof regenerar>, id: string) => (r.referencias.find((x) => x.id === id) as { linhas: number[][][] } | undefined)?.linhas ?? [];
+
+  // hélice: círculo R10 no plano Superior (normal +Y), passo 5, 4 voltas → sobe 20 em Y
+  const base = circulo(10, 0, 0, "XZ");
+  const h = curva({ modo: "helice", base: esb(base), definicao: "passoRevolucao", passo: 5, revolucoes: 4 });
+  const rh = regenerar([base, h]);
+  semErros("hélice", rh);
+  const lh = linhasDe(rh, h.id).flat();
+  confere("hélice: comprimento 4·√((2π·10)² + 5²)", comp(lh), 4 * Math.hypot(2 * Math.PI * 10, 5), 5e-3);
+  confere("hélice: altura final", lh[lh.length - 1][1], 20);
+  confere("hélice: raio constante", Math.hypot(lh[37][0], lh[37][2]), 10);
+  // mola: perfil circular Ø2 varrido ao longo da hélice ≈ π·1²·comprimento
+  const mola = regenerar([base, h, sw({ tipoPerfil: "circular", diametro: 2, trajetoria: [{ tipo: "curva", id: h.id }] })]);
+  semErros("mola (varredura na hélice)", mola);
+  confere("mola: volume ≈ π·1²·comprimento da hélice", mola.volume, Math.PI * 4 * Math.hypot(2 * Math.PI * 10, 5), 1e-2);
+  const hc = curva({ modo: "helice", base: esb(base), definicao: "alturaRevolucao", altura: 20, revolucoes: 2, conica: { ativa: true, angulo: 10, paraFora: true } });
+  const lc = linhasDe(regenerar([base, hc]), hc.id).flat();
+  confere("hélice cônica: raio no topo = 10 + 20·tan 10°", Math.hypot(lc[lc.length - 1][0], lc[lc.length - 1][2]), 10 + 20 * Math.tan(Math.PI / 18));
+  const esp = curva({ modo: "helice", base: esb(base), definicao: "espiral", passo: 3, revolucoes: 2 });
+  const le = linhasDe(regenerar([base, esp]), esp.id).flat();
+  confere("espiral: raio final 10 + 2·3", Math.hypot(le[le.length - 1][0], le[le.length - 1][2]), 16);
+  confere("espiral: plana", Math.max(...le.map((p) => Math.abs(p[1]))), 0);
+
+  // curva por pontos XYZ como trajetória: reta (0,0,0)→(0,30,0), perfil Ø4 no plano Superior
+  const xyz = curva({ modo: "xyz", pontosTexto: "0; 0; 0\n0; 30; 0" });
+  confere("curva XYZ como trajetória da varredura", regenerar([xyz, sw({ tipoPerfil: "circular", diametro: 4, trajetoria: [{ tipo: "curva", id: xyz.id }] })]).volume, Math.PI * 4 * 30);
+  const xyz3 = curva({ modo: "xyz", pontosTexto: "0;0;0\n10;20;5\n30,5\t25\t-5\n40; 40; 0" });
+  const l3 = linhasDe(regenerar([xyz3]), xyz3.id);
+  const fimDe = (pl: number[][]) => pl[pl.length - 1];
+  confere("curva XYZ passa pelo 3º ponto (x)", fimDe(l3[1])[0], 30.5);
+  confere("curva XYZ passa pelo 3º ponto (z)", fimDe(l3[1])[2], -5);
+  verdade("curva XYZ: tabela inválida vira erro", regenerar([curva({ modo: "xyz", pontosTexto: "1; 2" })]).erros.length === 1);
+
+  // curva composta de dois esboços que se tocam (L) = mesma varredura que o esboço em L único
+  const e1 = novoEsboco(3, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e1, op.ponto(e1, { x: 0, y: 0 }), op.ponto(e1, { x: 0, y: 50 }));
+  const e2 = novoEsboco(4, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e2, op.ponto(e2, { x: 0, y: 50 }), op.ponto(e2, { x: 40, y: 50 }));
+  const cmp = curva({ modo: "composta", itens: [esb(e2), esb(e1)] });
+  confere("curva composta como trajetória (L 50 + 40)", regenerar([e1, e2, cmp, sw({ tipoPerfil: "circular", diametro: 10, trajetoria: [{ tipo: "curva", id: cmp.id }] })]).volume, Math.PI * 25 * 90);
+  const e3 = novoEsboco(5, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(e3, op.ponto(e3, { x: 100, y: 0 }), op.ponto(e3, { x: 120, y: 0 }));
+  verdade("curva composta com vão vira erro", regenerar([e1, e3, curva({ modo: "composta", itens: [esb(e1), esb(e3)] })]).erros.length === 1);
+
+  // pontos de referência: cantos de um bloco
+  const blocoE = retangulo(40, 40, "XZ");
+  const bloco = ext(blocoE, 20);
+  const pr = curva({ modo: "pontosRef", pontos: [[-20, 20, -20], [20, 20, -20], [20, 20, 20]].map((p) => ({ tipo: "vertice", p })) });
+  const lpr = linhasDe(regenerar([blocoE, bloco, pr]), pr.id);
+  confere("curva por pontos de referência: termina no último vértice", fimDe(lpr[lpr.length - 1])[2], 20);
+
+  // projetada: círculo R10 no plano Superior (y = 0) projetado na face de cima do bloco (y = 20)
+  const cp = circulo(10, 0, 0, "XZ");
+  const topo = face([blocoE, bloco], [0, 1, 0], [0, 20, 0]);
+  const proj = curva({ modo: "projetada", projecao: "esbocoEmFaces", esboco: esb(cp), faces: [topo] });
+  const rp = regenerar([blocoE, bloco, cp, proj]);
+  semErros("curva projetada em face", rp);
+  const lp = linhasDe(rp, proj.id).flat();
+  confere("curva projetada: na face de cima (y = 20)", Math.min(...lp.map((p) => p[1])), 20);
+  confere("curva projetada: raio 10", Math.hypot(lp[5][0], lp[5][2]), 10);
+
+  // esboço em esboço: cilindro R10 (círculo no Frontal) × plano y = 5 (linha no Lateral)
+  const s1 = circulo(10, 0, 0, "XY");
+  const s2 = novoEsboco(6, { tipo: "plano", plano: "YZ", deslocamento: 0 });
+  op.linha(s2, op.ponto(s2, { x: -30, y: 5 }), op.ponto(s2, { x: 30, y: 5 }));
+  const cx = curva({ modo: "projetada", projecao: "esbocoEmEsboco", esboco: esb(s1), esboco2: esb(s2) });
+  const rx = regenerar([s1, s2, cx]);
+  semErros("esboço em esboço", rx);
+  const lx = linhasDe(rx, cx.id).flat();
+  confere("esboço em esboço: y = 5", Math.max(...lx.map((p) => Math.abs(p[1] - 5))) + 5, 5);
+  confere("esboço em esboço: |x| = √(100 − 25)", Math.abs(lx[0][0]), Math.sqrt(75));
+}
+
+// ---------- configurações da peça ----------
+{
+  const doc = documentoExemplo();
+  const vol = () => regenerar(doc.features.filter((f) => !f.suprimida)).volume ?? 0;
+  const base = doc.features.find((f) => f.nome === "Base") as FeatureExtrusao;
+  const furo = doc.features.find((f) => f.nome === "Furo central")!;
+  const v0 = vol();
+  const padrao = prepararConfiguracoes(doc);
+  verdade("configuração Padrão criada e ativa", doc.configAtiva === padrao.id && padrao.nome === "Padrão");
+  configurarParametro(doc, `${base.id}.profundidade`);
+  const longa = novaConfiguracao(doc, "Longa");
+  definirValorNaConfiguracao(doc, longa, `${base.id}.profundidade`, base.profundidade * 2);
+  definirSupressao(doc, longa, furo.id, true);
+  verdade("editar a configuração inativa não mexe na peça", vol() === v0);
+  ativarConfiguracao(doc, longa.id);
+  confere("ativar Longa: profundidade dobra", base.profundidade, (padrao.valores[`${base.id}.profundidade`] ?? 0) * 2);
+  verdade("ativar Longa: furo suprimido", !!furo.suprimida);
+  verdade("Longa tem mais volume", vol() > v0);
+  // mudar ao vivo na ativa e voltar: o valor fica guardado na Longa
+  base.profundidade = 33;
+  ativarConfiguracao(doc, padrao.id);
+  verdade("voltar à Padrão: valores e supressão originais", vol() === v0 && !furo.suprimida);
+  confere("valor ao vivo da Longa foi guardado", longa.valores[`${base.id}.profundidade`], 33);
+  // cota de esboço configurada (chave esboço#cota) e lista de parâmetros
+  const ps = listarParametros(doc);
+  verdade("lista de parâmetros inclui valores de recursos", ps.some((p) => p.chave === `${base.id}.profundidade` && p.rotulo === "D1@Base"));
+  const e = novoEsboco(9, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 10, y: 0 }));
+  const cota = op.restringir(e, { tipo: "distancia", a: l.id, valor: 10 });
+  doc.features.push(e);
+  configurarParametro(doc, `${e.id}#${cota}`);
+  definirValorNaConfiguracao(doc, longa, `${e.id}#${cota}`, 25);
+  const alterados = ativarConfiguracao(doc, longa.id);
+  verdade("cota configurada: esboço marcado para resolver", alterados.includes(e.id));
+  confere("cota configurada: valor da Longa", (e.restricoes.find((r) => r.id === cota) as { valor: number }).valor, 25);
+  // excluir a ativa volta para a primeira
+  excluirConfiguracao(doc, longa.id);
+  verdade("excluir a ativa: volta para a Padrão", doc.configAtiva === padrao.id && doc.configuracoes!.length === 1 && !furo.suprimida);
+}
+
+// ---------- chapa metálica (Fase 4) ----------
+{
+  const fb = (o: object) => ({ ...(novaFeature("flangeBase", 1) as any), ...o });
+  const fa = (o: object) => ({ ...(novaFeature("flangeAresta", 1) as any), ...o });
+  const placaE = retangulo(100, 50, "XY", 50, 25); // 0..100 × 0..50 no plano Frontal
+  const base = fb({ esboco: placaE.id, espessura: 2, raio: 2, fatorK: 0.44 });
+  const r0 = regenerar([placaE, base]);
+  semErros("flange base (placa)", r0);
+  confere("flange base: placa 100 × 50 × 2", r0.volume, 10000);
+  const d0 = exportarDxf("teste").resumo;
+  confere("planificado da placa: largura", d0.largura, 100);
+  confere("planificado da placa: comprimento de corte", d0.comprimentoCorte, 300);
+
+  // flange de aresta 90° na aresta de cima (y = 50, z = 2): material interno, 20 externo virtual
+  const aresta = r0.topologia!.arestas.find((a) => a.geom === "linha" && Math.abs(a.a[1] - 50) < 1e-6 && Math.abs(a.b[1] - 50) < 1e-6 && Math.abs(a.a[2] - 2) < 1e-6)!;
+  const flange = fa({ arestas: [{ tipo: "aresta", ass: aresta }], angulo: 90, comprimento: 20, medicao: "externoVirtual", posicao: "materialInterno" });
+  const r1 = regenerar([placaE, base, flange]);
+  semErros("flange de aresta", r1);
+  // placa encolhe r + t = 4; dobra = 1/4 de coroa (R4 − R2) × 100; reto = 20 − 4
+  confere("flange de aresta: volume", r1.volume, 100 * 46 * 2 + (Math.PI / 4) * (16 - 4) * 100 + 100 * 16 * 2);
+  const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+  const d1 = exportarDxf("teste");
+  confere("planificado com 1 dobra: 46 + BA + 16", d1.resumo.altura, 46 + ba + 16);
+  verdade("DXF: linha de dobra para cima", d1.dxf.includes("DOBRA_CIMA") && d1.resumo.dobras === 1);
+  const rp = regenerar([placaE, base, flange], 0.05, { planificar: true });
+  confere("vista planificada: volume = área × t", rp.volume, 100 * (46 + ba + 16) * 2);
+  verdade("vista planificada: linhas de dobra", rp.referencias.some((x) => x.id === "__dobras"));
+
+  // perfil aberto em U (cantos para fora do material): paredes 29 + 38 + 29, duas dobras R1
+  const u = novoEsboco(7, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  const pu = [[0, 0], [0, 30], [40, 30], [40, 0]].map(([x, y]) => op.ponto(u, { x, y }));
+  for (let k = 0; k < 3; k++) op.linha(u, pu[k], pu[k + 1]);
+  const ub = fb({ esboco: u.id, espessura: 1, raio: 1, fatorK: 0.44, profundidade: 50 });
+  const ru = regenerar([u, ub]);
+  semErros("flange base de perfil aberto", ru);
+  confere("perfil em U: volume", ru.volume, 50 * 1 * (29 + 38 + 29) + 2 * (Math.PI / 4) * (4 - 1) * 50);
+  confere("perfil em U: planificado", exportarDxf("u").resumo.largura + exportarDxf("u").resumo.altura - 50, 96 + 2 * (Math.PI / 2) * (1 + 0.44));
+
+  // bainha enrolada (270°, R3) na aresta de baixo (y = 0, face de referência) — só dobra
+  const a0 = r0.topologia!.arestas.find((a) => a.geom === "linha" && Math.abs(a.a[1]) < 1e-6 && Math.abs(a.b[1]) < 1e-6 && Math.abs(a.a[2]) < 1e-6 && Math.abs(a.b[2]) < 1e-6)!;
+  const hem = { ...(novaFeature("bainha", 1) as any), arestas: [{ tipo: "aresta", ass: a0 }], estilo: "enrolada", angulo: 270, raio: 3, posicao: "materialExterno" };
+  const rh = regenerar([placaE, base, hem]);
+  semErros("bainha enrolada", rh);
+  confere("bainha enrolada: volume", rh.volume, 10000 + 0.75 * Math.PI * (25 - 9) * 100);
+  const hf = { ...(novaFeature("bainha", 1) as any), arestas: [{ tipo: "aresta", ass: a0 }], estilo: "fechada", comprimento: 10, posicao: "materialExterno" };
+  semErros("bainha fechada", regenerar([placaE, base, hf]));
+
+  // corte na chapa: círculo Ø10 desenhado na face de cima da placa
+  const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+  op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);
+  const corte = { ...(novaFeature("corteChapa", 1) as any), esboco: ce.id };
+  const rc = regenerar([placaE, base, ce, corte]);
+  semErros("corte na chapa", rc);
+  confere("corte na chapa: furo Ø10", rc.volume, 10000 - Math.PI * 25 * 2);
+  const dc = exportarDxf("c").resumo;
+  verdade("planificado: 1 recorte", dc.recortes === 1);
+  confere("planificado: comprimento de corte com o furo", dc.comprimentoCorte, 300 + Math.PI * 10);
+  // aba: retângulo 20 × 10 colado na borda de cima da placa, na face de cima
+  const ae = novoEsboco(9, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+  op.retangulo(ae, op.ponto(ae, { x: 40, y: 50 }), op.ponto(ae, { x: 60, y: 60 }));
+  const aba = { ...(novaFeature("abaChapa", 1) as any), esboco: ae.id };
+  confere("aba: placa + 20 × 10 × 2", regenerar([placaE, base, ae, aba]).volume, 10000 + 400);
 }
 
 if (falhas) {

@@ -14,9 +14,9 @@ em arco por 3 pontos / em arco pelo centro · Círculo / perimetral · Arco pelo
 3 pontos · Filete / Chanfro de esboço · Aparar / Estender · Converter entidades (aresta/vértice da
 peça vira geometria fixa do esboço) · Padrão linear / circular de esboço · Exibir/Excluir relações ·
 painéis completos de Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
-✅ Elipse · Elipse parcial · Parábola.
+✅ Elipse · Elipse parcial · Parábola · Texto.
 Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Cônica,
-Texto, Entidades de silhueta, Curva de interseção.
+Entidades de silhueta, Curva de interseção.
 
 Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
 
@@ -71,8 +71,7 @@ Centro X · Centro Y · ângulo total (360°) · Espaçamento igual ✓ · Cotar
 angular · nº de instâncias · Exibir nº de instâncias ✓ · Raio · Ângulo do arco. Entidades a
 padronizar (seleção) · Instâncias a pular.
 
-Pontos de atenção: **Texto** precisa de fonte livre (OFL) embutida para funcionar offline;
-**Cônica** geral não existe no solver (PlaneGCS tem elipse, arco de elipse e parábola);
+Pontos de atenção: **Cônica** geral não existe no solver (PlaneGCS tem elipse, arco de elipse e parábola);
 **Esboço 3D**, **Spline de estilo** e **Entidades de silhueta** são os maiores — por último.
 
 ## 1. Entrar, sair e ambiente
@@ -156,8 +155,19 @@ Todos os painéis de entidade têm, além dos campos abaixo:
 ### Ponto — ✅
 Parâmetros: X/Y.
 
-### Texto do esboço — ⏸
-Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, fonte.
+### Texto de esboço — ✅
+- Tocar no desenho posiciona o início do texto (um ponto de construção, que pode ser cotado).
+- **Curvas** ✅: linha (corre ao longo dela), arco (por cima, legível) ou círculo (começa embaixo;
+  centralizado fica no topo); o texto acompanha a curva quando o esboço muda. × solta o texto.
+- **Texto** ✅ (atualiza enquanto digita) · **Negrito** · **Itálico** · **Alinhar** à esquerda / ao
+  centro / à direita / **justificado** (preenche a curva) ✅
+- **Altura das letras** (altura das maiúsculas, mm) · **Girar** · **Inverter vertical / horizontal** ·
+  **Largura** (%) · **Espaçamento** (%) ✅
+- **Fonte**: Noto Sans (SIL OFL 1.1), embutida e offline ✅. Outras fontes / "usar fonte do
+  documento": ⏸ (dá para acrescentar outra família OFL do @fontsource no futuro).
+- Letras ficam gravadas como contornos no arquivo; furos das letras (A, o, 8) saem certos;
+  "Editar texto" no painel de seleção reabre o painel; copiar, girar, espelhar e padrões levam
+  as letras junto ✅. Aparar apaga o texto inteiro. Texto em várias linhas ⏸.
 
 ## 3. Ferramentas
 
@@ -206,7 +216,9 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 - Entidades a espelhar ✅ (campo de seleção) · **Copiar** ✅ · **Espelhar em relação a** ✅
   (linha do esboço, eixo ou aresta reta da peça) · relações de simetria ✅ · pré-visualização ✅
 - Pendente: plano/face como espelho
-- Espelhamento dinâmico (desenhar e espelhar ao mesmo tempo) ⏸
+- **Espelhamento dinâmico** ✅ (Espelhar ▾ → Espelhamento dinâmico): escolher a linha de centro (ou
+  eixo); tudo o que se desenha aparece espelhado, com relações de simetria; aviso no painel com
+  "Desligar"
 
 ### Padrão linear de esboço — ✅
 - **Direção 1/2** ✅: direção (eixo, linha do esboço ou aresta da peça), inverter, espaçamento,
@@ -322,8 +334,10 @@ chanfro.
 ## 6. Entrada (tablet e computador) — ✅
 
 - Caneta desenha; dedo navega; sem caneta o dedo desenha com encaixes maiores e **lupa** ✅
-- Computador: botão esquerdo desenha, meio arrasta, direito gira, roda aproxima ✅
+- Computador: botão esquerdo desenha/seleciona, **meio gira** (Ctrl + meio arrasta), roda aproxima
+  no cursor, **direito abre o menu de contexto** ✅
 - Atalhos ✅: L linha · R retângulo · C círculo · A arco · S spline · P polígono · T aparar ·
   D cota · O offset · M espelhar · V selecionar · Enter conclui · Esc cancela · Delete exclui
-- Planejado (F3): **tecla S → barra de atalhos de contexto**, **gestos de mouse** (botão direito
-  + arrastar → menu radial), **menu de contexto** do botão direito no esboço
+- Tecla S → barra de atalhos ✅ · menu de contexto do botão direito ✅
+- Gestos de mouse/caneta (guia radial): **fora do projeto** (decisão do Johann)
+  (ver `referencia-introducao.md` §7)

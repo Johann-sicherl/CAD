@@ -2,7 +2,7 @@
 // e montagem dos contornos fechados que viram perfil. Sem dependências: roda no navegador,
 // no worker do kernel e nos testes em Node.
 
-import type { FeatureEsboco, GeoEsboco } from "../model";
+import type { ComandoTexto, FeatureEsboco, GeoEsboco } from "../model";
 
 export interface P2 {
   x: number;
@@ -129,6 +129,70 @@ export function controleParabola(pb: Parabola2, s0: number, s1: number): P2 {
   return soma(pb.v, soma(mult(pb.u, (s0 * s1) / (4 * pb.f)), mult(rot90(pb.u), (s0 + s1) / 2)));
 }
 
+// ---------- texto ----------
+
+type GeoTexto = Extract<GeoEsboco, { tipo: "texto" }>;
+
+/** Converte os contornos guardados do texto em trechos fechados no plano do esboço. */
+export function contornosDoTexto(g: GeoTexto, pts: MapaPontos): Trecho[][] {
+  const o = pts.get(g.p) ?? { x: 0, y: 0 };
+  const [a, b, c, d] = g.transf ?? [1, 0, 0, 1];
+  const P = (x: number, y: number): P2 => ({ x: o.x + a * x + b * y, y: o.y + c * x + d * y });
+  const out: Trecho[][] = [];
+  for (const cs of g.contornos) {
+    const ts: Trecho[] = [];
+    let ini: P2 | null = null, cur: P2 | null = null;
+    const fechar = () => {
+      if (ini && cur && dist(cur, ini) > 1e-7) ts.push({ tipo: "linha", a: cur, b: ini });
+    };
+    for (const k of cs as ComandoTexto[]) {
+      if (k[0] === "M") { ini = cur = P(k[1], k[2]); continue; }
+      if (!cur) continue;
+      if (k[0] === "Z") { fechar(); cur = ini; continue; }
+      let fim: P2;
+      if (k[0] === "L") {
+        fim = P(k[1], k[2]);
+        if (dist(cur, fim) > 1e-7) ts.push({ tipo: "linha", a: cur, b: fim });
+      } else if (k[0] === "Q") {
+        fim = P(k[3], k[4]);
+        ts.push({ tipo: "quad", a: cur, c1: P(k[1], k[2]), b: fim });
+      } else {
+        fim = P(k[5], k[6]);
+        ts.push({ tipo: "bezier", a: cur, c1: P(k[1], k[2]), c2: P(k[3], k[4]), b: fim });
+      }
+      cur = fim;
+    }
+    if (cs[cs.length - 1]?.[0] !== "Z") fechar();
+    if (ts.length >= 2) out.push(ts);
+  }
+  return out;
+}
+
+/** Polilinhas (uma por contorno) para desenhar o texto. */
+export function polilinhasDoTexto(g: GeoTexto, pts: MapaPontos): P2[][] {
+  return contornosDoTexto(g, pts).map((ts) => {
+    const pl = poligonoDeTrechos(ts);
+    return [...pl, pl[0]];
+  });
+}
+
+/** Traços para desenhar uma geometria (o texto tem vários contornos; as demais, um só). */
+export function tracosDaGeo(g: GeoEsboco, pts: MapaPontos, passoAng?: number): P2[][] {
+  return g.tipo === "texto" ? polilinhasDoTexto(g, pts) : [amostrar(g, pts, passoAng)];
+}
+
+/** Caixa que envolve o texto (para tocar e para a âncora das relações). */
+function caixaDoTexto(g: GeoTexto, pts: MapaPontos): P2[] {
+  const todos = polilinhasDoTexto(g, pts).flat();
+  if (!todos.length) {
+    const p = pts.get(g.p)!;
+    return [p, p];
+  }
+  const xs = todos.map((p) => p.x), ys = todos.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }];
+}
+
 // ---------- acesso ao esboço ----------
 
 export type MapaPontos = Map<string, P2>;
@@ -157,6 +221,8 @@ export function pontosDaGeo(g: GeoEsboco): string[] {
       return [g.c, g.m1, g.m2, g.n1, g.n2, g.ini, g.fim];
     case "parabola":
       return [g.v, g.f, g.ini, g.fim];
+    case "texto":
+      return [g.p];
   }
 }
 
@@ -175,6 +241,7 @@ export function extremidades(g: GeoEsboco): [string, string] | null {
     case "circulo":
     case "elipse":
     case "ponto":
+    case "texto":
       return null;
   }
 }
@@ -256,6 +323,8 @@ export function amostrar(g: GeoEsboco, pts: MapaPontos, passoAng = Math.PI / 48)
       const n = 40;
       return Array.from({ length: n + 1 }, (_, i) => pontoParabola(pb, s0 + ((s1 - s0) * i) / n));
     }
+    case "texto":
+      return caixaDoTexto(g, pts);
   }
 }
 
@@ -295,6 +364,11 @@ export function distanciaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
     case "arcoElipse":
     case "parabola":
       return maisPertoNaPolilinha(amostrar(g, pts, Math.PI / 180), p).d;
+    case "texto": {
+      // dentro da caixa do texto conta como em cima dele
+      const cx = caixaDoTexto(g, pts);
+      return pontoNoPoligono(p, cx) ? 0 : maisPertoNaPolilinha(cx, p).d;
+    }
   }
 }
 
@@ -318,6 +392,8 @@ export function projetarNaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): P2 {
     case "arcoElipse":
     case "parabola":
       return maisPertoNaPolilinha(amostrar(g, pts, Math.PI / 180), p).q;
+    case "texto":
+      return pts.get(g.p)!;
   }
 }
 
@@ -507,6 +583,7 @@ export function encontrarLacos(esb: Pick<FeatureEsboco, "pontos" | "geos">): Lac
       lacos.push({ tipo: "circulo", c, r: g.r, poligono: amostrar(g, pts).slice(0, -1) });
     }
     if (g.tipo === "elipse") lacos.push({ tipo: "elipse", e: elipseDe(g, pts), poligono: amostrar(g, pts).slice(0, -1) });
+    if (g.tipo === "texto") for (const ts of contornosDoTexto(g, pts)) lacos.push({ tipo: "trechos", trechos: ts, poligono: poligonoDeTrechos(ts) });
   }
 
   // nós por posição

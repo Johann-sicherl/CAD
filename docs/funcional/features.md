@@ -437,14 +437,24 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 
 ### Centro de massa · Caixa delimitadora — 🟡 (mostrados em Avaliar → Massa)
 
-## 16. Curvas — planejado junto com varredura/loft (hélice, composta, XYZ, projetada) / ⏸ (linha de partição)
+## 16. Curvas (menu Curvas ▾) — ✅ (linha de partição ⏸)
 
-- **Hélice e espiral**: definido por (passo e revolução · altura e revolução · altura e passo ·
-  espiral); passo constante/variável; altura; revoluções; ângulo inicial; horário/anti-horário;
-  hélice cônica (ângulo, para fora)
-- Linha de partição (silhueta, projeção, interseção)
-- Curva projetada (esboço em faces / esboço em esboço; bidirecional)
-- Curva composta · Curva por pontos XYZ · Curva por pontos de referência
+Recurso **Curva** na árvore; aparece em laranja no modelo e pode ser tocada no viewport ou na
+árvore para entrar na **trajetória**, nas **curvas-guia** da varredura/loft e na **linha de
+centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
+
+- **Hélice e espiral** ✅: círculo de base = esboço com um círculo (centro, diâmetro e plano;
+  pré-selecionado); definido por **passo e revolução · altura e revolução · altura e passo ·
+  espiral**; passo, altura, revoluções, **inverter direção**, **ângulo inicial**, sentido
+  **horário/anti-horário**; caixa **Hélice cônica** (ângulo, para fora). Passo variável ⏸.
+- **Curva por pontos XYZ** ✅: tabela "x; y; z" (um ponto por linha; aceita colar de planilha,
+  vírgula decimal); passa por todos os pontos; **curva fechada**. Importar arquivo de pontos ⏸.
+- **Curva por pontos de referência** ✅: vértices em ordem (↑ ↓); curva fechada.
+- **Curva composta** ✅: esboços, arestas e curvas ligados pelas pontas numa cadeia única
+  (erro claro se houver vão ou ramificação).
+- **Curva projetada** ✅: **esboço em faces** (normal do esboço, inverter, bidirecional) e
+  **esboço em esboço** (dois esboços em planos que se cruzam).
+- Linha de partição (silhueta, projeção, interseção) ⏸
 
 ## 17. Gerais da peça
 
@@ -452,14 +462,18 @@ Ao longo da curva (distância / porcentagem / distribuir igualmente, nº de pont
 |---|---|---|
 | **Barra de retrocesso** | arrastar na árvore; inserir recursos no meio; rolar para frente/trás | ✅ |
 | Reordenar recursos | arrastar na árvore (✅ hoje com ▲▼) | 🟡 |
-| Suprimir / Reativar | por recurso (✅) e por configuração (⏸) | 🟡 |
+| Suprimir / Reativar | por recurso e **por configuração** (cada configuração guarda o que fica suprimido) | ✅ |
 | **Destaque do recurso** | selecionar um recurso na árvore pinta as faces dele na peça (outro tom); esboço selecionado destaca o recurso que o consome | ✅ |
 | Pai/filho | lista de referências do recurso; **excluir o pai** abre "Confirmar exclusão" com os filhos (excluídos junto, padrão) e os absorvidos (esboço, opcional) | 🟡 (exclusão ✅) |
-| Editar recurso / Editar esboço | menu de contexto, duplo clique mostra cotas no modelo | 🟡 (menu de contexto ✅) |
-| **Instant3D** | arrastar faces/cotas com alças no viewport | F3 |
+| Editar recurso / Editar esboço | menu de contexto ✅; **duplo clique numa face** mostra as cotas do esboço e os valores do recurso (D1, R, espessura…) sobre o modelo, editáveis no lugar (aceita "=expressão") ✅ | ✅ |
+| **Alças de arrasto** | seta na ponta da extrusão/corte (D1 e D2, cego/plano médio) arrastável durante o comando ✅; ângulo da revolução ⏸ | 🟡 |
+| **Instant3D** | arrastar faces/cotas com alças fora do comando | ⏸ |
+| **Filtro de seleção** | barra de vistas → funil ▾: Faces · Arestas · Vértices · Planos · Eixos · Curvas 3D (vários juntos) e Limpar; vale para seleção na peça, campos dos comandos, Medir, realce e Selecionar outro (escolher o plano de um esboço não é filtrado); aviso "Filtro: …" na barra de status (toque desliga); **F5** liga/desliga lembrando a escolha; **X / E / V** só faces / arestas / vértices | ✅ |
+| **Selecionar outro** | botão direito → lista das entidades sob o cursor (faces de trás, arestas, vértices), com realce ao passar; também dentro de comandos para o campo ativo | ✅ |
 | Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1); **seta ▸/▾** mostra os elementos usados: esboço absorvido, recursos (padrões/espelho), faces/arestas/vértices/planos/eixos escolhidos e o plano do esboço; toque destaca/seleciona; recolhido por padrão | ✅ |
 | **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
-| Configurações / tabela de projeto | variações da peça | ⏸ |
+| **Configurações** | variações da peça no mesmo arquivo. Na árvore, "Configuração: <nome>" → trocar, **Nova configuração** (copia a ativa), **Tabela de configurações**: colunas = configurações (ativar, renomear, excluir), linhas = parâmetros que variam (cotas dos esboços `Dn@Esboço` e valores dos recursos `D1@Extrusão`, R, espessura, instâncias…; aceita expressões) e "Suprimido em" por recurso. Valores ao vivo = configuração ativa; trocar guarda e aplica. Parâmetro que não varia vale para todas | ✅ |
+| Tabela de projeto (planilha externa) | importar/exportar a tabela como CSV | ⏸ |
 | **Material** | biblioteca (aço, alumínio, inox…), densidade → massa | ✅ |
 | Aparência | cor por peça/recurso/face | F3 |
 | Propriedades personalizadas | código, descrição, material, massa | ⏸ |

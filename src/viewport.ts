@@ -35,6 +35,7 @@ const NORMAL_PLANO: Record<Plano, Vista> = { XY: "frontal", XZ: "superior", YZ: 
 const COR_EIXO = { x: 0xd9443f, y: 0x3c9a4f, z: 0x2f7fd0 };
 const COR_PLANO = 0x5b8fc7;
 const COR_DESTAQUE = 0x2f7fd0;
+const COR_CURVA = 0xb0561c; // curvas 3D (hélice, por pontos…)
 const TAM_TRIADE = 112; // px CSS
 
 interface Referencia {
@@ -62,6 +63,9 @@ export interface FacePlana {
   normal: Vec3;
 }
 
+/** Comprimento das setas de arrasto na tela (px). */
+const COMPR_ALCA_PX = 46;
+
 export class Viewport {
   /**
    * Chamado antes da navegação em cada pointerdown. Devolvendo true, o evento é do esboço
@@ -77,6 +81,14 @@ export class Viewport {
   readonly grupoEsboco = new THREE.Group();
   /** Botão direito (ou toque longo): menu de contexto. */
   aoMenuContexto: ((e: MouseEvent) => void) | null = null;
+  /** Clique/toque duplo (fora da tríade). */
+  aoToqueDuplo: ((e: PointerEvent) => void) | null = null;
+  /** Outros interessados em mudanças de câmera (rótulos de cotas no modelo). */
+  readonly ouvintesCamera = new Set<() => void>();
+  /** Alça arrastada: `delta` em mm ao longo da direção da alça desde o início do arraste. */
+  aoArrastarAlca: ((id: string, delta: number, fim: boolean) => void) | null = null;
+  private alcas: { id: string; pos: THREE.Vector3; dir: THREE.Vector3 }[] = [];
+  private grupoAlcas = new THREE.Group();
 
   private renderer: THREE.WebGLRenderer;
   private cena = new THREE.Scene();
@@ -133,6 +145,11 @@ export class Viewport {
 
     // registrado antes do OrbitControls: pode impedir que a navegação veja o evento
     this.renderer.domElement.addEventListener("pointerdown", (e) => {
+      if (this.pegarAlca(e)) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
       if (this.interceptador?.(e)) {
         e.stopImmediatePropagation();
         e.preventDefault();
@@ -150,6 +167,7 @@ export class Viewport {
     this.controles.addEventListener("change", () => {
       this.precisaRender = true;
       this.aoMudarCamera?.();
+      this.ouvintesCamera.forEach((f) => f());
     });
 
     this.cena.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.7));
@@ -161,16 +179,15 @@ export class Viewport {
     this.criarReferencias();
     this.grupoEsboco.renderOrder = 10;
     this.grupoDestaque.renderOrder = 5;
-    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoEsboco);
+    this.grupoAlcas.renderOrder = 30;
+    this.ouvintesCamera.add(() => { if (this.alcas.length) this.desenharAlcas(); });
+    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoEsboco, this.grupoAlcas);
     this.renderer.domElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       this.aoMenuContexto?.(e);
     });
     this.criarTriade();
 
-    this.renderer.domElement.addEventListener("dblclick", () => {
-      if (!this.emEsboco) this.enquadrar();
-    });
     this.escutarToques();
     new ResizeObserver(() => this.redimensionar()).observe(container);
     this.redimensionar();
@@ -299,11 +316,14 @@ export class Viewport {
   private escutarToques() {
     const el = this.renderer.domElement;
     const inicios = new Map<number, { x: number; y: number; t: number }>();
+    let ultimo: { x: number; y: number; t: number } | null = null;
     el.addEventListener("pointerdown", (e) => inicios.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() }));
     el.addEventListener("pointercancel", (e) => inicios.delete(e.pointerId));
     el.addEventListener("pointerup", (e) => {
       const ini = inicios.get(e.pointerId);
       inicios.delete(e.pointerId);
+      // só o botão esquerdo é "toque" (o direito abre o menu de contexto; o do meio gira)
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       if (!ini || Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 8 || performance.now() - ini.t > 600) return;
       if (inicios.size) return; // ainda há outro dedo na tela: era gesto
       const r = el.getBoundingClientRect();
@@ -320,6 +340,15 @@ export class Viewport {
           return;
         }
       }
+      // segundo toque curto logo depois e perto do primeiro: toque duplo
+      const agora = performance.now();
+      if (ultimo && agora - ultimo.t < 380 && Math.hypot(e.clientX - ultimo.x, e.clientY - ultimo.y) < (e.pointerType === "touch" ? 28 : 8)) {
+        ultimo = null;
+        if (this.aoToqueDuplo) this.aoToqueDuplo(e);
+        else if (!this.emEsboco) this.enquadrar();
+        return;
+      }
+      ultimo = { x: e.clientX, y: e.clientY, t: agora };
       this.aoToqueCurto?.(e);
     });
   }
@@ -578,7 +607,7 @@ export class Viewport {
    * Plano (principal ou criado) ou eixo de referência sob o ponteiro. Planos: toque dentro do
    * retângulo visível; eixos: perto da linha. A peça na frente tem prioridade (teste de profundidade).
    */
-  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo"; id: string; borda: boolean } | null {
+  picarReferencia(clientX: number, clientY: number, tolPx = 10): { tipo: "plano" | "eixo" | "curva"; id: string; borda: boolean } | null {
     const ray = this.raio(clientX, clientY);
     const r = this.renderer.domElement.getBoundingClientRect();
     const mx = clientX - r.left, my = clientY - r.top;
@@ -602,6 +631,23 @@ export class Viewport {
       if (d < dm) { dm = d; melhorEixo = id.id; }
     });
     if (melhorEixo) return { tipo: "eixo", id: melhorEixo, borda: true };
+    // curvas 3D: distância na tela até a polilinha
+    let melhorCurva: string | null = null, dc = tolPx;
+    this.grupoRefsExtras.traverse((o) => {
+      const id = o.userData.idRef;
+      if (!id || id.tipo !== "curva" || !visivel(o)) return;
+      const pos = ((o as THREE.Line).geometry.getAttribute("position") as THREE.BufferAttribute);
+      let ant = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, 0));
+      for (let i = 1; i < pos.count; i++) {
+        const b = this.paraTela(new THREE.Vector3().fromBufferAttribute(pos, i));
+        const dx = b.x - ant.x, dy = b.y - ant.y, l2 = dx * dx + dy * dy;
+        const k = l2 ? Math.max(0, Math.min(1, ((mx - ant.x) * dx + (my - ant.y) * dy) / l2)) : 0;
+        const d = Math.hypot(ant.x + dx * k - mx, ant.y + dy * k - my);
+        if (d < dc) { dc = d; melhorCurva = id.id; }
+        ant = b;
+      }
+    });
+    if (melhorCurva) return { tipo: "curva", id: melhorCurva, borda: true };
     const quads: THREE.Mesh[] = [];
     for (const g of [this.grupoRefs, this.grupoRefsExtras]) {
       g.traverse((o) => { if (o.userData.idRef?.tipo === "plano" && visivel(o)) quads.push(o as THREE.Mesh); });
@@ -628,6 +674,149 @@ export class Viewport {
     if (melhorBorda) return { tipo: "plano", id: melhorBorda, borda: true };
     const hit = ray.intersectObjects(quads, false).find((h) => h.distance <= hitPeca + 1e-3);
     return hit ? { tipo: "plano", id: hit.object.userData.idRef.id, borda: false } : null;
+  }
+
+  /**
+   * Todas as entidades sob o cursor, da frente para trás (para "Selecionar outro"): faces que o
+   * raio atravessa, arestas e vértices perto do cursor, inclusive os escondidos.
+   */
+  entidadesSobCursor(clientX: number, clientY: number, tolPx = 10): (Entidade & { prof: number })[] {
+    const topo = this.topologia;
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    if (!topo || !solido) return [];
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - r.left, my = clientY - r.top;
+    const ray = this.raio(clientX, clientY);
+    const out: (Entidade & { prof: number })[] = [];
+    const v = new THREE.Vector3();
+    topo.vertices.forEach((q, i) => {
+      v.set(...q);
+      const t = this.paraTela(v);
+      if (Math.hypot(t.x - mx, t.y - my) < tolPx && t.z < 1) out.push({ tipo: "vertice", indice: i, prof: this.profundidade(v) });
+    });
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    for (let g = 0; g < this.gruposArestas.length / 2; g++) {
+      const ini = this.gruposArestas[g * 2], qtd = this.gruposArestas[g * 2 + 1];
+      let melhor = Infinity, prof = 0;
+      for (let k = ini; k + 1 < ini + qtd; k += 2) {
+        a.fromArray(this.posArestas, k * 3);
+        b.fromArray(this.posArestas, (k + 1) * 3);
+        const ta = this.paraTela(a), tb = this.paraTela(b);
+        const dx = tb.x - ta.x, dy = tb.y - ta.y, l2 = dx * dx + dy * dy;
+        const t = l2 ? Math.max(0, Math.min(1, ((mx - ta.x) * dx + (my - ta.y) * dy) / l2)) : 0;
+        const d = Math.hypot(ta.x + dx * t - mx, ta.y + dy * t - my);
+        if (d < melhor) {
+          melhor = d;
+          ray.ray.distanceSqToSegment(a, b, undefined, v);
+          prof = this.profundidade(v);
+        }
+      }
+      if (melhor < tolPx) out.push({ tipo: "aresta", indice: g, prof });
+    }
+    const vistas = new Set<number>();
+    // faces de trás também (o material só desenha a frente; para o raio, os dois lados)
+    const lado = this.materialSolido.side;
+    this.materialSolido.side = THREE.DoubleSide;
+    const hits = ray.intersectObject(solido);
+    this.materialSolido.side = lado;
+    for (const hit of hits) {
+      if (hit.faceIndex == null) continue;
+      const idx = hit.faceIndex * 3;
+      for (let i = 0; i < this.faces.length; i += 3) {
+        if (idx >= this.faces[i] && idx < this.faces[i] + this.faces[i + 1] && !vistas.has(i / 3)) {
+          vistas.add(i / 3);
+          out.push({ tipo: "face", indice: i / 3, prof: hit.distance });
+        }
+      }
+    }
+    return out.sort((x, y) => x.prof - y.prof);
+  }
+
+  /** Centro da caixa envolvente de um conjunto de faces (para pôr rótulos sobre um recurso). */
+  centroFaces(indices: number[]): Vec3 | null {
+    const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
+    const idx = solido?.geometry.getIndex();
+    const pos = solido?.geometry.getAttribute("position");
+    if (!idx || !pos) return null;
+    const caixa = new THREE.Box3(), v = new THREE.Vector3();
+    for (const f of indices) {
+      const ini = this.faces[f * 3], qtd = this.faces[f * 3 + 1];
+      for (let k = ini; k < ini + qtd; k++) caixa.expandByPoint(v.fromBufferAttribute(pos, idx.getX(k)));
+    }
+    if (caixa.isEmpty()) return null;
+    const c = caixa.getCenter(new THREE.Vector3());
+    return [c.x, c.y, c.z];
+  }
+
+  // ---------- alças de arrasto (profundidade, ângulo) ----------
+
+  /** Setas no viewport que o usuário arrasta para mudar um valor do comando. */
+  mostrarAlcas(alcas: { id: string; pos: Vec3; dir: Vec3 }[]) {
+    this.alcas = alcas.map((a) => ({ id: a.id, pos: new THREE.Vector3(...a.pos), dir: new THREE.Vector3(...a.dir).normalize() }));
+    this.desenharAlcas();
+  }
+
+  /** Setas com tamanho constante na tela (refeitas quando o zoom muda): haste grossa e ponta. */
+  private desenharAlcas() {
+    for (const o of [...this.grupoAlcas.children]) {
+      this.grupoAlcas.remove(o);
+      o.traverse((x) => {
+        (x as THREE.Mesh).geometry?.dispose();
+        ((x as THREE.Mesh).material as THREE.Material)?.dispose?.();
+      });
+    }
+    const mm = 1 / this.camera.zoom; // mm por pixel
+    for (const a of this.alcas) {
+      const mat = () => new THREE.MeshBasicMaterial({ color: 0xe08a00, depthTest: false, transparent: true, opacity: 0.95 });
+      const g = new THREE.Group();
+      const haste = new THREE.Mesh(new THREE.CylinderGeometry(2.2 * mm, 2.2 * mm, COMPR_ALCA_PX * 0.62 * mm, 12), mat());
+      haste.position.y = COMPR_ALCA_PX * 0.31 * mm;
+      const ponta = new THREE.Mesh(new THREE.ConeGeometry(8 * mm, COMPR_ALCA_PX * 0.38 * mm, 16), mat());
+      ponta.position.y = COMPR_ALCA_PX * 0.81 * mm;
+      const base = new THREE.Mesh(new THREE.SphereGeometry(4.5 * mm, 16, 12), mat());
+      g.add(haste, ponta, base);
+      g.position.copy(a.pos);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.dir);
+      g.renderOrder = 30;
+      g.traverse((x) => (x.renderOrder = 30));
+      this.grupoAlcas.add(g);
+    }
+    this.precisaRender = true;
+  }
+
+  private pegarAlca(e: PointerEvent): boolean {
+    if (!this.alcas.length || (e.pointerType === "mouse" && e.button !== 0)) return false;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const mm = 1 / this.camera.zoom;
+    const tol = e.pointerType === "touch" ? 26 : 14;
+    const alca = this.alcas.find((a) => {
+      // da base à ponta da seta
+      const t0 = this.paraTela(a.pos), t1 = this.paraTela(a.pos.clone().addScaledVector(a.dir, COMPR_ALCA_PX * mm));
+      const dx = t1.x - t0.x, dy = t1.y - t0.y, l2 = dx * dx + dy * dy;
+      const k = l2 ? Math.max(0, Math.min(1, ((mx - t0.x) * dx + (my - t0.y) * dy) / l2)) : 0;
+      return Math.hypot(t0.x + dx * k - mx, t0.y + dy * k - my) < tol;
+    });
+    if (!alca) return false;
+    // direção da seta na tela: pixels por mm ao longo dela
+    const t0 = this.paraTela(alca.pos), t1 = this.paraTela(alca.pos.clone().add(alca.dir));
+    const sx = t1.x - t0.x, sy = t1.y - t0.y, s2 = sx * sx + sy * sy;
+    if (s2 < 1e-6) return false; // seta apontando para a tela: não dá para arrastar
+    const x0 = e.clientX, y0 = e.clientY;
+    const el = this.renderer.domElement;
+    el.setPointerCapture(e.pointerId);
+    const delta = (ev: PointerEvent) => ((ev.clientX - x0) * sx + (ev.clientY - y0) * sy) / s2;
+    const mover = (ev: PointerEvent) => this.aoArrastarAlca?.(alca.id, delta(ev), false);
+    const soltar = (ev: PointerEvent) => {
+      el.removeEventListener("pointermove", mover);
+      el.removeEventListener("pointerup", soltar);
+      el.removeEventListener("pointercancel", soltar);
+      this.aoArrastarAlca?.(alca.id, delta(ev), true);
+    };
+    el.addEventListener("pointermove", mover);
+    el.addEventListener("pointerup", soltar);
+    el.addEventListener("pointercancel", soltar);
+    return true;
   }
 
   /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
@@ -706,6 +895,18 @@ export class Viewport {
         );
         quad.userData.idRef = { tipo: "plano", id: r.id };
         g.add(quad, borda);
+        this.grupoRefsExtras.add(g);
+      } else if (r.tipo === "curva") {
+        // curva 3D: traço contínuo e mais grosso que um eixo (tocável como referência)
+        const g = new THREE.Group();
+        for (const pl of r.linhas) {
+          const l = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pl.map((p) => new THREE.Vector3(...p))),
+            new THREE.LineBasicMaterial({ color: ativo ? COR_DESTAQUE : COR_CURVA }),
+          );
+          l.userData.idRef = { tipo: "curva", id: r.id };
+          g.add(l);
+        }
         this.grupoRefsExtras.add(g);
       } else {
         const a = new THREE.Vector3(...r.origem).addScaledVector(new THREE.Vector3(...r.dir), -r.comprimento / 2);
@@ -827,6 +1028,22 @@ export class Viewport {
     this.moverCamera(centro, centro.clone().add(dir.multiplyScalar(this.distCam)), animado, zoom);
   }
 
+  /** Zoom por área: o retângulo da tela (coordenadas do cliente) passa a ocupar a vista. */
+  ampliarArea(x0: number, y0: number, x1: number, y1: number) {
+    const r = this.container.getBoundingClientRect();
+    const w = r.width, h = r.height;
+    const rw = Math.abs(x1 - x0), rh = Math.abs(y1 - y0);
+    if (rw < 4 || rh < 4 || !w || !h) return;
+    // deslocamento do centro do retângulo ao centro da tela, em mm, nos eixos da câmera
+    const dx = ((x0 + x1) / 2 - r.left - w / 2) / this.camera.zoom;
+    const dy = -((y0 + y1) / 2 - r.top - h / 2) / this.camera.zoom;
+    const direita = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const cima = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    const d = direita.multiplyScalar(dx).add(cima.multiplyScalar(dy));
+    const zoom = this.camera.zoom * Math.min(w / rw, h / rh);
+    this.moverCamera(this.controles.target.clone().add(d), this.camera.position.clone().add(d), true, zoom);
+  }
+
   definirVista(v: Vista, animado = true) {
     const alvo = this.controles.target.clone();
     const dir = new THREE.Vector3(...DIRECOES_VISTA[v]).normalize();
@@ -849,6 +1066,7 @@ export class Viewport {
       this.controles.update();
       this.precisaRender = true;
       this.aoMudarCamera?.();
+      this.ouvintesCamera.forEach((f) => f());
       return;
     }
     this.animacao = {
@@ -900,6 +1118,7 @@ export class Viewport {
       this.camera.zoom = this.animacao.de[2] * Math.pow(this.animacao.para[2] / this.animacao.de[2], k);
       this.camera.updateProjectionMatrix();
       this.aoMudarCamera?.();
+      this.ouvintesCamera.forEach((f) => f());
       if (t >= 1) this.animacao = null;
       this.precisaRender = true;
     }

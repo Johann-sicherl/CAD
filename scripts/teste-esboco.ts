@@ -7,10 +7,13 @@ import { novaFeature, novoEsboco, type FeatureEsboco, type FeatureExtrusao, type
 import { regenerar } from "../src/kernel/regenerar";
 import { SolverEsboco } from "../src/esboco/solver";
 import * as op from "../src/esboco/operacoes";
-import { encontrarLacos, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
+import { aninhamento, areaAssinada, encontrarLacos, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
 import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
 import { ajustarTextoCota, PASSO_COTA_PX } from "../src/esboco/cotas";
+import { readFileSync } from "node:fs";
+import * as opentype from "opentype.js";
+import { gerarContornos, OPCOES_TEXTO_PADRAO } from "../src/esboco/texto";
 
 const require = createRequire(import.meta.url);
 const OC = await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") });
@@ -420,6 +423,64 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   // espelhar e copiar elipse parcial mantém a forma (o solver não vira a elipse)
   const novas = op.espelhar(e2, [ae.id], EIXO_V);
   verdade("elipse parcial espelhada resolve", solver.resolver(e2).conflitantes.length === 0 && novas.length === 1);
+}
+
+// 18a. Duas regiões separadas, cada uma com furo (duas arruelas): nenhuma se perde
+{
+  const e = plano();
+  for (const x of [0, 30]) {
+    const c = op.ponto(e, { x, y: 0 });
+    op.circulo(e, c, 10);
+    op.circulo(e, c, 5);
+  }
+  confere("duas arruelas no mesmo esboço", regenerar([e, extrusao(e, 1)]).volume ?? 0, 2 * Math.PI * (100 - 25));
+}
+
+// 18. Texto de esboço com a fonte OFL do pacote: contornos, furos das letras e área extrudada
+{
+  const buf = readFileSync(require.resolve("@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff"));
+  // em Node o pacote vem como CommonJS (sem exportações nomeadas)
+  const ot = ((opentype as unknown as { default?: typeof opentype }).default ?? opentype);
+  const fonte = ot.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+  const area = (e: FeatureEsboco) => {
+    const lacos = encontrarLacos(e);
+    const prof = aninhamento(lacos);
+    return lacos.reduce((t, l, i) => t + (prof[i] % 2 ? -1 : 1) * Math.abs(areaAssinada(l.poligono)), 0);
+  };
+  const e = plano();
+  const opc = { ...OPCOES_TEXTO_PADRAO, texto: "Aço 8", altura: 10 };
+  const cs = gerarContornos(fonte, opc);
+  op.texto(e, op.ponto(e, { x: 5, y: 5 }), opc, cs);
+  verdade("texto: contornos das letras (A 2, ç 1, o 2, 8 3)", cs.length === 8);
+  const altura = Math.max(...cs.flat().filter((c) => c[0] === "L").map((c) => c[2] as number));
+  confere("texto: altura das maiúsculas", altura, 10, 0.02);
+  const v = regenerar([e, extrusao(e, 1)]).volume ?? 0;
+  confere("texto extrudado: área das letras (furos descontados)", v, area(e), 0.01);
+  verdade("texto extrudado tem volume", v > 50);
+
+  // centralizado e girado 90°: a mesma área, e o meio do texto sobre o ponto
+  const e2 = plano();
+  const o2 = { ...opc, alinhamento: "centro" as const, angulo: 90 };
+  op.texto(e2, op.ponto(e2, { x: 0, y: 0 }), o2, gerarContornos(fonte, o2));
+  confere("texto girado: mesma área", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, v, 0.01);
+  const ys = encontrarLacos(e2).flatMap((l) => l.poligono.map((p) => p.y));
+  // centralizado pelo avanço das letras (inclui os espaços laterais da fonte), não pela tinta
+  confere("texto centralizado no ponto", (Math.min(...ys) + Math.max(...ys)) / 2, 0, 0.5);
+
+  // ao longo de um arco de raio 30 (de 0° a 180°), justificado
+  const e3 = plano();
+  const o3 = { ...opc, texto: "ABC", alinhamento: "justificado" as const };
+  const c3 = op.ponto(e3, { x: 0, y: 0 });
+  const cs3 = gerarContornos(fonte, o3, { tipo: "arco", c: { x: 0, y: 0 }, r: 30, a0: 0, a1: Math.PI });
+  op.texto(e3, c3, o3, cs3);
+  const raios = encontrarLacos(e3).flatMap((l) => l.poligono.map((p) => Math.hypot(p.x, p.y)));
+  verdade("texto no arco: letras entre r 30 e 40", Math.min(...raios) > 29.5 && Math.max(...raios) < 41);
+  verdade("texto no arco extruda", (regenerar([e3, extrusao(e3, 1)]).volume ?? 0) > 50);
+
+  // espelhar e copiar levam as letras junto
+  const novas = op.espelhar(e, e.geos.filter((g) => g.tipo === "texto").map((g) => g.id), EIXO_V);
+  confere("texto espelhado: área dobra", regenerar([e, extrusao(e, 1)]).volume ?? 0, 2 * v, 0.01);
+  verdade("texto espelhado criado", novas.length === 1);
 }
 
 if (falhas) {
