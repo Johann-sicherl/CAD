@@ -18,7 +18,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura,
+  Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, type Laco, type P2 } from "../esboco/geometria";
@@ -26,6 +26,7 @@ import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referen
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
 import { trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
+import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
   propagarTangente, topologia, type Topologia,
@@ -569,12 +570,40 @@ function varredura(f: FeatureVarredura, ctx: Ctx): Shape3D {
     trajetoria,
     guias: f.guias.map((g) => trechosDe([g], ctx, "A curva-guia")),
     afinar: (D) => desenhoFino(null, D, f.fino!),
-    faces: (D, r) => {
-      // várias regiões (Sketches) → compound de faces; uma região, com ou sem furos → uma face
-      const s = noPlano(D, r) as unknown as { faces?: () => { faces: Face[] }; face(): Face };
-      return typeof s.faces === "function" ? s.faces().faces : [s.face()];
-    },
+    faces: facesDoDesenho,
   });
+}
+
+// ---------- loft ----------
+
+function loftRecurso(f: FeatureLoft, ctx: Ctx) {
+  const perfis = f.perfis.map((ref) => {
+    if (ref.tipo !== "esboco") throw new Error("Perfis do loft: escolha esboços.");
+    const esb = esbocoDe(ref.id, ctx);
+    const r = referencial(esb.suporte, ctx.planos);
+    const D = f.fino?.ativo ? desenhoFino(esb, null, f.fino) : desenhoDoEsboco(esb);
+    return { faces: facesDoDesenho(D, r), normal: r.normal };
+  });
+  const vetor = (rest: FeatureLoft["restricaoInicio"]): Vec3 | null => {
+    if (rest.tipo !== "vetor" || !rest.ref) return null;
+    const ref = rest.ref;
+    if (ref.tipo === "aresta" || ref.tipo === "eixo") return eixoDeRef(ref, ctx).dir;
+    return planoDeRef(ref, ctx).normal;
+  };
+  return lofting({
+    f,
+    perfis,
+    guias: f.guias.map((g) => trechosDe([g], ctx, "A curva-guia")),
+    linhaCentro: f.linhaCentro.length ? trechosDe(f.linhaCentro, ctx, "A linha de centro") : null,
+    vetorInicio: vetor(f.restricaoInicio),
+    vetorFim: vetor(f.restricaoFim),
+  });
+}
+
+/** Desenho 2D no plano → faces (várias regiões → várias faces; furos ficam na face). */
+function facesDoDesenho(D: Drawing, r: Referencial): Face[] {
+  const s = noPlano(D, r) as unknown as { faces?: () => { faces: Face[] }; face(): Face };
+  return typeof s.faces === "function" ? s.faces().faces : [s.face()];
 }
 
 // ---------- nervura ----------
@@ -770,6 +799,8 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return aplicar(ctx, f.id, revolucao(f, ctx));
     case "varredura":
       return aplicar(ctx, f.id, [{ tool: varredura(f, ctx), op: f.operacao }]);
+    case "loft":
+      return aplicar(ctx, f.id, [{ tool: loftRecurso(f, ctx), op: f.operacao }]);
     case "nervura":
       return aplicar(ctx, f.id, nervura(f, ctx));
     case "furo":

@@ -37,6 +37,9 @@ export const ICONES = {
   // varredura: tubo seguindo uma trajetória curva (traço do perfil no início)
   varredura: svg(`<path d="M4 19c0-7 4-11 12-11" stroke="${C}" stroke-dasharray="2 2"/><path d="M2.5 17.5c0-8 5-13 13.5-13M5.5 20.5c0-6 3.6-9.5 10.5-9.5"/><ellipse cx="4" cy="19" rx="1.6" ry="1.6"/><path d="M16 4.5v6.5"/><ellipse cx="18.5" cy="7.8" rx="1.2" ry="3.3"/>`),
   corteVarredura: svg(`<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M6 17c0-5 3-8 9-8" stroke="${C}" stroke-dasharray="2 2"/><path d="M5 15c0-5.5 3.5-9 10-9M7 19c0-4.5 3-7 8-7" stroke="${C}"/>`),
+  // loft: quadrado embaixo virando círculo em cima
+  loft: svg(`<path d="M5 15.5h9l4-3H9z"/><ellipse cx="13" cy="5.5" rx="4.5" ry="1.8" stroke="${C}"/><path d="M5 15.5 8.5 5.5M14 15.5l3.5-10M18 12.5 17.5 5.5" stroke="${C}"/>`),
+  corteLoft: svg(`<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 17h7l3-2H10z" stroke="${C}"/><ellipse cx="13" cy="8" rx="3.5" ry="1.4" stroke="${C}"/><path d="M7 17l2.5-9M14 17l2.5-9" stroke="${C}"/>`),
   filete: svg(`<path d="M4 20V10a6 6 0 0 1 6-6h10"/><path d="M4 10a6 6 0 0 1 6-6" stroke="${C}" stroke-width="2.4"/><path d="M8 20V12a4 4 0 0 1 4-4h8" stroke-dasharray="2 2"/>`),
   chanfro: svg(`<path d="M4 20V10l6-6h10"/><path d="M4 10l6-6" stroke="${C}" stroke-width="2.4"/><path d="M8 20v-8l4-4h8" stroke-dasharray="2 2"/>`),
   padraoLinear: svg(`<rect x="3" y="9" width="5" height="5"/><rect x="10" y="9" width="5" height="5" stroke="${C}"/><rect x="17" y="9" width="4" height="5" stroke="${C}"/><path d="M3 19h18M18 17l3 2-3 2"/>`),

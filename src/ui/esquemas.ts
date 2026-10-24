@@ -3,7 +3,7 @@
 import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
-  FeatureRevolucao, FeatureVarredura, TipoCondicao,
+  FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
 } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
 import type { Campo, Esquema } from "./formulario";
@@ -72,6 +72,8 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return nervura(d) as Esquema<Feature>;
     case "varredura":
       return varredura(f.operacao === "cortar") as Esquema<Feature>;
+    case "loft":
+      return loft(f.operacao === "cortar") as Esquema<Feature>;
     case "furo":
       return furo(d) as Esquema<Feature>;
     case "padraoLinear":
@@ -319,6 +321,61 @@ function varredura(corte: boolean): Esquema<FeatureVarredura> {
         ],
       },
       { titulo: corte ? "Corte fino" : "Recurso fino", opcional: "fino.ativo", campos: camposFino<FeatureVarredura>() },
+    ],
+  };
+}
+
+/** Loft / corte por loft: docs/funcional/features.md §5. */
+function loft(corte: boolean): Esquema<FeatureLoft> {
+  const restricao = (rot: string, cam: "restricaoInicio" | "restricaoFim"): Campo<FeatureLoft>[] => {
+    const r = (f: FeatureLoft): RestricaoLoft => f[cam];
+    return [
+      { t: "sel", rot, cam: `${cam}.tipo`, opcoes: [["nenhuma", "Nenhuma"], ["vetor", "Vetor de direção"], ["normal", "Normal ao perfil"]],
+        vis: (f) => !f.fecharLoft },
+      { t: "refs", rot: "Vetor de direção", cam: `${cam}.ref`, aceita: ["aresta", "eixo", "plano", "face"], multiplo: false, cor: "azul",
+        dica: "Aresta reta, eixo, plano ou face plana", vis: (f) => !f.fecharLoft && r(f).tipo === "vetor" },
+      { t: "num", rot: "Comprimento da tangente", cam: `${cam}.comprimento`, min: 0.05, max: 10, passo: 0.1, vis: (f) => !f.fecharLoft && r(f).tipo !== "nenhuma" },
+      { t: "inverter", rot: "Inverter direção", cam: `${cam}.inverter`, vis: (f) => !f.fecharLoft && r(f).tipo !== "nenhuma" },
+    ];
+  };
+  return {
+    titulo: corte ? "Corte por loft" : "Loft",
+    caixas: [
+      {
+        titulo: "Perfis",
+        campos: [
+          { t: "refs", rot: "Perfis", cam: "perfis", aceita: ["esboco"], multiplo: true, ordenavel: true,
+            dica: "Toque os esboços dos perfis na árvore, na ordem do loft" },
+        ],
+      },
+      { titulo: "Restrições de início/fim", campos: [...restricao("Restrição inicial", "restricaoInicio"), ...restricao("Restrição final", "restricaoFim")] },
+      {
+        titulo: "Curvas-guia",
+        campos: [
+          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta"], multiplo: true, ordenavel: true,
+            dica: "Opcional: esboços ou arestas que tocam os perfis" },
+          { t: "sel", rot: "Influência da curva-guia", cam: "influenciaGuias", vis: (f) => f.guias.length > 0,
+            opcoes: [["proximaGuia", "Até a próxima guia"], ["proximaArestaViva", "Até a próxima aresta viva"], ["proximaAresta", "Até a próxima aresta"], ["global", "Global"]] },
+        ],
+      },
+      {
+        titulo: "Parâmetros de linha de centro",
+        campos: [
+          { t: "refs", rot: "Linha de centro", cam: "linhaCentro", aceita: ["esboco", "aresta"], multiplo: true, cor: "azul",
+            dica: "Opcional: curva que os perfis seguem" },
+          { t: "num", rot: "Número de seções", cam: "secoesLinhaCentro", min: 2, max: 200, passo: 1, vis: (f) => f.linhaCentro.length > 0 },
+        ],
+      },
+      {
+        titulo: "Opções",
+        campos: [
+          { t: "check", rot: "Mesclar faces tangentes", cam: "mesclarFacesTangentes" },
+          { t: "check", rot: "Fechar loft", cam: "fecharLoft" },
+          { t: "check", rot: "Mostrar pré-visualização", cam: "mostrarPrevia" },
+          { t: "check", rot: "Microtolerância", cam: "microtolerancia" },
+        ],
+      },
+      { titulo: corte ? "Corte fino" : "Recurso fino", opcional: "fino.ativo", campos: camposFino<FeatureLoft>() },
     ],
   };
 }

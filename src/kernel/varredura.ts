@@ -134,7 +134,7 @@ interface Estacao {
 }
 
 /** Pontos e tangentes ao longo da trajetória, com referencial que gira o mínimo (dupla reflexão). */
-function estacoes(trechos: Trecho[], porTrecho = 12): Estacao[] {
+export function estacoes(trechos: Trecho[], porTrecho = 12): Estacao[] {
   const brutas: { p: Vec3; t: Vec3; trecho: number }[] = [];
   trechos.forEach((tr, k) => {
     const e = arestaDe(tr);
@@ -195,7 +195,7 @@ function rotacaoEntre(t0: Vec3, n0: Vec3, t1: Vec3, n1: Vec3): { eixo: Vec3; gra
 }
 
 /** Pontos ao longo das curvas-guia (polilinha densa) para achar onde cada seção as cruza. */
-function amostrasDaGuia(trechos: Trecho[]): Vec3[] {
+export function amostrasDaGuia(trechos: Trecho[]): Vec3[] {
   const out: Vec3[] = [];
   for (const tr of trechos) {
     const e = arestaDe(tr);

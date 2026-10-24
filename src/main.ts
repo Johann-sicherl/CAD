@@ -352,6 +352,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   filete: "filete", chanfro: "chanfro", casca: "casca", nervura: "nervura", inclinacao: "inclinacao",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
+  loft: "loft", "corte-loft": "loft",
 };
 
 function ultimoEsbocoLivre(): FeatureEsboco | null {
@@ -437,6 +438,15 @@ function criarRecurso(id: string) {
       f.guias = resto.slice(1).map((e) => ({ tipo: "esboco", id: e.id }));
       break;
     }
+    case "loft": {
+      if (id === "corte-loft") {
+        f.operacao = "cortar";
+        f.nome = `CorteLoft${nomeNovo("loft")}`;
+      }
+      // esboços selecionados (Ctrl/Shift, na ordem tocada) viram os perfis
+      f.perfis = featsSel.filter((x) => x.tipo === "esboco").map((x) => ({ tipo: "esboco", id: x.id }));
+      break;
+    }
     case "filete":
     case "chanfro":
       f.itens = itens;
@@ -508,7 +518,7 @@ function criarRecurso(id: string) {
 }
 
 /** Tipos de recurso que padrões e espelhar sabem repetir. */
-const REPETIVEIS: Feature["tipo"][] = ["extrusao", "revolucao", "varredura", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"];
+const REPETIVEIS: Feature["tipo"][] = ["extrusao", "revolucao", "varredura", "loft", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"];
 
 /**
  * Com um padrão/espelhar aberto, tocar um recurso (anterior) na árvore o põe ou tira da lista
@@ -604,7 +614,7 @@ function renderizarComando() {
     erro: errosPorFeature.get(c.f.id),
     aoMudar: (final) => {
       salvarAutosave();
-      regenerar(final ? 80 : 300);
+      regenerarPrevia(final ? 80 : 300);
       if (final) renderizarComando();
       renderizarArvore();
     },
@@ -908,7 +918,13 @@ function adicionarAoCampo(r: Referencia) {
     comando.campo = null; // seleção única: passa a vez
   }
   renderizarComando();
-  regenerar(80);
+  regenerarPrevia(80);
+}
+
+/** Durante um comando: "Mostrar pré-visualização" desligado adia a reconstrução até o OK. */
+function regenerarPrevia(atraso: number) {
+  if (comando && (comando.f as { mostrarPrevia?: boolean }).mostrarPrevia === false) return;
+  regenerar(atraso);
 }
 
 function gravarCaminho(obj: Record<string, unknown>, cam: string, v: unknown) {
@@ -1072,13 +1088,14 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   esboco: "esboco", extrusao: "extrusao", revolucao: "revolucao", filete: "filete", chanfro: "chanfro",
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
-  varredura: "varredura",
+  varredura: "varredura", loft: "loft",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
   if (f.tipo === "extrusao" && f.operacao === "cortar") return "corte";
   if (f.tipo === "revolucao" && f.operacao === "cortar") return "corteRevolucao";
   if (f.tipo === "varredura" && f.operacao === "cortar") return "corteVarredura";
+  if (f.tipo === "loft" && f.operacao === "cortar") return "corteLoft";
   return ICONE_FEATURE[f.tipo];
 }
 

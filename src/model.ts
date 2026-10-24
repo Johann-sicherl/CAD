@@ -264,6 +264,37 @@ export interface FeatureVarredura extends FeatureBase {
   fino?: RecursoFino;
 }
 
+/** Restrição de início/fim do loft (direção com que ele sai do perfil). */
+export interface RestricaoLoft {
+  tipo: "nenhuma" | "vetor" | "normal";
+  /** Vetor de direção: aresta reta, eixo, plano ou face plana (normal). */
+  ref?: Referencia;
+  /** Comprimento da tangente (fator; 1 = padrão). */
+  comprimento: number;
+  inverter: boolean;
+}
+
+/** Loft (ressalto ou corte): transição entre perfis. Campos: docs/funcional/features.md §5. */
+export interface FeatureLoft extends FeatureBase {
+  tipo: "loft";
+  operacao: "adicionar" | "cortar";
+  /** Esboços dos perfis, na ordem do loft. */
+  perfis: Referencia[];
+  restricaoInicio: RestricaoLoft;
+  restricaoFim: RestricaoLoft;
+  guias: Referencia[];
+  influenciaGuias: "proximaGuia" | "proximaArestaViva" | "proximaAresta" | "global";
+  /** Linha de centro (esboço ou arestas) e nº de seções ao longo dela. */
+  linhaCentro: Referencia[];
+  secoesLinhaCentro: number;
+  mesclarFacesTangentes: boolean;
+  fecharLoft: boolean;
+  /** Desligado: o modelo só se atualiza ao confirmar o comando. */
+  mostrarPrevia: boolean;
+  microtolerancia: boolean;
+  fino?: RecursoFino;
+}
+
 export interface FeatureNervura extends FeatureBase {
   tipo: "nervura";
   esboco?: string;
@@ -355,7 +386,7 @@ export interface FeatureEixoRef extends FeatureBase {
 
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
-  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura
+  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef;
 
 export interface Variavel {
@@ -483,6 +514,15 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
         diametro: 10, trajetoria: [], guias: [], mesclarFacesSuaves: true,
         tangenciaInicio: "nenhuma", tangenciaFim: "nenhuma", fino: FINO_PADRAO(),
       };
+    case "loft": {
+      const rest = (): RestricaoLoft => ({ tipo: "nenhuma", comprimento: 1, inverter: false });
+      return {
+        ...base, tipo, nome: `Loft${indice}`, operacao: "adicionar", perfis: [],
+        restricaoInicio: rest(), restricaoFim: rest(), guias: [], influenciaGuias: "proximaGuia",
+        linhaCentro: [], secoesLinhaCentro: 20, mesclarFacesTangentes: true, fecharLoft: false,
+        mostrarPrevia: true, microtolerancia: false, fino: FINO_PADRAO(),
+      };
+    }
     case "nervura":
       return { ...base, tipo, nome: `Nervura${indice}`, espessura: 3, lado: "ambos", direcao: "normal", inverterMaterial: false };
     case "furo":
@@ -520,6 +560,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   nervura: "Nervura",
   furo: "Furo",
   varredura: "Varredura",
+  loft: "Loft",
   padraoLinear: "Padrão linear",
   padraoCircular: "Padrão circular",
   espelhar: "Espelhar",
@@ -532,6 +573,11 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
  * junto como "absorvidos").
  */
 export function esbocosAbsorvidos(f: Feature): string[] {
+  if (f.tipo === "loft") {
+    return [...f.perfis, ...f.guias, ...f.linhaCentro]
+      .flatMap((r) => (r.tipo === "esboco" ? [r.id] : []))
+      .filter((id, i, a) => a.indexOf(id) === i);
+  }
   if (f.tipo === "varredura") {
     return [f.perfil, ...f.trajetoria, ...f.guias]
       .flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []))
@@ -566,6 +612,10 @@ export function validarDocumento(dados: unknown): Documento {
       f.fino ??= FINO_PADRAO();
     } else if (f.tipo === "filete" || f.tipo === "chanfro") {
       f.itens ??= [];
+    } else if (f.tipo === "loft") {
+      f.guias ??= [];
+      f.linhaCentro ??= [];
+      f.fino ??= FINO_PADRAO();
     } else if (f.tipo === "varredura") {
       f.trajetoria ??= [];
       f.guias ??= [];
