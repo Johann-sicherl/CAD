@@ -7,6 +7,7 @@ import type { PropriedadesMassa } from "./kernel/avaliar";
 import {
   documentoExemplo,
   documentoVazio,
+  esbocosAbsorvidos,
   MATERIAIS,
   NOME_PLANO,
   novaFeature,
@@ -350,11 +351,11 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   extrusao: "extrusao", corte: "extrusao", revolucao: "revolucao", "corte-revolucao": "revolucao",
   filete: "filete", chanfro: "chanfro", casca: "casca", nervura: "nervura", inclinacao: "inclinacao",
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
-  plano: "planoRef", eixo: "eixoRef",
+  plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
 };
 
 function ultimoEsbocoLivre(): FeatureEsboco | null {
-  const usados = new Set(doc.features.flatMap((f) => ("esboco" in f && f.esboco ? [f.esboco] : [])));
+  const usados = new Set(doc.features.flatMap(esbocosAbsorvidos));
   const livres = ativas().filter((f): f is FeatureEsboco => f.tipo === "esboco" && !f.suprimida && !usados.has(f.id));
   return livres[livres.length - 1] ?? null;
 }
@@ -410,6 +411,30 @@ function criarRecurso(id: string) {
         }
       }
       if (!perfil) avisar("Sem esboço livre: usando perfil rápido. Para perfil próprio, crie um esboço (aba Sketch).");
+      break;
+    }
+    case "varredura": {
+      if (id === "corte-varredura") {
+        f.operacao = "cortar";
+        f.nome = `CorteVarredura${nomeNovo("varredura")}`;
+      }
+      // pré-seleção na ordem tocada: 1º esboço fechado = perfil, o próximo = trajetória,
+      // os demais = curvas-guia; sem esboço de trajetória, arestas do modelo selecionadas
+      const esbs = featsSel.filter((x): x is FeatureEsboco => x.tipo === "esboco");
+      const fechado = (e: FeatureEsboco) => {
+        try {
+          return encontrarLacos(e).length > 0;
+        } catch {
+          return false;
+        }
+      };
+      const perfil = esbs.find(fechado);
+      if (perfil) f.perfil = { tipo: "esboco", id: perfil.id };
+      const resto = esbs.filter((e) => e !== perfil);
+      const arestas = selPeca.filter((r) => r.tipo === "aresta");
+      if (resto.length) f.trajetoria = [{ tipo: "esboco", id: resto[0].id }];
+      else if (arestas.length) f.trajetoria = arestas;
+      f.guias = resto.slice(1).map((e) => ({ tipo: "esboco", id: e.id }));
       break;
     }
     case "filete":
@@ -483,7 +508,7 @@ function criarRecurso(id: string) {
 }
 
 /** Tipos de recurso que padrões e espelhar sabem repetir. */
-const REPETIVEIS: Feature["tipo"][] = ["extrusao", "revolucao", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"];
+const REPETIVEIS: Feature["tipo"][] = ["extrusao", "revolucao", "varredura", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"];
 
 /**
  * Com um padrão/espelhar aberto, tocar um recurso (anterior) na árvore o põe ou tira da lista
@@ -511,7 +536,7 @@ function dadosEsquema(f: Feature): DadosEsquema {
   const antes = doc.features.slice(0, idx < 0 ? undefined : idx);
   return {
     esbocosAntes: antes.filter((x) => x.tipo === "esboco").map((x) => [x.id, x.nome]),
-    recursosAntes: antes.filter((x) => ["extrusao", "revolucao", "furo", "nervura", "padraoLinear", "padraoCircular", "espelhar"].includes(x.tipo)).map((x) => [x.id, x.nome]),
+    recursosAntes: antes.filter((x) => REPETIVEIS.includes(x.tipo)).map((x) => [x.id, x.nome]),
     linhasEsboco: (id) => {
       const e = doc.features.find((x) => x.id === id);
       if (e?.tipo !== "esboco") return [];
@@ -759,7 +784,7 @@ function facesDosSelecionados(): Entidade[] {
   if (comando || editor) return [];
   const ids = new Set(selArvore().filter((s) => s.tipo === "feature").map((s) => s.id));
   // esboço selecionado: destaca o recurso que o consome
-  for (const f of doc.features) if ("esboco" in f && f.esboco && ids.has(f.esboco)) ids.add(f.id);
+  for (const f of doc.features) if (esbocosAbsorvidos(f).some((e) => ids.has(e))) ids.add(f.id);
   return [...ids].flatMap((id) => (facesPorRecurso[id] ?? []).map((indice) => ({ tipo: "face" as const, indice })));
 }
 
@@ -956,9 +981,9 @@ function acoesDaFeature(f: Feature): AcaoContexto[] {
   const out: AcaoContexto[] = [];
   if (f.tipo === "esboco") out.push({ rotulo: "Editar esboço", icone: "esboco", acao: () => void editarEsboco(f) });
   else out.push({ rotulo: "Editar recurso", icone: iconeFeature(f), acao: () => abrirComando(f, false) });
-  if ("esboco" in f && f.esboco) {
-    const e = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
-    if (e) out.push({ rotulo: "Editar esboço", icone: "esboco", acao: () => void editarEsboco(e) });
+  for (const id of esbocosAbsorvidos(f)) {
+    const e = doc.features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco");
+    if (e) out.push({ rotulo: `Editar ${e.nome}`, icone: "esboco", acao: () => void editarEsboco(e) });
   }
   if (f.tipo === "planoRef") out.push({ rotulo: "Esboço", icone: "esboco", acao: () => void suporteEscolhido({ tipo: "planoRef", id: f.id }, null) });
   if (REPETIVEIS.includes(f.tipo)) {
@@ -1047,11 +1072,13 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   esboco: "esboco", extrusao: "extrusao", revolucao: "revolucao", filete: "filete", chanfro: "chanfro",
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
+  varredura: "varredura",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
   if (f.tipo === "extrusao" && f.operacao === "cortar") return "corte";
   if (f.tipo === "revolucao" && f.operacao === "cortar") return "corteRevolucao";
+  if (f.tipo === "varredura" && f.operacao === "cortar") return "corteVarredura";
   return ICONE_FEATURE[f.tipo];
 }
 
@@ -1111,7 +1138,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
 
   // esboços consumidos aparecem dentro do recurso que os usa
   const filhos = new Set<string>();
-  for (const f of doc.features) if ("esboco" in f && f.esboco) filhos.add(f.esboco);
+  for (const f of doc.features) for (const e of esbocosAbsorvidos(f)) filhos.add(e);
   const limite = doc.retrocesso ?? doc.features.length;
 
   const itemFeature = (f: Feature, i: number, nivel: number, seta: boolean | null) => {
@@ -1144,6 +1171,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       }
       const mover = (ev.target as HTMLElement).closest<HTMLElement>("[data-mover]");
       if (mover) return moverFeature(i, Number(mover.dataset.mover));
+      if (comando?.campo && comando.campo.aceita.includes("esboco") && f.tipo === "esboco" && f.id !== comando.f.id) return adicionarAoCampo({ tipo: "esboco", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("plano") && f.tipo === "planoRef") return adicionarAoCampo({ tipo: "plano", id: f.id });
       if (comando?.campo && comando.campo.aceita.includes("eixo") && f.tipo === "eixoRef") return adicionarAoCampo({ tipo: "eixo", id: f.id });
       if (aguardando && f.tipo === "planoRef") return void suporteEscolhido({ tipo: "planoRef", id: f.id }, null);
@@ -1236,11 +1264,9 @@ const expandidos = new Set<string>();
  * referências escolhidas (faces, arestas, vértices, planos, eixos). Esboço: o plano/face de apoio.
  */
 function elementosUsados(f: Feature): { esbocos: FeatureEsboco[]; recursos: Feature[]; refs: Referencia[] } {
-  const esbocos: FeatureEsboco[] = [];
-  if ("esboco" in f && f.esboco) {
-    const e = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
-    if (e) esbocos.push(e);
-  }
+  const esbocos = esbocosAbsorvidos(f)
+    .map((id) => doc.features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco"))
+    .filter((x): x is FeatureEsboco => !!x);
   const recursos = "recursos" in f ? f.recursos.map((id) => doc.features.find((x) => x.id === id)).filter((x): x is Feature => !!x) : [];
   const refs: Referencia[] = [];
   if (f.tipo === "esboco") {
@@ -1259,7 +1285,8 @@ function elementosUsados(f: Feature): { esbocos: FeatureEsboco[]; recursos: Feat
     };
     const varrer = (v: unknown) => {
       if (ehRef(v)) {
-        if (!refs.some((r) => mesmaRef(r, v))) refs.push(v);
+        const jaAninhado = v.tipo === "esboco" && esbocos.some((e) => e.id === v.id);
+        if (!jaAninhado && !refs.some((r) => mesmaRef(r, v))) refs.push(v);
         return;
       }
       if (Array.isArray(v)) v.forEach(varrer);
@@ -1489,8 +1516,9 @@ async function iniciarEsboco(ferramenta?: Ferramenta): Promise<boolean> {
     await editarEsboco(f, ferramenta);
     return true;
   }
-  if (f && "esboco" in f && f.esboco) {
-    const e = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
+  const abs = f ? esbocosAbsorvidos(f)[0] : undefined;
+  if (abs) {
+    const e = doc.features.find((x): x is FeatureEsboco => x.id === abs && x.tipo === "esboco");
     if (e) {
       await editarEsboco(e, ferramenta);
       return true;
@@ -1654,7 +1682,7 @@ function limparEsbocos() {
 }
 function desenharEsbocos() {
   limparEsbocos();
-  const usados = new Set(doc.features.flatMap((f) => ("esboco" in f && f.esboco ? [f.esboco] : [])));
+  const usados = new Set(doc.features.flatMap(esbocosAbsorvidos));
   const { w, h } = viewport.tamanho();
   for (const f of ativas()) {
     if (f.tipo !== "esboco" || f.suprimida) continue;
@@ -2041,8 +2069,9 @@ function planoDaSelecao(): SuporteEsboco | null {
   const f = featureSelecionada();
   if (f?.tipo === "esboco") return f.suporte;
   if (f?.tipo === "planoRef") return { tipo: "planoRef", id: f.id };
-  if (f && "esboco" in f && f.esboco) {
-    const e = doc.features.find((x) => x.id === f.esboco);
+  const abs = f ? esbocosAbsorvidos(f)[0] : undefined;
+  if (abs) {
+    const e = doc.features.find((x) => x.id === abs);
     if (e?.tipo === "esboco") return e.suporte;
   }
   return null;

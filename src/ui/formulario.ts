@@ -13,7 +13,8 @@ export type Campo<F> = Vis<F> & (
   | { t: "sel"; rot: string; cam: string; opcoes: [string, string][] | ((f: F) => [string, string][]); aoMudar?: (f: F, v: string) => void; valor?: (f: F) => string }
   | { t: "check"; rot: string; cam: string }
   | { t: "inverter"; rot: string; cam: string }
-  | { t: "refs"; rot: string; cam: string; aceita: TipoSel[]; multiplo: boolean; dica?: string; cor?: "rosa" | "azul" }
+  /** `ordenavel`: botões ↑ ↓ em cada item (a ordem importa, ex.: curvas-guia). */
+  | { t: "refs"; rot: string; cam: string; aceita: TipoSel[]; multiplo: boolean; dica?: string; cor?: "rosa" | "azul"; ordenavel?: boolean }
   | { t: "lista"; rot: string; cam: string; opcoes: (f: F) => [string, string][] }
   | { t: "info"; texto: (f: F) => string }
   | { t: "botao"; rot: string; acao: (f: F) => void; destaque?: boolean }
@@ -225,6 +226,22 @@ function campo<F>(f: F, c: Campo<F>, ctx: ContextoFormulario): HTMLElement {
         const chip = el("span", "pc-chip", ctx.rotuloRef(r, i));
         chip.onpointerenter = () => ctx.realcarRef(r);
         chip.onpointerleave = () => ctx.realcarRef(null);
+        if (c.multiplo && c.ordenavel && lista.length > 1) {
+          for (const [rot, d] of [["↑", -1], ["↓", 1]] as const) {
+            const j = i + d;
+            const b = el("button", "pc-chip-ordem", rot);
+            b.title = d < 0 ? "Subir" : "Descer";
+            b.disabled = j < 0 || j >= lista.length;
+            b.onclick = (e) => {
+              e.stopPropagation();
+              const nova = lista.slice();
+              [nova[i], nova[j]] = [nova[j], nova[i]];
+              gravar(f, c.cam, nova);
+              ctx.aoMudar(true);
+            };
+            chip.append(b);
+          }
+        }
         const x = el("button", "pc-chip-x", "×");
         x.onclick = (e) => {
           e.stopPropagation();

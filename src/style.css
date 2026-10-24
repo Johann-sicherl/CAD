@@ -549,6 +549,8 @@ button.largo { width: 100%; margin: 4px 0; }
   font-size: 13px;
 }
 .pc-chip-x { min-width: 28px; min-height: 28px; padding: 0; border: none; background: transparent; color: var(--texto-2); }
+.pc-chip-ordem { min-width: 26px; min-height: 28px; padding: 0; border: none; background: transparent; color: var(--acento); font-weight: 700; }
+.pc-chip-ordem:disabled { color: var(--linha-forte); }
 .pc-vazio { color: var(--texto-2); font-size: 13px; align-self: center; }
 .pc-lista { display: grid; gap: 0; max-height: 220px; overflow-y: auto; }
 .num input.com-equacao { color: #6b3fa0; font-style: italic; }

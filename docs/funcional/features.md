@@ -75,7 +75,12 @@ Igual à Extrusão, mais:
 **Caixa "Recurso fino"**: Uma direção / Plano médio / Duas direções, espessura(s)
 **Caixa "Contornos selecionados"**, **Escopo do recurso**
 
-## 4. Varredura / Corte por varredura (Swept Boss/Base · Swept Cut) — planejado
+## 4. Varredura / Corte por varredura (Swept Boss/Base · Swept Cut) — 🟡
+
+✅ Escopo definido pelo Johann: perfil de esboço / circular (diâmetro), trajetória (esboço ou
+arestas), curvas-guia com ↑↓ e mesclar faces suaves, tangência inicial/final (Nenhuma / Tangente à
+trajetória), recurso fino (uma direção, plano médio, duas direções). Orientação fixa em "seguir
+trajetória" (torção mínima). Demais opções abaixo: não previstas por enquanto.
 
 Leva um **perfil** ao longo de uma **trajetória**. Usos: tubos e mangueiras, cabos, molas e roscas
 (com hélice), canais e rasgos curvos, perfis de vedação, corrimãos.
@@ -195,7 +200,7 @@ continuidade, fechar loft (repete o 1º perfil); conectores = escolhemos o vért
 sentido de cada contorno. Restrições de início/fim, curvas-guia e linha de centro não existem
 prontas: geramos seções intermediárias (amostrando guias/linha de centro) — mais trabalho.
 
-## 6. Ressalto por contorno / Corte por contorno (Boundary Boss/Base · Boundary Cut) — planejado
+## 6. Ressalto por contorno / Corte por contorno (Boundary Boss/Base · Boundary Cut) — ⏸ (fora do roteiro, decisão do Johann)
 
 Sólido definido por uma **rede de curvas em duas direções**, com as duas direções de mesmo
 peso e controle fino de tangência/curvatura nas bordas. Mais preciso e suave que o loft:
@@ -243,11 +248,10 @@ internas = Direção 2) gera as faces; tampas planas + `Sewing` + `MakeSolid` fe
 - **Esboço 3D** ou relação **Perfurar** no esboço (perfil tocando a trajetória/guia fora do plano)
 - Seleção de **regiões** de esboço e **cadeias de arestas** (já existem em parte)
 
-### Ordem sugerida
-1. Varredura (perfil de esboço/circular, seguir trajetória, manter normal, torção por valor,
-   tangência início/fim, recurso fino) + hélice
-2. Loft (perfis, ponto, conectores, fechar, faces regradas; depois restrições e guias)
-3. Ressalto por contorno
+### Ordem
+1. Varredura ✅ (escopo acima)
+2. Loft (escopo definido pelo Johann)
+3. Ressalto por contorno: fora do roteiro
 
 ## 7. Filete (Fillet) — 🟡
 

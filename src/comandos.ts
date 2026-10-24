@@ -29,8 +29,10 @@ export const ABAS: Aba[] = [
     comandos: [
       { id: "extrusao", rotulo: "Extrusão", icone: "extrusao", dica: "Ressalto extrudado a partir de um esboço", grupo: 0 },
       { id: "revolucao", rotulo: "Revolução", icone: "revolucao", dica: "Ressalto girando um perfil em torno de um eixo", grupo: 0 },
+      { id: "varredura", rotulo: "Varredura", icone: "varredura", dica: "Leva um perfil ao longo de uma trajetória (tubos, cabos, canais)", grupo: 0 },
       { id: "corte", rotulo: "Corte extrudado", icone: "corte", dica: "Remove material extrudando um perfil", grupo: 1 },
       { id: "corte-revolucao", rotulo: "Corte revolução", icone: "corteRevolucao", dica: "Remove material girando um perfil", grupo: 1 },
+      { id: "corte-varredura", rotulo: "Corte varredura", icone: "corteVarredura", dica: "Remove material levando um perfil ao longo de uma trajetória", grupo: 1 },
       { id: "furo", rotulo: "Furo assistido", icone: "furo", dica: "Furos ISO: simples, rebaixado, escareado, roscado", grupo: 1 },
       { id: "filete", rotulo: "Filete", icone: "filete", dica: "Arredonda as arestas selecionadas", grupo: 2 },
       { id: "chanfro", rotulo: "Chanfro", icone: "chanfro", dica: "Chanfra as arestas selecionadas", grupo: 2 },

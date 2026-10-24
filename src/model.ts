@@ -241,6 +241,29 @@ export interface FeatureInclinacao extends FeatureBase {
   inverter: boolean;
 }
 
+/**
+ * Varredura (ressalto ou corte): perfil levado ao longo de uma trajetória, opcionalmente
+ * escalado para seguir curvas-guia. Campos: docs/funcional/features.md §4.
+ */
+export interface FeatureVarredura extends FeatureBase {
+  tipo: "varredura";
+  operacao: "adicionar" | "cortar";
+  tipoPerfil: "esboco" | "circular";
+  /** Perfil de esboço: esboço fechado (ou aberto com recurso fino). */
+  perfil?: Referencia;
+  /** Perfil circular: diâmetro do círculo criado no início da trajetória, normal a ela. */
+  diametro: number;
+  /** Trajetória: um esboço (linhas/arcos/splines encadeados) ou arestas do modelo encadeadas. */
+  trajetoria: Referencia[];
+  /** Curvas-guia (esboços ou arestas), em ordem: o perfil escala para tocá-las. */
+  guias: Referencia[];
+  /** Com guias: uma face suave contínua (ligado) ou faces separadas por trecho da trajetória. */
+  mesclarFacesSuaves: boolean;
+  tangenciaInicio: "nenhuma" | "trajetoria";
+  tangenciaFim: "nenhuma" | "trajetoria";
+  fino?: RecursoFino;
+}
+
 export interface FeatureNervura extends FeatureBase {
   tipo: "nervura";
   esboco?: string;
@@ -332,7 +355,7 @@ export interface FeatureEixoRef extends FeatureBase {
 
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
-  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro
+  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef;
 
 export interface Variavel {
@@ -454,6 +477,12 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Casca${indice}`, espessura: 2, faces: [], paraFora: false };
     case "inclinacao":
       return { ...base, tipo, nome: `Inclinação${indice}`, angulo: 3, faces: [], inverter: false };
+    case "varredura":
+      return {
+        ...base, tipo, nome: `Varredura${indice}`, operacao: "adicionar", tipoPerfil: "esboco",
+        diametro: 10, trajetoria: [], guias: [], mesclarFacesSuaves: true,
+        tangenciaInicio: "nenhuma", tangenciaFim: "nenhuma", fino: FINO_PADRAO(),
+      };
     case "nervura":
       return { ...base, tipo, nome: `Nervura${indice}`, espessura: 3, lado: "ambos", direcao: "normal", inverterMaterial: false };
     case "furo":
@@ -490,12 +519,26 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   inclinacao: "Inclinação",
   nervura: "Nervura",
   furo: "Furo",
+  varredura: "Varredura",
   padraoLinear: "Padrão linear",
   padraoCircular: "Padrão circular",
   espelhar: "Espelhar",
   planoRef: "Plano",
   eixoRef: "Eixo",
 };
+
+/**
+ * Esboços consumidos pelo recurso (aparecem aninhados nele na árvore e podem ser excluídos
+ * junto como "absorvidos").
+ */
+export function esbocosAbsorvidos(f: Feature): string[] {
+  if (f.tipo === "varredura") {
+    return [f.perfil, ...f.trajetoria, ...f.guias]
+      .flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []))
+      .filter((id, i, a) => a.indexOf(id) === i);
+  }
+  return "esboco" in f && f.esboco ? [f.esboco] : [];
+}
 
 /** Lê arquivos antigos e completa campos novos com valores padrão. */
 export function validarDocumento(dados: unknown): Documento {
@@ -523,6 +566,10 @@ export function validarDocumento(dados: unknown): Documento {
       f.fino ??= FINO_PADRAO();
     } else if (f.tipo === "filete" || f.tipo === "chanfro") {
       f.itens ??= [];
+    } else if (f.tipo === "varredura") {
+      f.trajetoria ??= [];
+      f.guias ??= [];
+      f.fino ??= FINO_PADRAO();
     }
   }
   d.versao = 3;

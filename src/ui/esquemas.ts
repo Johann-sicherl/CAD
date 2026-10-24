@@ -3,7 +3,7 @@
 import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
-  FeatureRevolucao, TipoCondicao,
+  FeatureRevolucao, FeatureVarredura, TipoCondicao,
 } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
 import type { Campo, Esquema } from "./formulario";
@@ -70,6 +70,8 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return inclinacao() as Esquema<Feature>;
     case "nervura":
       return nervura(d) as Esquema<Feature>;
+    case "varredura":
+      return varredura(f.operacao === "cortar") as Esquema<Feature>;
     case "furo":
       return furo(d) as Esquema<Feature>;
     case "padraoLinear":
@@ -280,6 +282,43 @@ function inclinacao(): Esquema<FeatureInclinacao> {
         { t: "inverter", rot: "Inverter direção de extração", cam: "inverter" },
       ] },
       { titulo: "Faces a inclinar", campos: [{ t: "refs", rot: "Faces", cam: "faces", aceita: ["face"], multiplo: true }] },
+    ],
+  };
+}
+
+/** Varredura / corte por varredura: docs/funcional/features.md §4. */
+function varredura(corte: boolean): Esquema<FeatureVarredura> {
+  const deEsboco = (f: FeatureVarredura) => f.tipoPerfil === "esboco";
+  return {
+    titulo: corte ? "Corte por varredura" : "Varredura",
+    caixas: [
+      {
+        titulo: "Perfil e trajetória",
+        campos: [
+          { t: "sel", rot: "Tipo de perfil", cam: "tipoPerfil", opcoes: [["esboco", "Perfil de esboço"], ["circular", "Perfil circular"]] },
+          { t: "refs", rot: "Perfil", cam: "perfil", aceita: ["esboco"], multiplo: false, vis: deEsboco,
+            dica: "Toque o esboço do perfil na árvore (esboço fechado)" },
+          { t: "refs", rot: "Trajetória", cam: "trajetoria", aceita: ["esboco", "aresta"], multiplo: true, cor: "azul",
+            dica: "Toque o esboço da trajetória na árvore, ou arestas encadeadas no modelo" },
+          { t: "num", rot: "Diâmetro", cam: "diametro", un: "mm", min: 0.001, passo: 0.5, vis: (f) => !deEsboco(f) },
+        ],
+      },
+      {
+        titulo: "Curvas-guia",
+        campos: [
+          { t: "refs", rot: "Curvas-guia", cam: "guias", aceita: ["esboco", "aresta"], multiplo: true, ordenavel: true,
+            dica: "Opcional: esboços ou arestas que tocam o perfil (o perfil escala para segui-las)" },
+          { t: "check", rot: "Mesclar faces suaves", cam: "mesclarFacesSuaves", vis: (f) => f.guias.length > 0 },
+        ],
+      },
+      {
+        titulo: "Tangência de início/fim",
+        campos: [
+          { t: "sel", rot: "Tangência inicial", cam: "tangenciaInicio", opcoes: [["nenhuma", "Nenhuma"], ["trajetoria", "Tangente à trajetória"]] },
+          { t: "sel", rot: "Tangência final", cam: "tangenciaFim", opcoes: [["nenhuma", "Nenhuma"], ["trajetoria", "Tangente à trajetória"]] },
+        ],
+      },
+      { titulo: corte ? "Corte fino" : "Recurso fino", opcional: "fino.ativo", campos: camposFino<FeatureVarredura>() },
     ],
   };
 }
