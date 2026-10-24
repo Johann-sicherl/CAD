@@ -332,8 +332,10 @@ chanfro.
 ## 6. Entrada (tablet e computador) — ✅
 
 - Caneta desenha; dedo navega; sem caneta o dedo desenha com encaixes maiores e **lupa** ✅
-- Computador: botão esquerdo desenha, meio arrasta, direito gira, roda aproxima ✅
+- Computador: botão esquerdo desenha/seleciona, **meio gira** (Ctrl + meio arrasta), roda aproxima
+  no cursor, **direito abre o menu de contexto** ✅
 - Atalhos ✅: L linha · R retângulo · C círculo · A arco · S spline · P polígono · T aparar ·
   D cota · O offset · M espelhar · V selecionar · Enter conclui · Esc cancela · Delete exclui
-- Planejado (F3): **tecla S → barra de atalhos de contexto**, **gestos de mouse** (botão direito
-  + arrastar → menu radial), **menu de contexto** do botão direito no esboço
+- Tecla S → barra de atalhos ✅ · menu de contexto do botão direito ✅
+- Planejado: **gestos de mouse/caneta** (botão direito + arrastar → guia radial) ❌,
+  **espelhamento dinâmico** ❌ (ver `referencia-introducao.md` §7)

@@ -19,6 +19,7 @@ Arquivos:
 | Sketch (esboço: entidades, ferramentas, cotas, relações) | [sketch.md](sketch.md) |
 | Sheet Metal (chapa metálica) | [chapa.md](chapa.md) |
 | Avaliar (medições, propriedades de massa, análises) | [avaliar.md](avaliar.md) |
+| Comparação com o guia introdutório do CAD de referência (lacunas priorizadas) | [referencia-introducao.md](referencia-introducao.md) |
 
 ## Estado da implementação (22/10/2026)
 

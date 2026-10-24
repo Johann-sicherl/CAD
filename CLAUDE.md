@@ -70,6 +70,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   Continua proibido copiar ícones, cores da marca, logotipos, textos e nomes registrados.
   A especificação campo a campo de cada comando está em **`docs/funcional/`** — consultar antes de
   implementar qualquer comando e atualizar o status (✅/🟡/fase) ao entregar.
+  O Johann forneceu o guia introdutório oficial do CAD de referência (PDF no Drive dele, **não
+  versionar**); a comparação e as lacunas priorizadas estão em `docs/funcional/referencia-introducao.md`
+  — usar como base para os próximos pedidos.
 - Layout de referência (genérico de CAD): barra superior com menus/ações rápidas → linha de ícones
   da aba ativa → abas Features / Sketch / Sheet Metal / Avaliar; árvore à esquerda com planos Frontal,
   Superior, Lateral, Origem e features; barra de vistas flutuante no topo do viewport;
