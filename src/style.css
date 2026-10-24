@@ -946,3 +946,5 @@ textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-mo
 .tabela-config tr.linha-adicionar td { text-align: left; }
 .tabela-config select { min-height: 36px; max-width: 100%; }
 .tabela-config input.invalido { border-color: var(--erro); }
+.st-filtro { border: 1px solid #f0c27a; background: #fff4e0; color: #8a5a00; border-radius: 10px; padding: 0 8px; min-height: 22px; font: inherit; font-size: 12px; cursor: pointer; }
+.st-filtro[hidden] { display: none; }

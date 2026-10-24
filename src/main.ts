@@ -78,7 +78,11 @@ interface Prefs {
   /** Ocultar/mostrar itens: tipos ocultos de uma vez e "ocultar todos os tipos". */
   tiposOcultos?: TipoItem[];
   ocultarTudo?: boolean;
+  /** Filtro de seleção: só estes tipos podem ser tocados no modelo (vazio = desligado). */
+  filtroSelecao?: TipoFiltro[];
+  filtroAnterior?: TipoFiltro[];
 }
+type TipoFiltro = "face" | "aresta" | "vertice" | "plano" | "eixo" | "curva";
 type TipoItem = "planos" | "eixos" | "origem" | "esbocos";
 type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
@@ -238,6 +242,10 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
 }
 
 function atualizarStatus() {
+  // filtro de seleção ligado: aviso fixo na barra de status (toque desliga)
+  const fs = $("st-filtro");
+  fs.hidden = !filtroLigado();
+  if (filtroLigado()) fs.textContent = `Filtro: ${prefs.filtroSelecao!.map((x) => TIPOS_FILTRO.find((y) => y[0] === x)![1].toLowerCase()).join(", ")} ✕`;
   const k = $("st-kernel");
   k.textContent = {
     iniciando: "Kernel: iniciando…",
@@ -796,6 +804,10 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   abrirGaveta(modo === "comando");
 }
 
+$("st-filtro").onclick = () => {
+  prefs.filtroAnterior = prefs.filtroSelecao;
+  alternarFiltro("limpar");
+};
 $("cc-ok").onclick = () => (editor ? sairEsboco() : avaliacao && !comando ? fecharAvaliacaoMantendo() : confirmarComando());
 $("cc-cancelar").onclick = () => (editor ? descartarEsboco() : avaliacao && !comando ? fecharAvaliacao() : cancelarComando());
 $("btn-arvore-flutuante").innerHTML = ICONES.peca;
@@ -929,6 +941,47 @@ function filtroEntidades(aceita: TipoSel[]): Set<TipoEntidade> {
 
 const TODAS: Set<TipoEntidade> = new Set(["face", "aresta", "vertice"]);
 
+// ---------- filtro de seleção ----------
+
+const TIPOS_FILTRO: [TipoFiltro, string, NomeIcone, string][] = [
+  ["face", "Faces", "face", "X"], ["aresta", "Arestas", "aresta", "E"], ["vertice", "Vértices", "vertice", "V"],
+  ["plano", "Planos", "plano", ""], ["eixo", "Eixos", "eixoRef", ""], ["curva", "Curvas 3D", "helice", ""],
+];
+const filtroLigado = () => !!prefs.filtroSelecao?.length;
+/** Tira do conjunto pedido os tipos que o filtro de seleção bloqueia. */
+function filtrar(s: Set<TipoEntidade>): Set<TipoEntidade> {
+  if (!filtroLigado()) return s;
+  return new Set([...s].filter((t) => prefs.filtroSelecao!.includes(t)));
+}
+const refPermitida = (tipo: "plano" | "eixo" | "curva") => !filtroLigado() || prefs.filtroSelecao!.includes(tipo);
+
+function alternarFiltro(t: TipoFiltro | "limpar") {
+  if (t === "limpar") prefs.filtroSelecao = [];
+  else {
+    const l = new Set(prefs.filtroSelecao ?? []);
+    if (l.has(t)) l.delete(t);
+    else l.add(t);
+    prefs.filtroSelecao = [...l];
+  }
+  salvarPrefs();
+  renderizarBarraVistas();
+  atualizarStatus();
+  const lig = prefs.filtroSelecao!;
+  avisar(lig.length ? `Filtro de seleção: só ${lig.map((x) => TIPOS_FILTRO.find((y) => y[0] === x)![1].toLowerCase()).join(", ")}` : "Filtro de seleção desligado: tudo pode ser selecionado.");
+}
+
+function abrirFiltroSelecao(b: HTMLElement) {
+  abrirPopover(b, [
+    ...TIPOS_FILTRO.map(([t, r, ic, k]) => ({
+      rotulo: `${r}${k ? `  ·  ${k}` : ""}`,
+      icone: ic,
+      marcado: !!prefs.filtroSelecao?.includes(t),
+      acao: () => alternarFiltro(t),
+    })),
+    { rotulo: "Limpar filtros", icone: "fechar" as NomeIcone, acao: () => alternarFiltro("limpar") },
+  ]);
+}
+
 function instalarToqueCurto() {
   viewport.aoToqueDuplo = (e) => {
     // duplo clique numa face: mostra as cotas do recurso que a criou, para editar no modelo
@@ -950,7 +1003,9 @@ function instalarToqueCurto() {
     const tol = e.pointerType === "touch" ? 22 : 9;
     esconderBarraContexto();
     if (!comando) fecharCotasNoModelo();
-    const refViewport = viewport.picarReferencia(e.clientX, e.clientY, tol);
+    const refBruta = viewport.picarReferencia(e.clientX, e.clientY, tol);
+    // escolher plano/face para um esboço não passa pelo filtro; o resto, sim
+    const refViewport = refBruta && (aguardando || refPermitida(refBruta.tipo)) ? refBruta : null;
     // prioridade sobre a peça: borda de qualquer plano, ou a área de um plano/eixo criado pelo
     // usuário que esteja na frente (os planos principais atravessam a peça: só pela borda)
     const refPrioritaria = refViewport && (refViewport.borda || !["XY", "XZ", "YZ"].includes(refViewport.id)) ? refViewport : null;
@@ -966,7 +1021,7 @@ function instalarToqueCurto() {
       if (!c) return avisar("Toque um campo de seleção (rosa) no painel para escolher geometria.");
       const refAceita = refViewport && c.aceita.includes(refViewport.tipo) ? refViewport : null;
       if (refAceita && refAceita === refPrioritaria) return adicionarAoCampo({ tipo: refAceita.tipo, id: refAceita.id });
-      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtroEntidades(c.aceita), tol);
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(filtroEntidades(c.aceita)), tol);
       if (!ent) {
         // planos e eixos de referência clicados no viewport
         if (refViewport && c.aceita.includes(refViewport.tipo)) adicionarAoCampo({ tipo: refViewport.tipo, id: refViewport.id });
@@ -978,7 +1033,7 @@ function instalarToqueCurto() {
       return;
     }
     if (avaliacao?.tipo === "medir") {
-      const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+      const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
       if (!ent) {
         avaliacao.refs = [];
       } else {
@@ -995,7 +1050,7 @@ function instalarToqueCurto() {
       return;
     }
     // modo peça: pré-seleção (Ctrl/Shift soma)
-    const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, TODAS, tol);
+    const ent = refPrioritaria ? null : viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), tol);
     if (!ent && refViewport) {
       // plano/eixo de referência: seleciona como na árvore (Esboço, Normal a, Ocultar…)
       const somar = e.ctrlKey || e.shiftKey || e.metaKey;
@@ -1078,10 +1133,11 @@ viewport.canvas().addEventListener("pointermove", (e) => {
   if (quadroRealce) return;
   quadroRealce = requestAnimationFrame(() => {
     quadroRealce = 0;
-    const filtro = comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS;
+    const filtro = filtrar(comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS);
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
     viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados());
-    const ref = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    const refB = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo" || a === "curva")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
+    const ref = refB && refPermitida(refB.tipo) ? refB : null;
     viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
   });
 });
@@ -1199,7 +1255,7 @@ function esconderBarraContexto() {
 
 viewport.aoMenuContexto = (e) => {
   if (editor) return;
-  const outros = viewport.entidadesSobCursor(e.clientX, e.clientY, 9);
+  const outros = viewport.entidadesSobCursor(e.clientX, e.clientY, 9).filter((x) => !filtroLigado() || prefs.filtroSelecao!.includes(x.tipo));
   const itemOutro = outros.length > 1
     ? [{ rotulo: "Selecionar outro…", icone: "selecionar" as NomeIcone, acao: () => selecionarOutro(outros, e.clientX, e.clientY) }]
     : [];
@@ -1207,7 +1263,7 @@ viewport.aoMenuContexto = (e) => {
     if (itemOutro.length) mostrarBarra(itemOutro, e.clientX, e.clientY);
     return;
   }
-  const ent = viewport.picarEntidade(e.clientX, e.clientY, TODAS, 9);
+  const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), 9);
   if (ent) {
     const r = refDeEntidade(ent)!;
     if (!selPeca.some((x) => mesmaRef(x, r))) selPeca = [r];
@@ -2746,6 +2802,7 @@ function renderizarBarraVistas() {
   const algoOculto = !!prefs.ocultarTudo || !!prefs.tiposOcultos?.length;
   botao(algoOculto ? "olhoFechado" : "olho", "Ocultar/mostrar itens", (b) => abrirOcultarItens(b), algoOculto, true);
   botao("configVista", "Configurações de vista", (b) => abrirConfigVista(b), false, true);
+  botao("filtroSelecao", filtroLigado() ? "Filtro de seleção (ligado) · F5" : "Filtro de seleção · F5", (b) => abrirFiltroSelecao(b), filtroLigado(), true);
 }
 
 function alternarTipoOculto(t: TipoItem | "tudo") {
@@ -2990,6 +3047,7 @@ function mostrarAtalhos() {
     ["Espaço", "Orientação da vista"],
     ["F", "Ampliar para caber"],
     ["S", "Barra de atalhos no cursor"],
+    ["F5 · X · E · V", "Filtro de seleção: liga/desliga · só faces · só arestas · só vértices"],
     ["Ctrl+B", "Reconstruir"],
     ["Enter / Esc", "OK / Cancelar no comando"],
     ["Ctrl+Z / Ctrl+Y / Ctrl+S", "Desfazer / Refazer / Salvar"],
@@ -3266,6 +3324,20 @@ document.addEventListener("keydown", (e) => {
     /* atalhos do esboço */
   } else if (e.key === " ") abrirSeletorVistas($("barra-vistas"));
   else if (k === "f" && !ctrl) viewport.enquadrar();
+  else if (e.key === "F5") {
+    // liga/desliga o filtro guardando a última escolha
+    e.preventDefault();
+    if (filtroLigado()) {
+      prefs.filtroAnterior = prefs.filtroSelecao;
+      alternarFiltro("limpar");
+    } else if (prefs.filtroAnterior?.length) {
+      prefs.filtroSelecao = [...prefs.filtroAnterior];
+      salvarPrefs();
+      renderizarBarraVistas();
+      atualizarStatus();
+      avisar("Filtro de seleção ligado de novo.");
+    } else abrirFiltroSelecao($("barra-vistas"));
+  } else if (!ctrl && (k === "x" || k === "e" || k === "v")) alternarFiltro(k === "x" ? "face" : k === "e" ? "aresta" : "vertice");
   else if (k === "s" && !ctrl) barraDeAtalhos();
   else if (e.key === "Enter" && comando) confirmarComando();
   else if (e.key === "Delete" && !comando) {

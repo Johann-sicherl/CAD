@@ -28,7 +28,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | **Alças de arrasto** no viewport (ex.: profundidade da extrusão) | setas na extrusão/corte (D1, D2) | 🟡 (revolução ⏸) |
 | Pré-visualização dos recursos (extrusão, corte, varredura, loft, padrões) | pré-visualização sombreada | ✅ |
 | Retorno no cursor (tipo de entidade, ponto médio, inferências) | caixinha de relações, encaixes, ponto médio | ✅ |
-| **Filtro de seleção** (só arestas, só faces, só vértices…) | — (cada comando já filtra o que aceita) | 🟡 |
+| **Filtro de seleção** (só arestas, só faces, só vértices…) | barra de vistas → funil ▾; F5 liga/desliga; X/E/V | ✅ |
 | **Selecionar outro** (entidade escondida atrás de outra) | botão direito → lista com realce | ✅ |
 | Selecionar laço/cadeia de arestas para filete | selecionar cadeia tangente no filete | 🟡 |
 
@@ -110,7 +110,7 @@ Rápidas, no fluxo básico do guia — **entregues** (24/10/2026):
 4. ✅ **Espelhamento dinâmico** no esboço.
 
 Médias:
-5. **Filtro de seleção** global (arestas / faces / vértices / planos), útil no tablet.
+5. ✅ **Filtro de seleção** global (faces / arestas / vértices / planos / eixos / curvas).
 6. **Gestos de mouse/caneta**: botão direito (ou caneta) + arrastar → guia radial.
 7. ✅ **Configurações da peça**: variações de cotas e de supressão no mesmo arquivo.
 

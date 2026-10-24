@@ -468,6 +468,7 @@ centro** do loft (também nos cortes). Esboços usados ficam aninhados na curva.
 | Editar recurso / Editar esboço | menu de contexto ✅; **duplo clique numa face** mostra as cotas do esboço e os valores do recurso (D1, R, espessura…) sobre o modelo, editáveis no lugar (aceita "=expressão") ✅ | ✅ |
 | **Alças de arrasto** | seta na ponta da extrusão/corte (D1 e D2, cego/plano médio) arrastável durante o comando ✅; ângulo da revolução ⏸ | 🟡 |
 | **Instant3D** | arrastar faces/cotas com alças fora do comando | ⏸ |
+| **Filtro de seleção** | barra de vistas → funil ▾: Faces · Arestas · Vértices · Planos · Eixos · Curvas 3D (vários juntos) e Limpar; vale para seleção na peça, campos dos comandos, Medir, realce e Selecionar outro (escolher o plano de um esboço não é filtrado); aviso "Filtro: …" na barra de status (toque desliga); **F5** liga/desliga lembrando a escolha; **X / E / V** só faces / arestas / vértices | ✅ |
 | **Selecionar outro** | botão direito → lista das entidades sob o cursor (faces de trás, arestas, vértices), com realce ao passar; também dentro de comandos para o campo ativo | ✅ |
 | Esboço como filho do recurso | árvore aninhada (Extrusão1 ▸ Esboço1); **seta ▸/▾** mostra os elementos usados: esboço absorvido, recursos (padrões/espelho), faces/arestas/vértices/planos/eixos escolhidos e o plano do esboço; toque destaca/seleciona; recolhido por padrão | ✅ |
 | **Equações e variáveis globais** | nome = valor/expressão; usar em cotas; funções (if, sin, sqrt) | ✅ |
