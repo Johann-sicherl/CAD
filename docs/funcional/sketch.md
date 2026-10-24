@@ -5,6 +5,65 @@ Status: ✅ existe · 🟡 parcial · F3/F4/F5 fase · ⏸ fora do escopo.
 
 ---
 
+## 0. Cabeçalho do Sketch e subfunções (definido pelo Johann, 24/10/2026) — a implementar
+
+Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
+
+| Botão | Subfunções |
+|---|---|
+| Esboço ▾ | Esboço · Esboço 3D |
+| Cota ▾ | Cota inteligente |
+| Linha ▾ | Linha · Linha de centro · Linha de ponto médio |
+| Retângulo ▾ | De canto · Pelo centro · De canto por 3 pontos · Pelo centro por 3 pontos · Paralelogramo |
+| Rasgo ▾ | Reto · Reto pelo centro · Em arco por 3 pontos · Em arco pelo centro |
+| Círculo ▾ | Círculo · Círculo perimetral |
+| Arco ▾ | Pelo centro · Tangente · 3 pontos |
+| Polígono | — |
+| Spline ▾ | Spline · Spline de estilo · Curva por equação |
+| Elipse ▾ | Elipse · Elipse parcial · Parábola · Cônica |
+| Filete ▾ | Filete de esboço · Chanfro de esboço |
+| Texto | — |
+| Ponto | — |
+| Aparar ▾ | Aparar entidades · Estender entidades |
+| Converter ▾ | Converter entidades · Entidades de silhueta · Curva de interseção |
+| Offset | — |
+| Espelhar | — |
+| Padrão ▾ | Padrão linear de esboço · Padrão circular de esboço |
+| Relações ▾ | Exibir/Excluir relações · Adicionar relação |
+
+**Painel Polígono** — Opções: Para construção. Parâmetros: nº de lados · Círculo inscrito /
+circunscrito · Centro X · Centro Y · Diâmetro do círculo · Ângulo · botão **Novo polígono**.
+
+**Painel Texto de esboço** — Curvas (seleção; o texto segue a curva) · Texto (caixa) · Negrito ·
+Itálico · Girar · Alinhar à esquerda / centro / direita / justificado · Inverter vertical /
+horizontal · Largura (%) · Espaçamento (%) · Usar fonte do documento · Fonte…
+
+**Painel Aparar** — Mensagem de instrução · Opções: Aparar potente (riscar) · Canto · Aparar
+dentro · Aparar fora · Aparar até o mais próximo · Manter entidades aparadas como construção ·
+Ignorar aparar geometria de construção.
+
+**Painel Offset** — Distância · Adicionar cotas ✓ · Inverter · Selecionar cadeia ✓ · Bidirecional ·
+Tampar extremidades (Arcos / Linhas) · Geometria de construção: Base · Offset.
+
+**Painel Espelhar** — Mensagem ("selecione as entidades e uma linha do esboço, aresta linear do
+modelo, plano ou face plana") · Entidades a espelhar (seleção) · Copiar ✓ · Espelhar em relação a
+(seleção).
+
+**Painel Padrão linear de esboço** — Direção 1: direção (eixo X padrão; linha/aresta) · espaçamento ·
+Cotar espaçamento X · nº de instâncias · Exibir nº de instâncias ✓ · ângulo · Fixar direção do eixo X ✓.
+Direção 2: direção (eixo Y) · espaçamento · Cotar espaçamento Y · nº de instâncias (1 = desligada) ·
+Exibir nº de instâncias · ângulo (90°) · Cotar ângulo entre eixos. Entidades a padronizar (seleção) ·
+Instâncias a pular.
+
+**Painel Padrão circular de esboço** — Parâmetros: centro (seleção de ponto; origem padrão) ·
+Centro X · Centro Y · ângulo total (360°) · Espaçamento igual ✓ · Cotar raio · Cotar espaçamento
+angular · nº de instâncias · Exibir nº de instâncias ✓ · Raio · Ângulo do arco. Entidades a
+padronizar (seleção) · Instâncias a pular.
+
+Pontos de atenção: **Texto** precisa de fonte livre (OFL) embutida para funcionar offline;
+**Cônica** geral não existe no solver (PlaneGCS tem elipse, arco de elipse e parábola);
+**Esboço 3D**, **Spline de estilo** e **Entidades de silhueta** são os maiores — por último.
+
 ## 1. Entrar, sair e ambiente
 
 | Função | Comportamento | Status |
