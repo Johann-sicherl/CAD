@@ -247,6 +247,34 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   confere("diâmetro: 1 passo fora do círculo", d.x, 110 + passo);
 }
 
+// 13. Subfunções dos menus ▾: linha de ponto médio, paralelogramo, retângulo pelo centro por
+// 3 pontos e rasgo em arco (área conferida pela extrusão de 1 mm)
+{
+  const e = plano();
+  const m = op.ponto(e, { x: 5, y: 5 });
+  const l = op.linhaPontoMedio(e, m, { x: 15, y: 5 });
+  verdade("linha de ponto médio resolve", solver.resolver(e).conflitantes.length === 0);
+  const p1 = e.pontos.find((p) => p.id === l.p1)!;
+  confere("linha de ponto médio: ponta oposta em x = −5", p1.x, -5);
+
+  const e2 = plano();
+  op.paralelogramo(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 20, y: 0 }), { x: 25, y: 10 });
+  verdade("paralelogramo resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("paralelogramo: área base × altura", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, 20 * 10);
+
+  const e3 = plano();
+  op.retanguloCentro3Pontos(e3, op.ponto(e3, { x: 0, y: 0 }), { x: 0, y: 5 }, { x: 8, y: 5 });
+  verdade("retângulo pelo centro (3 pontos) resolve", solver.resolver(e3).conflitantes.length === 0);
+  confere("retângulo pelo centro (3 pontos): 16 × 10", regenerar([e3, extrusao(e3, 1)]).volume ?? 0, 16 * 10);
+
+  const e4 = plano();
+  const c = op.ponto(e4, { x: 0, y: 0 });
+  verdade("rasgo em arco criado", op.rasgoArco(e4, c, 20, 0, Math.PI / 2, 3).length === 4);
+  verdade("rasgo em arco resolve", solver.resolver(e4).conflitantes.length === 0);
+  // faixa anular de 90° (r 17..23) + duas meias-pontas de raio 3 (= um círculo)
+  confere("rasgo em arco: área", regenerar([e4, extrusao(e4, 1)]).volume ?? 0, (Math.PI / 2) * (23 * 23 - 17 * 17) / 2 + Math.PI * 9);
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

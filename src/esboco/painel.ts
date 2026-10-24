@@ -93,10 +93,11 @@ export function renderizarPainelEsboco(
     l.append(s);
     painel.append(l);
   };
-  if (ed.ferramenta === "retangulo") tipo("Tipo", ed.tipoRetangulo, [["canto", "De canto"], ["centro", "Pelo centro"], ["3pontos", "3 pontos (inclinado)"]], (v) => (ed.tipoRetangulo = v as never));
+  if (ed.ferramenta === "linha") tipo("Tipo", ed.tipoLinha, [["normal", "Linha"], ["centro", "Linha de centro"], ["pontoMedio", "Linha de ponto médio"]], (v) => (ed.tipoLinha = v as never));
+  if (ed.ferramenta === "retangulo") tipo("Tipo", ed.tipoRetangulo, [["canto", "De canto"], ["centro", "Pelo centro"], ["3pontos", "De canto por 3 pontos"], ["centro3", "Pelo centro por 3 pontos"], ["paralelogramo", "Paralelogramo"]], (v) => (ed.tipoRetangulo = v as never));
   if (ed.ferramenta === "circulo") tipo("Tipo", ed.tipoCirculo, [["centro", "Pelo centro"], ["perimetro", "Perimetral (3 pontos)"]], (v) => (ed.tipoCirculo = v as never));
   if (ed.ferramenta === "arco") tipo("Tipo", ed.tipoArco, [["3pontos", "3 pontos"], ["centro", "Centro-pontas"], ["tangente", "Tangente"]], (v) => (ed.tipoArco = v as never));
-  if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto (pontas)"], ["centro", "Reto pelo centro"]], (v) => (ed.tipoRasgo = v as never));
+  if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto"], ["centro", "Reto pelo centro"], ["arco3", "Em arco por 3 pontos"], ["arcoCentro", "Em arco pelo centro"]], (v) => (ed.tipoRasgo = v as never));
   if (ed.ferramenta === "poligono") {
     painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => (ed.lados = Math.max(3, Math.min(64, Math.round(v))))));
     tipo("Círculo de construção", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Inscrito (vértices no círculo)"], ["circ", "Circunscrito (lados tangentes)"]], (v) => (ed.poligonoCircunscrito = v === "circ"));
@@ -135,6 +136,7 @@ export function renderizarPainelEsboco(
     // transformar a seleção (mover, copiar, girar, padrões)
     if (ed.geosSelecionadas().length) {
       const det = el("details", "transformar");
+      det.open = !!ed.abrirTransformar; // pedido pelo menu ▾ Padrão
       det.append(el("summary", "", "Mover, copiar, girar, padrões"));
       const v = { dx: 10, dy: 0, angulo: 90, n: 3, esp: 20, total: 360, angLin: 0 };
       const linha = (...bs: HTMLElement[]) => {

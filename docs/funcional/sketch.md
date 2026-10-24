@@ -5,7 +5,17 @@ Status: ✅ existe · 🟡 parcial · F3/F4/F5 fase · ⏸ fora do escopo.
 
 ---
 
-## 0. Cabeçalho do Sketch e subfunções (definido pelo Johann, 24/10/2026) — a implementar
+## 0. Cabeçalho do Sketch e subfunções (definido pelo Johann, 24/10/2026) — 🟡
+
+✅ Cabeçalhos de Features e Sketch com menus ▾ (botão = última subfunção usada; "em breve" nas
+pendentes). ✅ Linha / Linha de centro / Linha de ponto médio · Retângulo de canto / pelo centro /
+de canto por 3 pontos / pelo centro por 3 pontos / Paralelogramo · Rasgo reto / reto pelo centro /
+em arco por 3 pontos / em arco pelo centro · Círculo / perimetral · Arco pelo centro / tangente /
+3 pontos · Filete / Chanfro de esboço · Aparar / Estender · Converter entidades (aresta/vértice da
+peça vira geometria fixa do esboço) · Padrão ▾ abre a caixa de padrões do painel.
+Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Elipse/Elipse parcial/Parábola/Cônica,
+Texto, Entidades de silhueta, Curva de interseção, Exibir/Excluir relações, painéis completos de
+Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
 
 Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
 

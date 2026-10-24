@@ -19,24 +19,31 @@ import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
-  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota";
+  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
   rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", estender: "Estender",
   fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
-  espelhar: "Espelhar", cota: "Cota",
+  espelhar: "Espelhar", cota: "Cota", converter: "Converter entidades",
 };
 
-export type TipoRetangulo = "canto" | "centro" | "3pontos";
+export type TipoRetangulo = "canto" | "centro" | "3pontos" | "centro3" | "paralelogramo";
+export type TipoLinha = "normal" | "centro" | "pontoMedio";
 export type TipoCirculo = "centro" | "perimetro";
 export type TipoArco = "3pontos" | "centro" | "tangente";
-export type TipoRasgo = "reto" | "centro";
+export type TipoRasgo = "reto" | "centro" | "arco3" | "arcoCentro";
 
 /** Instrução curta mostrada no painel para cada etapa da ferramenta. */
 function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
   if (ed) {
     if (f === "retangulo" && ed.tipoRetangulo === "centro") return n ? "Toque um canto." : "Toque o centro.";
+    if (f === "retangulo" && ed.tipoRetangulo === "centro3") return ["Toque o centro.", "Toque o meio de um lado (define a direção).", "Toque um canto."][n] ?? "";
+    if (f === "retangulo" && ed.tipoRetangulo === "paralelogramo") return ["Toque o 1º canto.", "Toque o 2º canto.", "Toque o 3º canto (o 4º é calculado)."][n] ?? "";
+    if (f === "linha" && ed.tipoLinha === "pontoMedio") return n ? "Toque uma ponta da linha." : "Toque o ponto do meio da linha.";
+    if (f === "linha" && ed.tipoLinha === "centro") return n ? "Próximo ponto da linha de centro (Esc termina)." : "Toque o início da linha de centro.";
+    if (f === "rasgo" && ed.tipoRasgo === "arco3") return ["Toque o início do arco do rasgo.", "Toque o fim.", "Toque um ponto por onde o arco passa.", "Toque para definir a largura."][n] ?? "";
+    if (f === "rasgo" && ed.tipoRasgo === "arcoCentro") return ["Toque o centro do arco.", "Toque o início (define o raio).", "Toque o fim.", "Toque para definir a largura."][n] ?? "";
     if (f === "retangulo" && ed.tipoRetangulo === "3pontos") return ["Toque o 1º canto.", "Toque o 2º canto (define o lado e o ângulo).", "Toque para definir a largura."][n] ?? "";
     if (f === "circulo" && ed.tipoCirculo === "perimetro") return ["Toque o 1º ponto do contorno.", "Toque o 2º ponto.", "Toque o 3º ponto."][n] ?? "";
     if (f === "arco" && ed.tipoArco === "centro") return ["Toque o centro.", "Toque o início do arco.", "Toque o fim do arco."][n] ?? "";
@@ -45,6 +52,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
   }
   switch (f) {
     case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
+    case "converter": return "Toque arestas e vértices da peça: viram geometria do esboço (fixa, usada no perfil).";
     case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre. Arestas e vértices da peça também podem ser tocados: viram referência (roxo) para relações e cotas.";
@@ -121,6 +129,9 @@ export class EditorEsboco {
   tipoCirculo: TipoCirculo = "centro";
   tipoArco: TipoArco = "3pontos";
   tipoRasgo: TipoRasgo = "reto";
+  tipoLinha: TipoLinha = "normal";
+  /** Caixa do painel a abrir ("padraoLinear"/"padraoCircular"), pedida pelo menu ▾ Padrão. */
+  abrirTransformar: string | null = null;
   poligonoCircunscrito = false;
   raioFilete = 3;
   cotarFilete = true;
@@ -230,6 +241,19 @@ export class EditorEsboco {
     }
     this.redesenhar();
     this.h.atualizarInterface();
+  }
+
+  /** Variante atual de uma ferramenta (subfunção do menu ▾). */
+  variante(f: string): string | undefined {
+    return ({ linha: this.tipoLinha, retangulo: this.tipoRetangulo, circulo: this.tipoCirculo, arco: this.tipoArco, rasgo: this.tipoRasgo } as Record<string, string>)[f];
+  }
+
+  definirVariante(f: string, v: string) {
+    if (f === "linha") this.tipoLinha = v as TipoLinha;
+    else if (f === "retangulo") this.tipoRetangulo = v as TipoRetangulo;
+    else if (f === "circulo") this.tipoCirculo = v as TipoCirculo;
+    else if (f === "arco") this.tipoArco = v as TipoArco;
+    else if (f === "rasgo") this.tipoRasgo = v as TipoRasgo;
   }
 
   get instrucao(): string {
@@ -359,6 +383,13 @@ export class EditorEsboco {
     return { ref, proj, rotulo: e.tipo === "vertice" ? "Vértice do modelo" : "Aresta do modelo" };
   }
 
+  /** Converter entidades: a aresta/vértice da peça vira geometria do esboço (fixa, não construção). */
+  private converterModelo(m: AlvoModelo) {
+    const g = criarExterna(this.esb, m.proj, m.ref);
+    delete g.construcao;
+    this.resolver(true);
+  }
+
   /** Toque numa aresta/vértice da peça: vira referência e entra na seleção. */
   private selecionarModelo(m: AlvoModelo, x: number, y: number) {
     const g = criarExterna(this.esb, m.proj, m.ref);
@@ -386,7 +417,8 @@ export class EditorEsboco {
     if (!p) return false;
     const tol = this.tolMm(e.pointerType);
     const alvo = this.achar(p, tol);
-    const modelo = !alvo && this.ferramenta === "selecionar" && e.pointerType !== "touch"
+    // Converter: a peça tem prioridade (o eixo do esboço pode passar por cima da aresta)
+    const modelo = (this.ferramenta === "converter" || (!alvo && this.ferramenta === "selecionar")) && e.pointerType !== "touch"
       ? this.acharModelo(e.clientX, e.clientY, e.pointerType, ["vertice", "aresta"]) : null;
     if (e.pointerType === "touch") {
       if (!this.dedoDesenha) return false;
@@ -404,7 +436,7 @@ export class EditorEsboco {
   }
 
   private ferramentaUsaEncaixe() {
-    return !["selecionar", "aparar", "estender", "fileteEsboco", "chanfroEsboco", "offset", "espelhar", "cota"].includes(this.ferramenta);
+    return !["selecionar", "aparar", "estender", "fileteEsboco", "chanfroEsboco", "offset", "espelhar", "cota", "converter"].includes(this.ferramenta);
   }
 
   private aoMover(e: PointerEvent) {
@@ -445,6 +477,10 @@ export class EditorEsboco {
     if (!p) return;
     const tol = this.tolMm(pt.tipo);
 
+    if (this.ferramenta === "converter") {
+      if (pt.modelo && !pt.moveu) this.converterModelo(pt.modelo);
+      return;
+    }
     if (this.ferramenta === "selecionar") {
       if (pt.arraste) {
         this.resolver(true);
@@ -469,6 +505,11 @@ export class EditorEsboco {
   private aoToqueCurto(e: PointerEvent) {
     // toque de dedo que não foi interceptado (navegação): numa aresta/vértice da peça vira
     // referência; no vazio, limpa a seleção
+    if (e.pointerType === "touch" && this.ferramenta === "converter") {
+      const m = this.acharModelo(e.clientX, e.clientY, "touch", ["vertice", "aresta"]);
+      if (m) this.converterModelo(m);
+      return;
+    }
     if (e.pointerType !== "touch" || this.ferramenta !== "selecionar") return;
     const m = this.acharModelo(e.clientX, e.clientY, "touch", ["vertice", "aresta"]);
     if (m) this.selecionarModelo(m, e.clientX, e.clientY);
@@ -605,10 +646,17 @@ export class EditorEsboco {
         pronto = true;
         break;
       case "linha":
+        if (this.tipoLinha === "pontoMedio") {
+          if (c.length === 2) {
+            op.linhaPontoMedio(esb, this.pontoDo(c[0]), c[1].p, cons);
+            pronto = true;
+          }
+          break;
+        }
         if (c.length === 2) {
           const a = this.pontoDo(c[0]);
           const b = this.pontoDo(c[1]);
-          const l = op.linha(esb, a, b, cons);
+          const l = op.linha(esb, a, b, cons || this.tipoLinha === "centro");
           if (c[1].hv) op.restringir(esb, { tipo: c[1].hv, a: l.id });
           const fecha = !!c[1].ponto; // terminou num ponto que já existia: fecha a cadeia
           this.cliques = fecha ? [] : [{ p: c[1].p, ponto: b }];
@@ -618,7 +666,11 @@ export class EditorEsboco {
         // primeiro clique: se ele cair num ponto existente, a linha parte dele
         break;
       case "retangulo":
-        if (this.tipoRetangulo === "3pontos") {
+        if (this.tipoRetangulo === "centro3") {
+          if (c.length === 3) { op.retanguloCentro3Pontos(esb, this.pontoDo(c[0]), c[1].p, c[2].p, cons); pronto = true; }
+        } else if (this.tipoRetangulo === "paralelogramo") {
+          if (c.length === 3) { op.paralelogramo(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
+        } else if (this.tipoRetangulo === "3pontos") {
           if (c.length === 3) { op.retangulo3Pontos(esb, this.pontoDo(c[0]), this.pontoDo(c[1]), c[2].p, cons); pronto = true; }
         } else if (c.length === 2) {
           if (this.tipoRetangulo === "centro") op.retanguloCentro(esb, this.pontoDo(c[0]), c[1].p, cons);
@@ -670,6 +722,16 @@ export class EditorEsboco {
         }
         break;
       case "rasgo":
+        if (this.tipoRasgo === "arco3" || this.tipoRasgo === "arcoCentro") {
+          if (c.length === 4) {
+            const g = this.geometriaRasgoArco(c.map((k) => k.p));
+            if (!g || g.w === null || !op.rasgoArco(esb, op.ponto(esb, g.c), g.r, g.a0, g.a1, g.w, cons).length) {
+              this.h.avisar("Rasgo em arco: a largura deve ser menor que o raio, e os pontos não podem estar alinhados.");
+            }
+            pronto = true;
+          }
+          break;
+        }
         if (c.length === 3 && this.tipoRasgo === "centro") {
           const p0 = c[0].p, p1 = c[1].p;
           const r = distPontoSegmento(c[2].p, { x: 2 * p0.x - p1.x, y: 2 * p0.y - p1.y }, p1).d;
@@ -710,6 +772,35 @@ export class EditorEsboco {
       this.redesenhar();
       this.h.atualizarInterface();
     }
+  }
+
+  /**
+   * Rasgo em arco a partir dos toques: arco3 = início, fim, ponto do arco, largura;
+   * arcoCentro = centro, início, fim, largura. Devolve centro, raio, ângulos (anti-horário) e meia largura.
+   */
+  private geometriaRasgoArco(p: P2[]): { c: P2; r: number; a0: number; a1: number; w: number | null } | null {
+    let c: P2 | null, a0: number, a1: number;
+    if (this.tipoRasgo === "arco3") {
+      if (p.length < 3) return null;
+      c = centroTresPontos(p[0], p[2], p[1]);
+      if (!c) return null;
+      a0 = angulo(c, p[0]);
+      a1 = angulo(c, p[1]);
+      const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      // o arco anti-horário de a0 a a1 tem de passar pelo 3º ponto; senão, inverte
+      if (norm(angulo(c, p[2]) - a0) > norm(a1 - a0)) [a0, a1] = [a1, a0];
+    } else {
+      if (p.length < 3) return null;
+      c = p[0];
+      a0 = angulo(c, p[1]);
+      a1 = angulo(c, p[2]);
+      const cr = (p[1].x - c.x) * (p[2].y - c.y) - (p[1].y - c.y) * (p[2].x - c.x);
+      if (cr < 0) [a0, a1] = [a1, a0];
+    }
+    while (a1 <= a0) a1 += 2 * Math.PI;
+    const r = dist(c, this.tipoRasgo === "arco3" ? p[0] : p[1]);
+    const w = p[3] ? Math.abs(dist(c, p[3]) - r) : null;
+    return { c, r, a0, a1, w };
   }
 
   /** Termina a spline com os pontos tocados (se o último for o primeiro, ela fecha). */
@@ -1221,10 +1312,24 @@ export class EditorEsboco {
     if (!cur) return { segmentos: segs, pontos };
     switch (this.ferramenta) {
       case "linha":
-        if (c.length) segs.push(c[0], cur);
+        if (c.length && this.tipoLinha === "pontoMedio") segs.push({ x: 2 * c[0].x - cur.x, y: 2 * c[0].y - cur.y }, cur);
+        else if (c.length) segs.push(c[0], cur);
         break;
       case "retangulo":
-        if (this.tipoRetangulo === "centro" && c.length) {
+        if (this.tipoRetangulo === "centro3") {
+          if (c.length === 1) segs.push(c[0], cur);
+          if (c.length === 2) {
+            const d1 = sub(c[1], c[0]);
+            const l = Math.hypot(d1.x, d1.y) || 1;
+            const n = { x: -d1.y / l, y: d1.x / l };
+            const h = Math.abs((cur.x - c[0].x) * n.x + (cur.y - c[0].y) * n.y);
+            const q = (s: number, t2: number) => soma(soma(c[0], mult(d1, s)), mult(n, t2 * h));
+            poli([q(1, -1), q(1, 1), q(-1, 1), q(-1, -1)], true);
+          }
+        } else if (this.tipoRetangulo === "paralelogramo") {
+          if (c.length === 1) segs.push(c[0], cur);
+          if (c.length === 2) poli([c[0], c[1], cur, { x: c[0].x + cur.x - c[1].x, y: c[0].y + cur.y - c[1].y }], true);
+        } else if (this.tipoRetangulo === "centro" && c.length) {
           const d = sub(cur, c[0]);
           poli([sub(c[0], d), { x: c[0].x + d.x, y: c[0].y - d.y }, cur, { x: c[0].x - d.x, y: c[0].y + d.y }], true);
         } else if (this.tipoRetangulo === "3pontos") {
@@ -1276,6 +1381,20 @@ export class EditorEsboco {
         }
         break;
       case "rasgo":
+        if (this.tipoRasgo === "arco3" || this.tipoRasgo === "arcoCentro") {
+          if (c.length === 1) segs.push(c[0], cur);
+          const g = c.length >= 2 ? this.geometriaRasgoArco([...c, cur]) : null;
+          if (g) {
+            circ(g.c, g.r, g.a0, g.a1);
+            if (g.w !== null && g.w < g.r) {
+              circ(g.c, g.r + g.w, g.a0, g.a1);
+              circ(g.c, g.r - g.w, g.a0, g.a1);
+              circ(polar(g.c, g.r, g.a0), g.w, g.a0 + Math.PI, g.a0 + 2 * Math.PI);
+              circ(polar(g.c, g.r, g.a1), g.w, g.a1, g.a1 + Math.PI);
+            }
+          }
+          break;
+        }
         if (c.length === 1) segs.push(c[0], cur);
         if (c.length === 2) {
           const [e0, e1] = this.tipoRasgo === "centro" ? [{ x: 2 * c[0].x - c[1].x, y: 2 * c[0].y - c[1].y }, c[1]] : [c[0], c[1]];

@@ -870,3 +870,20 @@ body.disp-celular .barra-vistas {
 body.disp-celular .barra-vistas .btn-ic { min-width: 40px; }
 body.disp-celular #canto-confirmacao { top: 64px; }
 body.disp-celular .status { font-size: 12px; }
+
+/* ---------- botões com menu ▾ na faixa de comandos ---------- */
+.cmd-menu { display: flex; flex: none; align-items: stretch; }
+.cmd-menu .cmd { padding-right: 2px; }
+.cmd-seta {
+  min-width: 18px;
+  width: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--texto-2);
+  font-size: 11px;
+}
+.cmd-seta:hover { background: var(--painel-2); color: var(--acento); }
+body.disp-computador .cmd-seta { min-height: 0; }
+.selo { text-transform: none; }

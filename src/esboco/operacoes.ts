@@ -749,3 +749,75 @@ export function padraoCircularEsboco(esb: FeatureEsboco, geoIds: string[], centr
   for (let i = 1; i < k; i++) out.push(...transformar(esb, geoIds, girar(centro, passo * i), true));
   return out;
 }
+
+// ---------- subfunções dos menus ▾ (linha de ponto médio, paralelogramo, rasgos em arco…) ----------
+
+/** Linha de ponto médio: o ponto `meio` fica no meio; `ponta` é uma das extremidades. */
+export function linhaPontoMedio(esb: FeatureEsboco, meio: string, ponta: P2, construcao = false): Geo<"linha"> {
+  const m = mapaPontos(esb).get(meio)!;
+  const a = ponto(esb, { x: 2 * m.x - ponta.x, y: 2 * m.y - ponta.y });
+  const b = ponto(esb, ponta);
+  const l = linha(esb, a, b, construcao);
+  // o ponto do meio precisa de geometria própria para não ser limpo
+  if (!esb.geos.some((g) => g.tipo === "ponto" && g.p === meio) && meio !== ORIGEM) pontoSolto(esb, meio, true);
+  restringir(esb, { tipo: "pontoMedio", p: meio, g: l.id });
+  return l;
+}
+
+/** Paralelogramo por três cantos (o quarto é calculado); lados opostos paralelos. */
+export function paralelogramo(esb: FeatureEsboco, a: string, b: string, c: P2, construcao = false): GeoEsboco[] {
+  const pts = mapaPontos(esb);
+  const pa = pts.get(a)!, pb = pts.get(b)!;
+  const pc = ponto(esb, c);
+  const pd = ponto(esb, { x: pa.x + c.x - pb.x, y: pa.y + c.y - pb.y });
+  const l1 = linha(esb, a, b, construcao), l2 = linha(esb, b, pc, construcao);
+  const l3 = linha(esb, pc, pd, construcao), l4 = linha(esb, pd, a, construcao);
+  restringir(esb, { tipo: "paralelo", a: l1.id, b: l3.id });
+  restringir(esb, { tipo: "paralelo", a: l2.id, b: l4.id });
+  return [l1, l2, l3, l4];
+}
+
+/**
+ * Retângulo pelo centro por 3 pontos: centro, meio de um lado (dá a direção e meia largura)
+ * e um canto (dá o meio comprimento). Diagonais de construção com o centro no meio.
+ */
+export function retanguloCentro3Pontos(esb: FeatureEsboco, centro: string, meioLado: P2, canto: P2, construcao = false): GeoEsboco[] {
+  const c = mapaPontos(esb).get(centro)!;
+  const d1 = sub(meioLado, c);
+  const l = Math.hypot(d1.x, d1.y) || 1;
+  const n = { x: -d1.y / l, y: d1.x / l };
+  const h = Math.abs((canto.x - c.x) * n.x + (canto.y - c.y) * n.y) || l;
+  const A = ponto(esb, soma(soma(c, d1), mult(n, -h)));
+  const B = ponto(esb, soma(soma(c, d1), mult(n, h)));
+  const ls = retangulo3Pontos(esb, A, B, sub(c, d1), construcao);
+  // diagonal de construção com o centro no meio: o retângulo fica preso ao centro
+  const C = ls[1]?.tipo === "linha" ? ls[1].p2 : null;
+  if (C) {
+    const diag = linha(esb, A, C, true);
+    restringir(esb, { tipo: "pontoMedio", p: centro, g: diag.id });
+  }
+  return ls;
+}
+
+/**
+ * Rasgo em arco: linha de centro em arco (centro, ângulos a0→a1 anti-horário, raio r) com
+ * meia largura w. Dois arcos concêntricos + duas pontas semicirculares tangentes.
+ */
+export function rasgoArco(esb: FeatureEsboco, centro: string, r: number, a0: number, a1: number, w: number, construcao = false): GeoEsboco[] {
+  const c = mapaPontos(esb).get(centro)!;
+  if (!(r > w && w > 0)) return [];
+  const P0 = ponto(esb, polar(c, r, a0)), P1 = ponto(esb, polar(c, r, a1));
+  const O0 = ponto(esb, polar(c, r + w, a0)), O1 = ponto(esb, polar(c, r + w, a1));
+  const I0 = ponto(esb, polar(c, r - w, a0)), I1 = ponto(esb, polar(c, r - w, a1));
+  const fora = arco(esb, centro, O0, O1, construcao);
+  const dentro = arco(esb, centro, I0, I1, construcao);
+  const ponta1 = arco(esb, P1, O1, I1, construcao); // volta por fora da ponta final
+  const ponta0 = arco(esb, P0, I0, O0, construcao); // volta por fora da ponta inicial
+  const eixo = arco(esb, centro, P0, P1, true); // linha de centro do rasgo
+  void eixo;
+  for (const [x, y] of [[fora, ponta1], [ponta1, dentro], [dentro, ponta0], [ponta0, fora]] as const) {
+    restringir(esb, { tipo: "tangente", a: x.id, b: y.id });
+  }
+  restringir(esb, { tipo: "igual", a: ponta0.id, b: ponta1.id });
+  return [fora, ponta1, dentro, ponta0];
+}

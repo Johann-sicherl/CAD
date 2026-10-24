@@ -60,6 +60,8 @@ interface Prefs {
   refsOcultas: string[]; // planos/eixos de referência criados pelo usuário e ocultos
   /** Escolhido na janela inicial: adapta a interface só para esse tipo de operador. */
   dispositivo?: Dispositivo;
+  /** Botões com menu ▾: última subfunção usada de cada um (id do botão → id da subfunção). */
+  ultimoMenu?: Record<string, string>;
 }
 type Dispositivo = "celular" | "tablet" | "computador";
 const prefs: Prefs = {
@@ -308,33 +310,78 @@ function renderizarAbas() {
       faixa.appendChild(Object.assign(document.createElement("span"), { className: "sep" }));
       grupo = c.grupo;
     }
-    const b = document.createElement("button");
-    b.className = "cmd";
-    b.title = c.fase ? `${c.dica} — chega na Fase ${c.fase}` : c.dica;
-    const sairDoEsboco = aba.id === "sketch" && c.id === "esboco" && editor;
-    b.innerHTML = sairDoEsboco ? `${ICONES.concluir}<span>Sair do esboço</span>` : `${ICONES[c.icone]}<span>${c.rotulo}</span>`;
-    if (c.fase) {
-      b.setAttribute("aria-disabled", "true");
-      b.insertAdjacentHTML("beforeend", `<em class="selo">F${c.fase}</em>`);
+    // botão com menu ▾: mostra (e executa) a última subfunção usada
+    const atual = c.itens ? c.itens.find((i) => i.id === prefs.ultimoMenu?.[c.id]) ?? c.itens[0] : c;
+    const b = botaoComando(atual, aba.id);
+    if (c.itens) {
+      // rótulo curto do grupo (cabe na faixa); o ícone e a dica são da subfunção atual
+      const span = b.querySelector("span");
+      if (span && !b.classList.contains("cmd-sair")) span.textContent = c.rotulo;
+      b.title = `${atual.rotulo} — ${b.title}`;
     }
-    if (aba.id === "sketch" && editor) {
-      const ativo = c.id === editor.ferramenta || (c.id === "construcao" && editor.construcao);
-      b.setAttribute("aria-pressed", String(ativo));
+    if (!c.itens) {
+      faixa.appendChild(b);
+      continue;
     }
-    if (aba.id === "avaliar" && avaliacao) {
-      const ativo = (c.id === "medir" && avaliacao.tipo === "medir") || (c.id === "vista-secao" && avaliacao.tipo === "secao") ||
-        (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
-      b.setAttribute("aria-pressed", String(ativo));
-    }
-    if (sairDoEsboco) b.classList.add("cmd-sair");
-    b.onclick = () => executarComando(c, aba.id, b);
-    faixa.appendChild(b);
+    const caixa = document.createElement("span");
+    caixa.className = "cmd-menu";
+    const seta = document.createElement("button");
+    seta.className = "cmd-seta";
+    seta.title = `${c.rotulo}: outras opções`;
+    seta.setAttribute("aria-label", seta.title);
+    seta.textContent = "▾";
+    seta.onclick = () => abrirPopover(seta, c.itens!.map((it) => ({
+      rotulo: it.emBreve ? `${it.rotulo} (em breve)` : it.rotulo,
+      icone: it.icone,
+      marcado: it.id === atual.id,
+      acao: () => {
+        if (!it.emBreve) {
+          prefs.ultimoMenu = { ...prefs.ultimoMenu, [c.id]: it.id };
+          salvarPrefs();
+          renderizarAbas();
+        }
+        executarComando(it, aba.id, seta);
+      },
+    })));
+    caixa.append(b, seta);
+    faixa.appendChild(caixa);
   }
+}
+
+/** Botão da faixa de comandos (estado "pressionado" da ferramenta/variante de esboço ativa). */
+function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "cmd";
+  b.title = c.fase ? `${c.dica} — chega na Fase ${c.fase}` : c.emBreve ? `${c.dica} — em breve` : c.dica;
+  const sairDoEsboco = aba === "sketch" && c.id === "esboco" && editor;
+  b.innerHTML = sairDoEsboco ? `${ICONES.concluir}<span>Sair do esboço</span>` : `${ICONES[c.icone]}<span>${c.rotulo}</span>`;
+  if (c.fase || c.emBreve) {
+    b.setAttribute("aria-disabled", "true");
+    b.insertAdjacentHTML("beforeend", `<em class="selo">${c.fase ? `F${c.fase}` : "breve"}</em>`);
+  }
+  if (aba === "sketch" && editor) {
+    const [ferr, variante] = c.id.split(":");
+    const ativo = (ferr === editor.ferramenta && (!variante || editor.variante(ferr) === variante))
+      || (c.id === "construcao" && editor.construcao);
+    b.setAttribute("aria-pressed", String(ativo));
+  }
+  if (aba === "avaliar" && avaliacao) {
+    const ativo = (c.id === "medir" && avaliacao.tipo === "medir") || (c.id === "vista-secao" && avaliacao.tipo === "secao") ||
+      (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
+    b.setAttribute("aria-pressed", String(ativo));
+  }
+  if (sairDoEsboco) b.classList.add("cmd-sair");
+  b.onclick = () => executarComando(c, aba, b);
+  return b;
 }
 
 function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
   if (c.fase) {
     avisar(`${c.rotulo}: previsto para a Fase ${c.fase} do roteiro.`);
+    return;
+  }
+  if (c.emBreve) {
+    avisar(`${c.rotulo}: em breve.`);
     return;
   }
   esconderBarraContexto();
@@ -1520,9 +1567,21 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
         renderizarPainelEdicaoEsboco();
       }
       return;
-    default:
-      if (!editor && !(await iniciarEsboco(c.id as Ferramenta))) return;
-      editor!.definirFerramenta(c.id as Ferramenta);
+    case "padraoLinearEsboco":
+    case "padraoCircularEsboco":
+      if (!editor) return avisar("Padrão de esboço: abra um esboço primeiro.");
+      editor.definirFerramenta("selecionar");
+      editor.abrirTransformar = c.id === "padraoLinearEsboco" ? "padraoLinear" : "padraoCircular";
+      renderizarPainelEdicaoEsboco();
+      if (!editor.geosSelecionadas().length) avisar("Selecione as entidades a repetir e use a caixa de padrão no painel.");
+      return;
+    default: {
+      // "ferramenta:variante" (ex.: retangulo:centro) — a variante vai para o editor antes
+      const [ferr, variante] = c.id.split(":") as [Ferramenta, string | undefined];
+      if (!editor && !(await iniciarEsboco(ferr))) return;
+      if (variante) editor!.definirVariante(ferr, variante);
+      editor!.definirFerramenta(ferr);
+    }
   }
 }
 
