@@ -461,10 +461,76 @@ export interface FeatureCurva extends FeatureBase {
   bidirecional: boolean;
 }
 
+// ---------- chapa metálica (Fase 4, docs/funcional/chapa.md) ----------
+
+export type PosicaoFlange = "materialInterno" | "materialExterno" | "dobraExterna";
+
+/** Flange base: esboço fechado (placa) ou aberto (perfil dobrado, extrudado na profundidade). */
+export interface FeatureFlangeBase extends FeatureBase {
+  tipo: "flangeBase";
+  esboco?: string;
+  /** Linha da tabela de chapas ("material|espessura") ou vazio = personalizado. */
+  tabela: string;
+  espessura: number;
+  raio: number;
+  fatorK: number;
+  /** Lado do material em relação ao esboço. */
+  inverter: boolean;
+  /** Perfil aberto: profundidade (Direção 1) e plano médio. */
+  profundidade: number;
+  planoMedio: boolean;
+  inverterDirecao: boolean;
+}
+
+/** Flange de aresta: aba dobrada a partir de arestas retas da chapa. */
+export interface FeatureFlangeAresta extends FeatureBase {
+  tipo: "flangeAresta";
+  arestas: Referencia[];
+  angulo: number;
+  comprimento: number;
+  medicao: "externoVirtual" | "internoVirtual" | "tangente";
+  posicao: PosicaoFlange;
+  inverter: boolean;
+  raioProprio: boolean;
+  raio: number;
+  deslocInicio: number;
+  deslocFim: number;
+}
+
+/** Bainha: dobra a borda sobre ela mesma. */
+export interface FeatureBainha extends FeatureBase {
+  tipo: "bainha";
+  arestas: Referencia[];
+  estilo: "fechada" | "aberta" | "enrolada";
+  comprimento: number;
+  folga: number;
+  angulo: number;
+  raio: number;
+  inverter: boolean;
+  posicao: "materialInterno" | "materialExterno";
+}
+
+/** Aba (esboço fechado numa face da chapa, mesma espessura) e corte através da chapa. */
+export interface FeatureAbaChapa extends FeatureBase {
+  tipo: "abaChapa" | "corteChapa";
+  esboco?: string;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
-  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva;
+  | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa;
+
+/**
+ * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
+ * Ajuste raio e fator K conforme a dobradeira/ferramental de quem vai fabricar.
+ */
+export const TABELA_CHAPA: { material: string; espessura: number; raio: number; k: number }[] = [
+  ...[0.5, 0.75, 0.9, 1.2, 1.5, 1.9, 2, 2.65, 3, 3.35, 4.25, 4.75, 6.3].map((e) => ({ material: "Aço carbono", espessura: e, raio: e, k: 0.44 })),
+  ...[0.5, 0.8, 1, 1.2, 1.5, 2, 2.5, 3].map((e) => ({ material: "Aço inox", espessura: e, raio: Number((1.5 * e).toFixed(2)), k: 0.45 })),
+  ...[0.5, 0.8, 1, 1.5, 2, 2.5, 3, 4].map((e) => ({ material: "Alumínio", espessura: e, raio: e, k: 0.43 })),
+];
 
 export interface Variavel {
   nome: string;
@@ -628,6 +694,25 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Plano${indice}`, modo: "deslocamento", distancia: 20, angulo: 45, inverter: false };
     case "eixoRef":
       return { ...base, tipo, nome: `Eixo${indice}`, modo: "aresta" };
+    case "flangeBase":
+      return {
+        ...base, tipo, nome: `FlangeBase${indice}`, tabela: "Aço carbono|2", espessura: 2, raio: 2, fatorK: 0.44,
+        inverter: false, profundidade: 50, planoMedio: false, inverterDirecao: false,
+      };
+    case "flangeAresta":
+      return {
+        ...base, tipo, nome: `FlangeAresta${indice}`, arestas: [], angulo: 90, comprimento: 20, medicao: "externoVirtual",
+        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0,
+      };
+    case "bainha":
+      return {
+        ...base, tipo, nome: `Bainha${indice}`, arestas: [], estilo: "fechada", comprimento: 10, folga: 1, angulo: 270, raio: 3,
+        inverter: false, posicao: "materialInterno",
+      };
+    case "abaChapa":
+      return { ...base, tipo, nome: `Aba${indice}` };
+    case "corteChapa":
+      return { ...base, tipo, nome: `CorteChapa${indice}` };
     case "curva":
       return {
         ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
@@ -656,6 +741,11 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   planoRef: "Plano",
   eixoRef: "Eixo",
   curva: "Curva",
+  flangeBase: "Flange base",
+  flangeAresta: "Flange de aresta",
+  bainha: "Bainha",
+  abaChapa: "Aba",
+  corteChapa: "Corte na chapa",
 };
 
 /**

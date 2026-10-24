@@ -78,11 +78,11 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 
 | Passo do guia | Especificado em `chapa.md` | Status |
 |---|---|---|
-| Flange base a partir de retângulo (vira peça de chapa) | §1 | Fase 4 |
-| Aba (esboço numa face vira aba com a mesma espessura, para o lado certo) | §1 | Fase 4 |
-| Padrão linear da aba (13 abas a cada 50 mm) | padrão de recursos já existe | ✅ quando a aba existir |
-| Bainha enrolada nas abas | §4 | Fase 4 |
-| Alternativa: flange base de linha + arco tangente, cortes em padrão | §1 | Fase 4 |
+| Flange base a partir de retângulo (vira peça de chapa) | §1 | ✅ |
+| Aba (esboço numa face vira aba com a mesma espessura, para o lado certo) | §1 | ✅ |
+| Padrão linear da aba (13 abas a cada 50 mm) | padrão de recursos | 🟡 (padrão de recursos de chapa: F4) |
+| Bainha enrolada nas abas | §4 | ✅ |
+| Alternativa: flange base de linha + arco tangente, cortes em padrão | §1 | 🟡 (perfil aberto só com linhas) |
 
 ## 5. Avaliar
 
@@ -115,5 +115,5 @@ Médias:
 7. ✅ **Configurações da peça**: variações de cotas e de supressão no mesmo arquivo.
 
 Grandes:
-8. **Chapa metálica** (Fase 4): flange base, aba, bainha, planificação.
+8. 🟡 **Chapa metálica** (Fase 4): flange base, aba, flange de aresta, bainha, corte, planificado e DXF ✅; dobra esboçada, cantos e o resto em `chapa.md`.
 9. **Desenhos 2D**, se entrar no roteiro.

@@ -5,11 +5,12 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC } from "replicad";
 import type { Feature, Referencia } from "../model";
-import { exportar, pecaAtual, regenerar } from "./regenerar";
+import { exportar, exportarDxf, pecaAtual, regenerar } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
 
 export type PedidoKernel =
-  | { tipo: "regenerar"; seq: number; features: Feature[] }
+  | { tipo: "regenerar"; seq: number; features: Feature[]; planificar?: boolean }
+  | { tipo: "dxf"; seq: number; nome: string }
   | { tipo: "exportar"; seq: number; formato: "step" | "stl" }
   | { tipo: "medir"; seq: number; refs: Referencia[] }
   | { tipo: "massa"; seq: number }
@@ -43,7 +44,7 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
     switch (p.tipo) {
       case "regenerar": {
         const t0 = performance.now();
-        const resultado = regenerar(p.features);
+        const resultado = regenerar(p.features, 0.05, { planificar: p.planificar });
         const ms = performance.now() - t0;
         const m = resultado.malha;
         enviar(
@@ -54,6 +55,9 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
       }
       case "exportar":
         enviar({ tipo: "resposta", seq: p.seq, dados: exportar(p.formato) });
+        break;
+      case "dxf":
+        enviar({ tipo: "resposta", seq: p.seq, dados: exportarDxf(p.nome) });
         break;
       case "medir":
         enviar({ tipo: "resposta", seq: p.seq, dados: medir(pecaAtual(), p.refs) });

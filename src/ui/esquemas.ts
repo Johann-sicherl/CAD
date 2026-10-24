@@ -4,7 +4,9 @@ import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa,
 } from "../model";
+import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
 import type { Caixa, Campo, Esquema } from "./formulario";
 
@@ -88,9 +90,125 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return eixoRef() as Esquema<Feature>;
     case "curva":
       return curva(f) as Esquema<Feature>;
+    case "flangeBase":
+      return flangeBase(d) as Esquema<Feature>;
+    case "flangeAresta":
+      return flangeAresta() as Esquema<Feature>;
+    case "bainha":
+      return bainha() as Esquema<Feature>;
+    case "abaChapa":
+    case "corteChapa":
+      return abaChapa(f.tipo === "corteChapa", d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
+}
+
+// ---------- chapa metálica (docs/funcional/chapa.md) ----------
+
+const POSICOES: [string, string][] = [["materialInterno", "Material interno"], ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"]];
+
+function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
+  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
+  return {
+    titulo: "Flange base",
+    caixas: [
+      { titulo: "Perfil", campos: [
+        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
+      ] },
+      { titulo: "Direção 1", vis: aberto, campos: [
+        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
+        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
+        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
+      ] },
+      { titulo: "Bitolas de chapa", campos: [
+        { t: "sel", rot: "Tabela", cam: "tabela",
+          opcoes: [["", "Personalizado"], ...TABELA_CHAPA.map((l): [string, string] => [`${l.material}|${l.espessura}`, `${l.material} — ${l.espessura} mm (R${l.raio}, K ${l.k})`])],
+          // valores mexidos à mão: a tabela mostra "Personalizado"
+          valor: (f) => {
+            const l = TABELA_CHAPA.find((x) => `${x.material}|${x.espessura}` === f.tabela);
+            return l && l.espessura === f.espessura && l.raio === f.raio && l.k === f.fatorK ? f.tabela : "";
+          },
+          aoMudar: (f, v) => {
+            f.tabela = v;
+            const l = TABELA_CHAPA.find((x) => `${x.material}|${x.espessura}` === v);
+            if (l) {
+              f.espessura = l.espessura;
+              f.raio = l.raio;
+              f.fatorK = l.k;
+            }
+          } },
+      ] },
+      { titulo: "Parâmetros de chapa", campos: [
+        { t: "num", rot: "Espessura", cam: "espessura", un: "mm", min: 0.01, passo: 0.1 },
+        { t: "inverter", rot: "Inverter direção (lado do material)", cam: "inverter" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5 },
+      ] },
+      { titulo: "Margem de dobra", campos: [
+        { t: "info", texto: () => "Fator K (margem = ângulo × (R + K·t))." },
+        { t: "num", rot: "Fator K", cam: "fatorK", min: 0, max: 1, passo: 0.01 },
+      ] },
+      { titulo: "Alívio automático", campos: [{ t: "info", texto: () => "Retangular, largura = espessura, nas pontas de flanges parciais." }] },
+    ],
+  };
+}
+
+function flangeAresta(): Esquema<FeatureFlangeAresta> {
+  return {
+    titulo: "Flange de aresta",
+    caixas: [
+      { titulo: "Parâmetros da flange", campos: [
+        { t: "refs", rot: "Arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "Toque nas arestas retas compridas da chapa (face de cima ou de baixo)" },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Ângulo", campos: [{ t: "num", rot: "Ângulo da flange", cam: "angulo", un: "°", min: 0.1, max: 180 }] },
+      { titulo: "Comprimento da flange", campos: [
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Comprimento", cam: "comprimento", un: "mm", min: 0.001 },
+        { t: "sel", rot: "Medição", cam: "medicao", opcoes: [["externoVirtual", "Externo virtual"], ["internoVirtual", "Interno virtual"], ["tangente", "Tangente à dobra"]] },
+      ] },
+      { titulo: "Posição da flange", campos: [{ t: "sel", rot: "Posição", cam: "posicao", opcoes: POSICOES }] },
+      { titulo: "Deslocamentos (largura parcial)", campos: [
+        { t: "num", rot: "Do início da aresta", cam: "deslocInicio", un: "mm", min: 0 },
+        { t: "num", rot: "Do fim da aresta", cam: "deslocFim", un: "mm", min: 0 },
+        { t: "info", texto: (f) => (f.deslocInicio > 0 || f.deslocFim > 0 ? "Flange parcial: alívio retangular automático nas pontas." : "") },
+      ] },
+    ],
+  };
+}
+
+function bainha(): Esquema<FeatureBainha> {
+  return {
+    titulo: "Bainha",
+    caixas: [
+      { titulo: "Arestas", campos: [
+        { t: "refs", rot: "Arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "Toque nas arestas retas da chapa" },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "sel", rot: "Posição", cam: "posicao", opcoes: [["materialInterno", "Material interno"], ["materialExterno", "Material externo"]] },
+      ] },
+      { titulo: "Tipo e tamanho", campos: [
+        { t: "sel", rot: "Tipo", cam: "estilo", opcoes: [["fechada", "Fechada"], ["aberta", "Aberta"], ["enrolada", "Enrolada"]] },
+        { t: "num", rot: "Comprimento", cam: "comprimento", un: "mm", min: 0.001, vis: (f) => f.estilo !== "enrolada" },
+        { t: "num", rot: "Folga", cam: "folga", un: "mm", min: 0.001, passo: 0.1, vis: (f) => f.estilo === "aberta" },
+        { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 1, max: 359, vis: (f) => f.estilo === "enrolada" },
+        { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.estilo === "enrolada" },
+      ] },
+    ],
+  };
+}
+
+function abaChapa(corte: boolean, d: DadosEsquema): Esquema<FeatureAbaChapa> {
+  return {
+    titulo: corte ? "Corte na chapa" : "Aba",
+    caixas: [{ titulo: "Perfil", campos: [
+      { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+      { t: "info", texto: () => corte
+        ? "Esboço fechado numa face plana da chapa: corta através da espessura (normal à chapa) e aparece no planificado."
+        : "Esboço fechado numa face plana da chapa, encostado na borda: vira aba com a mesma espessura." },
+    ] }],
+  };
 }
 
 function extrusao(corte: boolean, d: DadosEsquema): Esquema<FeatureExtrusao> {

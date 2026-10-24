@@ -100,8 +100,10 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
    análises de inclinação, espessura, zebra e curvatura, tempo de reconstrução por recurso.
    Medir, propriedades de massa e vista de seção podem ser antecipados se forem úteis antes.
 
-Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); próxima: **Fase 4**
-(Sheet Metal). Pendentes da Fase 3: varredura, loft, filete variável/de face, furo avançado.
+Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
+com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
+próprio em `src/kernel/chapa.ts`). Pendentes da Fase 4: dobra esboçada, junta, meia-esquadria,
+cantos, desdobrar/dobrar, converter em chapa. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
 a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.

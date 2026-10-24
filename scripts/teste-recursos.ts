@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import {
   documentoExemplo, novaFeature, novoEsboco, validarDocumento, type Feature, type FeatureEsboco, type FeatureExtrusao, type Referencia,
 } from "../src/model";
-import { regenerar } from "../src/kernel/regenerar";
+import { exportarDxf, regenerar } from "../src/kernel/regenerar";
 import { medidasFuro } from "../src/kernel/furos";
 import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
@@ -510,6 +510,70 @@ const bloco = ext(base, 10);
   // excluir a ativa volta para a primeira
   excluirConfiguracao(doc, longa.id);
   verdade("excluir a ativa: volta para a Padrão", doc.configAtiva === padrao.id && doc.configuracoes!.length === 1 && !furo.suprimida);
+}
+
+// ---------- chapa metálica (Fase 4) ----------
+{
+  const fb = (o: object) => ({ ...(novaFeature("flangeBase", 1) as any), ...o });
+  const fa = (o: object) => ({ ...(novaFeature("flangeAresta", 1) as any), ...o });
+  const placaE = retangulo(100, 50, "XY", 50, 25); // 0..100 × 0..50 no plano Frontal
+  const base = fb({ esboco: placaE.id, espessura: 2, raio: 2, fatorK: 0.44 });
+  const r0 = regenerar([placaE, base]);
+  semErros("flange base (placa)", r0);
+  confere("flange base: placa 100 × 50 × 2", r0.volume, 10000);
+  const d0 = exportarDxf("teste").resumo;
+  confere("planificado da placa: largura", d0.largura, 100);
+  confere("planificado da placa: comprimento de corte", d0.comprimentoCorte, 300);
+
+  // flange de aresta 90° na aresta de cima (y = 50, z = 2): material interno, 20 externo virtual
+  const aresta = r0.topologia!.arestas.find((a) => a.geom === "linha" && Math.abs(a.a[1] - 50) < 1e-6 && Math.abs(a.b[1] - 50) < 1e-6 && Math.abs(a.a[2] - 2) < 1e-6)!;
+  const flange = fa({ arestas: [{ tipo: "aresta", ass: aresta }], angulo: 90, comprimento: 20, medicao: "externoVirtual", posicao: "materialInterno" });
+  const r1 = regenerar([placaE, base, flange]);
+  semErros("flange de aresta", r1);
+  // placa encolhe r + t = 4; dobra = 1/4 de coroa (R4 − R2) × 100; reto = 20 − 4
+  confere("flange de aresta: volume", r1.volume, 100 * 46 * 2 + (Math.PI / 4) * (16 - 4) * 100 + 100 * 16 * 2);
+  const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+  const d1 = exportarDxf("teste");
+  confere("planificado com 1 dobra: 46 + BA + 16", d1.resumo.altura, 46 + ba + 16);
+  verdade("DXF: linha de dobra para cima", d1.dxf.includes("DOBRA_CIMA") && d1.resumo.dobras === 1);
+  const rp = regenerar([placaE, base, flange], 0.05, { planificar: true });
+  confere("vista planificada: volume = área × t", rp.volume, 100 * (46 + ba + 16) * 2);
+  verdade("vista planificada: linhas de dobra", rp.referencias.some((x) => x.id === "__dobras"));
+
+  // perfil aberto em U (cantos para fora do material): paredes 29 + 38 + 29, duas dobras R1
+  const u = novoEsboco(7, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  const pu = [[0, 0], [0, 30], [40, 30], [40, 0]].map(([x, y]) => op.ponto(u, { x, y }));
+  for (let k = 0; k < 3; k++) op.linha(u, pu[k], pu[k + 1]);
+  const ub = fb({ esboco: u.id, espessura: 1, raio: 1, fatorK: 0.44, profundidade: 50 });
+  const ru = regenerar([u, ub]);
+  semErros("flange base de perfil aberto", ru);
+  confere("perfil em U: volume", ru.volume, 50 * 1 * (29 + 38 + 29) + 2 * (Math.PI / 4) * (4 - 1) * 50);
+  confere("perfil em U: planificado", exportarDxf("u").resumo.largura + exportarDxf("u").resumo.altura - 50, 96 + 2 * (Math.PI / 2) * (1 + 0.44));
+
+  // bainha enrolada (270°, R3) na aresta de baixo (y = 0, face de referência) — só dobra
+  const a0 = r0.topologia!.arestas.find((a) => a.geom === "linha" && Math.abs(a.a[1]) < 1e-6 && Math.abs(a.b[1]) < 1e-6 && Math.abs(a.a[2]) < 1e-6 && Math.abs(a.b[2]) < 1e-6)!;
+  const hem = { ...(novaFeature("bainha", 1) as any), arestas: [{ tipo: "aresta", ass: a0 }], estilo: "enrolada", angulo: 270, raio: 3, posicao: "materialExterno" };
+  const rh = regenerar([placaE, base, hem]);
+  semErros("bainha enrolada", rh);
+  confere("bainha enrolada: volume", rh.volume, 10000 + 0.75 * Math.PI * (25 - 9) * 100);
+  const hf = { ...(novaFeature("bainha", 1) as any), arestas: [{ tipo: "aresta", ass: a0 }], estilo: "fechada", comprimento: 10, posicao: "materialExterno" };
+  semErros("bainha fechada", regenerar([placaE, base, hf]));
+
+  // corte na chapa: círculo Ø10 desenhado na face de cima da placa
+  const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+  op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);
+  const corte = { ...(novaFeature("corteChapa", 1) as any), esboco: ce.id };
+  const rc = regenerar([placaE, base, ce, corte]);
+  semErros("corte na chapa", rc);
+  confere("corte na chapa: furo Ø10", rc.volume, 10000 - Math.PI * 25 * 2);
+  const dc = exportarDxf("c").resumo;
+  verdade("planificado: 1 recorte", dc.recortes === 1);
+  confere("planificado: comprimento de corte com o furo", dc.comprimentoCorte, 300 + Math.PI * 10);
+  // aba: retângulo 20 × 10 colado na borda de cima da placa, na face de cima
+  const ae = novoEsboco(9, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+  op.retangulo(ae, op.ponto(ae, { x: 40, y: 50 }), op.ponto(ae, { x: 60, y: 60 }));
+  const aba = { ...(novaFeature("abaChapa", 1) as any), esboco: ae.id };
+  confere("aba: placa + 20 × 10 × 2", regenerar([placaE, base, ae, aba]).volume, 10000 + 400);
 }
 
 if (falhas) {

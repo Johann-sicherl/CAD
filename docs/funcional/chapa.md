@@ -1,6 +1,32 @@
 # Sheet Metal — chapa metálica (Fase 4)
 
-Implementação própria (o kernel não tem chapa). Status: tudo **F4** salvo indicação.
+Implementação própria (o kernel não tem chapa): `src/kernel/chapa.ts` guarda a chapa como árvore
+de **paredes** planas (contorno 2D + referencial) ligadas por **dobras** (aresta, ângulo, raio,
+fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o planificado é exato
+(margem de dobra = ângulo × (R + K·t)). DXF em `src/kernel/dxf.ts`. Testes em `scripts/teste-recursos.ts`.
+
+## Estado (24/10/2026)
+
+| Comando | Status |
+|---|---|
+| Flange base: esboço fechado (placa) | ✅ |
+| Flange base: perfil aberto só com linhas (cantos viram dobras), cego / plano médio / inverter | ✅ (arcos no perfil: F4) |
+| Aba (Flange base com chapa já criada vira Aba) | ✅ |
+| Flange de aresta: arestas, ângulo, comprimento (externo/interno virtual, tangente), posição (material interno/externo, dobra externa), raio próprio, inverter, deslocamentos com alívio retangular automático | ✅ |
+| Bainha: fechada, aberta, enrolada; material interno/externo; inverter | ✅ (gota: F4) |
+| Corte na chapa (normal à chapa, aparece no planificado) | ✅ (esboço numa face plana; atravessando dobras: F4) |
+| Tabela material / espessura / raio / K (janela Material / K e caixa Bitolas) | 🟡 tabela fixa; editar e salvar tabela própria: F4 |
+| Planificar (liga/desliga, linhas de dobra em laranja) | ✅ |
+| Exportar DXF R12 (camadas CONTORNO, DOBRA_CIMA, DOBRA_BAIXO, NOTAS) + lista de corte | ✅ |
+| Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
+
+Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
+chapa muda, mas filete, chanfro e casca feitos antes do último recurso de chapa se perdem; nenhum
+recurso comum entra no planificado/DXF (para furos na chapa use **Corte na chapa**). Referências a arestas são por assinatura
+geométrica (mudar muito a chapa pode trocar a aresta escolhida).
+
+O resto deste arquivo é a especificação campo a campo (o que falta continua **F4**).
 
 Conceitos comuns a todos os comandos:
 - **Parâmetros de chapa** (do recurso "Chapa metálica" criado pela 1ª flange): espessura,

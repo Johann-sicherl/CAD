@@ -32,7 +32,10 @@ Arquivos:
   de esboço, estender, mover/copiar/girar, padrões de esboço, contornos sombreados.
 - **Avaliar** ✅ medir, massa, vista de seção, verificar, inclinação, espessura, zebra, curvatura,
   desempenho. Pendente: propriedades de seção.
-- **Sheet Metal**: Fase 4 (ainda não começou).
+- **Sheet Metal** 🟡 Fase 4 (núcleo): flange base (placa ou perfil aberto), aba, flange de aresta,
+  bainha (fechada, aberta, enrolada), corte na chapa, tabela material/espessura/K, planificar,
+  DXF com lista de corte. Pendentes: dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar,
+  converter em chapa, conformação. Detalhe em [chapa.md](chapa.md).
 - **Barra de vistas** (topo do viewport) ✅ recolhida numa setinha; aberta mostra: ampliar para caber,
   zoom por área (arrastar retângulo; Esc cancela), vista de seção, orientação ▾ (vistas padrão e
   normal a), ocultar/mostrar itens ▾ (ocultar todos os tipos; planos, eixos, origem, esboços) e

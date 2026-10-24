@@ -19,7 +19,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureCurva, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
@@ -27,6 +27,8 @@ import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referen
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
 import { arestaDe, encadear, trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
+import { areaContorno, comprimentoReto, ModeloChapa, normalExterna, recuo, retanguloDesenho, transformarDesenho } from "./chapa";
+import { dxfDoPlanificado, type ResumoPlanificado } from "./dxf";
 import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe, projetarEmFaces } from "./curvas";
 import { lofting } from "./loft";
 import {
@@ -94,6 +96,12 @@ interface Ctx {
   eixos: Map<string, { origem: Vec3; dir: Vec3 }>;
   /** Curvas 3D já calculadas (recursos de curva), como trechos. */
   curvas: Map<string, Trecho[]>;
+  /** Chapa metálica (paredes + dobras), criada pela flange base. */
+  chapa: ModeloChapa | null;
+  /** Sólido que já existia antes da flange base (a chapa é somada a ele). */
+  corpoAntesChapa: Shape3D | null;
+  /** Ferramentas de recursos comuns depois da chapa (reaplicadas quando a chapa muda). */
+  opsAposChapa: Ferramenta[];
   refsSaida: InfoReferencia[];
 }
 
@@ -105,7 +113,7 @@ function novoCtx(): Ctx {
     ["Y", { origem: [0, 0, 0], dir: [0, 1, 0] }],
     ["Z", { origem: [0, 0, 0], dir: [0, 0, 1] }],
   ]);
-  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), refsSaida: [] };
+  return { peca: null, esbocos: new Map(), ferramentas: new Map(), planos, eixos, curvas: new Map(), chapa: null, corpoAntesChapa: null, opsAposChapa: [], refsSaida: [] };
 }
 
 function exigirPeca(ctx: Ctx, oque = "Este recurso"): Shape3D {
@@ -119,6 +127,7 @@ function aplicar(ctx: Ctx, id: string, ferramentas: Ferramenta[]) {
     else ctx.peca = exigirPeca(ctx, "O corte").cut(f.tool);
   }
   ctx.ferramentas.set(id, ferramentas);
+  if (ctx.chapa) ctx.opsAposChapa.push(...ferramentas);
 }
 
 function caixa(ctx: Ctx): { min: Vec3; max: Vec3; diag: number } | null {
@@ -556,6 +565,213 @@ function revolucaoRapida(f: FeatureRevolucao): Shape3D {
   return esboco.revolve(r.y, { origin: [0, 0, 0], angle: Math.min(360, Math.max(1, f.angulo)) });
 }
 
+// ---------- chapa metálica (docs/funcional/chapa.md) ----------
+
+function exigirChapa(ctx: Ctx, oque: string): ModeloChapa {
+  if (!ctx.chapa) throw new Error(`${oque} precisa de uma Flange base antes dele na árvore.`);
+  return ctx.chapa;
+}
+
+/** Peça = chapa (+ corpo anterior) com os recursos comuns que vieram depois reaplicados. */
+function reconstruirChapa(ctx: Ctx) {
+  let p = ctx.chapa!.solido();
+  if (ctx.corpoAntesChapa) p = ctx.corpoAntesChapa.fuse(p);
+  for (const f of ctx.opsAposChapa) p = f.op === "adicionar" ? p.fuse(f.tool) : p.cut(f.tool);
+  ctx.peca = p;
+}
+
+const grausRad = (g: number) => (g * Math.PI) / 180;
+type V2 = { x: number; y: number };
+const unit2 = (a: V2): V2 => {
+  const l = Math.hypot(a.x, a.y) || 1;
+  return { x: a.x / l, y: a.y / l };
+};
+
+function flangeBase(f: FeatureFlangeBase, ctx: Ctx): ModeloChapa {
+  if (!(f.espessura > 0)) throw new Error("A espessura da chapa deve ser maior que zero.");
+  if (!(f.raio >= 0)) throw new Error("O raio de dobra não pode ser negativo.");
+  if (!(f.fatorK >= 0 && f.fatorK <= 1)) throw new Error("O fator K fica entre 0 e 1 (típico 0,3 a 0,5).");
+  const esb = esbocoDe(f.esboco, ctx);
+  const r = referencial(esb.suporte, ctx.planos);
+  const m = new ModeloChapa({ t: f.espessura, r: f.raio, k: f.fatorK });
+  let lacos: Laco[] | null = null;
+  try {
+    lacos = encontrarLacos(esb);
+  } catch {
+    lacos = null;
+  }
+  if (lacos) {
+    // perfil fechado: uma placa no plano do esboço
+    m.raiz(`${f.id}:0`, { o: r.origem, u: r.x, v: r.y, n: r.normal }, f.inverter ? -1 : 1, desenhoDoEsboco(esb), lacos.map((l) => l.poligono));
+    return m;
+  }
+  // perfil aberto (só linhas): paredes ao longo do perfil, dobras com o raio da chapa nos cantos
+  const linhas = esb.geos.filter((g) => !g.construcao && g.tipo !== "ponto");
+  if (!linhas.length || linhas.some((g) => g.tipo !== "linha")) {
+    throw new Error("Flange base: use um contorno fechado (placa) ou um perfil aberto só de linhas (perfil dobrado).");
+  }
+  const pl = cadeiaAberta(esb);
+  if (!pl || pl.length < 2) throw new Error("O perfil aberto deve ser uma cadeia única de linhas.");
+  if (!(f.profundidade > 0)) throw new Error("A profundidade deve ser maior que zero.");
+  const t = f.espessura;
+  const U = mul3(r.normal, f.inverterDirecao ? -1 : 1);
+  const [u0, u1] = f.planoMedio ? [-f.profundidade / 2, f.profundidade / 2] : [0, f.profundidade];
+  const segs = pl.slice(1).map((b, i) => {
+    const a = pl[i];
+    const L = Math.hypot(b.x - a.x, b.y - a.y);
+    return { a, L, d: { x: (b.x - a.x) / L, y: (b.y - a.y) / L } };
+  }).filter((sg) => sg.L > 1e-9);
+  const em3 = (d: V2): Vec3 => soma3(mul3(r.x, d.x), mul3(r.y, d.y));
+  // cantos: ângulo e se a dobra vai para o lado do material
+  const v0 = em3(segs[0].d);
+  const n0 = cruz(U, v0);
+  const lado = em3({ x: -segs[0].d.y, y: segs[0].d.x });
+  const s0: 1 | -1 = esc3(n0, lado) * (f.inverter ? -1 : 1) >= 0 ? 1 : -1;
+  // recuos dos cantos: a linha do esboço é a face de referência (canto vivo virtual)
+  const cantos = segs.slice(1).map((sg, i) => {
+    const ant = segs[i];
+    const cos = Math.max(-1, Math.min(1, ant.d.x * sg.d.x + ant.d.y * sg.d.y));
+    const theta = Math.acos(cos);
+    if (theta > grausRad(175)) throw new Error("Ângulo do perfil fechado demais (dobra acima de 175°).");
+    const vira = ant.d.x * sg.d.y - ant.d.y * sg.d.x; // + = vira à esquerda no esboço
+    return { theta, vira };
+  });
+  const recuoCanto = (i: number, paraMaterial: boolean) => {
+    const c = cantos[i];
+    if (!c || c.theta < 1e-9) return 0;
+    return (paraMaterial ? t + f.raio : f.raio) * Math.tan(c.theta / 2);
+  };
+  // a primeira parede define o lado do material; os cantos seguintes viram para dentro/fora dele
+  const ladoEsq = s0 * esc3(n0, lado) >= 0; // material à esquerda do perfil?
+  const paraMat = cantos.map((c) => (c.vira > 0) === ladoEsq);
+  const rect = (y1: number) => retanguloDesenho(u0, u1, 0, y1);
+  const cont = (y1: number) => [[{ x: u0, y: 0 }, { x: u1, y: 0 }, { x: u1, y: y1 }, { x: u0, y: y1 }]];
+  const comp = (i: number) => segs[i].L - (i > 0 ? recuoCanto(i - 1, paraMat[i - 1]) : 0) - (i < cantos.length ? recuoCanto(i, paraMat[i]) : 0);
+  if (segs.some((_, i) => comp(i) <= 1e-6)) throw new Error("Um trecho do perfil é curto demais para as dobras (raio + espessura).");
+  const p0 = soma3(r.origem, em3(segs[0].a));
+  let w = m.raiz(`${f.id}:0`, { o: p0, u: U, v: v0, n: n0 }, s0, rect(comp(0)), cont(comp(0)));
+  for (let i = 1; i < segs.length; i++) {
+    const L0 = comp(i - 1);
+    w = m.dobrar({
+      pai: w, idDobra: `${f.id}:d${i}`, idFilha: `${f.id}:${i}`, e0: { x: 0, y: L0 }, e: { x: 1, y: 0 }, d: { x: 0, y: 1 },
+      s0: u0, s1: u1, theta: cantos[i - 1].theta, r: f.raio, paraMaterial: paraMat[i - 1], forma: rect(comp(i)), contornos: cont(comp(i)),
+    });
+  }
+  return m;
+}
+
+/** Parede e aresta da chapa para cada aresta escolhida (antes de mexer em qualquer parede). */
+function arestasDaChapa(m: ModeloChapa, refs: Referencia[], ctx: Ctx, oque: string) {
+  if (!refs.length) throw new Error(`${oque}: escolha as arestas.`);
+  const peca = exigirPeca(ctx, oque);
+  return refs.map((ref) => {
+    if (ref.tipo !== "aresta") throw new Error(`${oque}: escolha arestas retas da chapa.`);
+    const ass = assinaturaAresta(acharAresta(peca, ref.ass));
+    if (ass.geom !== "linha") throw new Error(`${oque}: a aresta precisa ser reta.`);
+    const h = m.acharAresta(ass.a, ass.b);
+    if (!h) throw new Error(`${oque}: a aresta precisa ser uma borda reta de uma parede plana da chapa (não de uma dobra).`);
+    const L = Math.hypot(h.q.x - h.p.x, h.q.y - h.p.y);
+    const e = unit2({ x: h.q.x - h.p.x, y: h.q.y - h.p.y });
+    const d = normalExterna(h.p, h.q, areaContorno(h.contorno));
+    return { ...h, L, e, d };
+  });
+}
+
+/** Dobra uma aba em cada aresta (flange de aresta e bainha). */
+function dobrarArestas(
+  m: ModeloChapa, f: { id: string }, arestas: ReturnType<typeof arestasDaChapa>,
+  o: { theta: number; r: number; inverter: boolean; setback: number; compReto: number; desloc0: number; desloc1: number },
+) {
+  const t = m.p.t;
+  arestas.forEach((h, i) => {
+    const s0 = h.ta * h.L + o.desloc0, s1 = h.tb * h.L - o.desloc1;
+    if (s1 - s0 <= 1e-6) throw new Error("Os deslocamentos são maiores que a aresta.");
+    // na face de cima, a aba sobe; na de referência, desce (Inverter troca)
+    const paraMaterial = h.noTopo !== o.inverter;
+    const noLocal = (a0: number, a1: number, b0: number, b1: number) =>
+      transformarDesenho(retanguloDesenho(a0, a1, b0, b1), h.e.x, h.d.x, h.e.y, h.d.y, h.p.x, h.p.y);
+    if (o.setback > 1e-9) {
+      m.recortar(h.parede.id, noLocal(s0, s1, -o.setback, 0.01));
+      // alívio retangular nas pontas quando a aba não ocupa a aresta toda
+      if (s0 > 1e-6) m.recortar(h.parede.id, noLocal(s0 - t, s0, -(o.setback + t), 0.01));
+      if (s1 < h.L - 1e-6) m.recortar(h.parede.id, noLocal(s1, s1 + t, -(o.setback + t), 0.01));
+    }
+    const e0 = { x: h.p.x - h.d.x * o.setback, y: h.p.y - h.d.y * o.setback };
+    const forma = o.compReto > 1e-6 ? retanguloDesenho(s0, s1, 0, o.compReto) : null;
+    m.dobrar({
+      pai: h.parede, idDobra: `${f.id}:d${i}`, idFilha: `${f.id}:${i}`, e0, e: h.e, d: h.d, s0, s1, theta: o.theta, r: o.r,
+      paraMaterial, forma, contornos: forma ? [[{ x: s0, y: 0 }, { x: s1, y: 0 }, { x: s1, y: o.compReto }, { x: s0, y: o.compReto }]] : [],
+    });
+  });
+}
+
+function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
+  const m = exigirChapa(ctx, "A flange de aresta");
+  if (!(f.angulo > 0 && f.angulo <= 180)) throw new Error("O ângulo da flange fica entre 0° e 180°.");
+  const theta = grausRad(f.angulo);
+  const r = f.raioProprio ? f.raio : m.p.r;
+  const arestas = arestasDaChapa(m, f.arestas, ctx, "Flange de aresta");
+  dobrarArestas(m, f, arestas, {
+    theta, r, inverter: f.inverter, setback: recuo(f.posicao, theta, r, m.p.t),
+    compReto: comprimentoReto(f.medicao, f.comprimento, theta, r, m.p.t), desloc0: f.deslocInicio, desloc1: f.deslocFim,
+  });
+}
+
+function bainha(f: FeatureBainha, ctx: Ctx) {
+  const m = exigirChapa(ctx, "A bainha");
+  const t = m.p.t;
+  const arestas = arestasDaChapa(m, f.arestas, ctx, "Bainha");
+  let theta = Math.PI, r: number, compReto: number;
+  if (f.estilo === "fechada") {
+    r = 0.01 * t; // dobra sobre ela mesma (folga mínima para o sólido continuar válido)
+    compReto = f.comprimento;
+  } else if (f.estilo === "aberta") {
+    if (!(f.folga > 0)) throw new Error("A folga da bainha aberta deve ser maior que zero.");
+    r = f.folga / 2;
+    compReto = f.comprimento;
+  } else {
+    if (!(f.angulo > 0 && f.angulo < 360)) throw new Error("O ângulo da bainha enrolada fica entre 0° e 360°.");
+    if (!(f.raio > 0)) throw new Error("O raio da bainha enrolada deve ser maior que zero.");
+    theta = grausRad(f.angulo);
+    r = f.raio;
+    compReto = 0;
+  }
+  if (f.estilo !== "enrolada" && !(f.comprimento > 0)) throw new Error("O comprimento da bainha deve ser maior que zero.");
+  dobrarArestas(m, f, arestas, {
+    theta, r, inverter: f.inverter, setback: f.posicao === "materialInterno" ? r + t : 0, compReto, desloc0: 0, desloc1: 0,
+  });
+}
+
+/** Aba (soma) ou corte (tira) a partir de um esboço feito numa face plana da chapa. */
+function abaOuCorte(f: FeatureAbaChapa, ctx: Ctx) {
+  const corte = f.tipo === "corteChapa";
+  const m = exigirChapa(ctx, corte ? "O corte na chapa" : "A aba");
+  const esb = esbocoDe(f.esboco, ctx);
+  const rs = referencial(esb.suporte, ctx.planos);
+  const t = m.p.t;
+  const D = desenhoDoEsboco(esb);
+  const lacos = encontrarLacos(esb);
+  let usou = false;
+  for (const w of m.paredes) {
+    if (Math.abs(Math.abs(esc3(rs.normal, w.q.n)) - 1) > 1e-6) continue;
+    const z = esc3(sub3(rs.origem, w.q.o), w.q.n);
+    if (Math.abs(z) > 1e-4 && Math.abs(z - w.s * t) > 1e-4) continue;
+    // esboço → coordenadas locais da parede (giro ou espelho + translação)
+    const a = esc3(rs.x, w.q.u), b = esc3(rs.y, w.q.u), c = esc3(rs.x, w.q.v), d = esc3(rs.y, w.q.v);
+    const tx = esc3(sub3(rs.origem, w.q.o), w.q.u), ty = esc3(sub3(rs.origem, w.q.o), w.q.v);
+    const Dl = transformarDesenho(D, a, b, c, d, tx, ty);
+    if (corte) m.recortar(w.id, Dl);
+    else {
+      const conts = lacos.map((l) => l.poligono.map((p) => ({ x: a * p.x + b * p.y + tx, y: c * p.x + d * p.y + ty })));
+      m.somar(w.id, Dl, conts);
+      usou = true;
+      break; // a aba entra numa parede só
+    }
+    usou = true;
+  }
+  if (!usou) throw new Error("Faça o esboço numa face plana da chapa (de cima ou de baixo de uma parede).");
+}
+
 // ---------- curvas 3D ----------
 
 function curvaRecurso(f: FeatureCurva, ctx: Ctx): Trecho[] {
@@ -812,7 +1028,7 @@ function juntar(fs: Ferramenta[]): Ferramenta[] {
 
 // ---------- regeneração ----------
 
-export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRegeneracao {
+export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean } = {}): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
@@ -831,6 +1047,20 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
       erros.push({ id: f.id, mensagem: traduzirErro(e) });
     }
     tempos.push({ id: f.id, ms: performance.now() - t0 });
+  }
+
+  ultimaChapa = ctx.chapa;
+  // vista planificada: troca a peça pelo planificado e mostra as linhas de dobra
+  let planificada = false;
+  if (opcoes.planificar && ctx.chapa) {
+    try {
+      const { solido, linhas3D } = ctx.chapa.solidoPlanificado();
+      ctx.peca = solido;
+      ctx.refsSaida.push({ id: "__dobras", tipo: "curva", linhas: linhas3D });
+      planificada = true;
+    } catch (e) {
+      erros.push({ id: "__planificado", mensagem: `Planificado: ${traduzirErro(e)}` });
+    }
   }
 
   // referências para a interface desenhar
@@ -866,8 +1096,17 @@ export function regenerar(features: Feature[], tolerancia = 0.05): ResultadoRege
     topologia: topologia(peca).topo,
     referencias: ctx.refsSaida,
     tempos,
-    facesPorRecurso: rastreador.atribuir(peca),
+    facesPorRecurso: planificada ? {} : rastreador.atribuir(peca),
   };
+}
+
+let ultimaChapa: ModeloChapa | null = null;
+
+/** DXF do planificado da última regeneração e o resumo para a lista de corte. */
+export function exportarDxf(nome: string): { dxf: string; resumo: ResumoPlanificado } {
+  if (!ultimaChapa) throw new Error("A peça não tem chapa metálica (comece por uma Flange base).");
+  const { desenho, dobras } = ultimaChapa.planificado();
+  return dxfDoPlanificado(desenho, dobras, nome, ultimaChapa.p, ultimaChapa.dobras.length);
 }
 
 function regenerarFeature(f: Feature, ctx: Ctx) {
@@ -1049,6 +1288,21 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return;
     }
 
+    case "flangeBase":
+      ctx.corpoAntesChapa = ctx.peca;
+      ctx.opsAposChapa = [];
+      ctx.chapa = flangeBase(f, ctx);
+      return reconstruirChapa(ctx);
+    case "flangeAresta":
+      flangeAresta(f, ctx);
+      return reconstruirChapa(ctx);
+    case "bainha":
+      bainha(f, ctx);
+      return reconstruirChapa(ctx);
+    case "abaChapa":
+    case "corteChapa":
+      abaOuCorte(f, ctx);
+      return reconstruirChapa(ctx);
     case "curva": {
       const t = curvaRecurso(f, ctx);
       ctx.curvas.set(f.id, t);

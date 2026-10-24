@@ -14,6 +14,7 @@ import {
   novaFeature,
   novoEsboco,
   ROTULO_TIPO,
+  TABELA_CHAPA,
   validarDocumento,
   type Documento,
   type Feature,
@@ -21,6 +22,7 @@ import {
   type FeatureCurva,
   type FeatureExtrusao,
   type FeatureFuro,
+  type FeatureFlangeBase,
   type Plano,
   type Referencia,
   type SuporteEsboco,
@@ -201,7 +203,7 @@ function regenerar(atraso = 0) {
     }
     if (estadoKernel === "pronto") estadoKernel = "regenerando";
     atualizarStatus();
-    kernel.regenerar(ativas());
+    kernel.regenerar(ativas(), planificado);
   }, atraso);
 }
 
@@ -412,6 +414,7 @@ function botaoComando(c: Comando, aba: IdAba): HTMLButtonElement {
       (avaliacao.tipo === "analise" && c.id === mapaAnalise[avaliacao.analise.tipo]);
     b.setAttribute("aria-pressed", String(ativo));
   }
+  if (aba === "chapa" && c.id === "planificar") b.setAttribute("aria-pressed", String(planificado));
   if (sairDoEsboco) b.classList.add("cmd-sair");
   b.onclick = () => executarComando(c, aba, b);
   return b;
@@ -429,7 +432,9 @@ function executarComando(c: Comando, aba: IdAba, botao: HTMLElement) {
   esconderBarraContexto();
   if (aba === "sketch") return void comandoEsboco(c, botao);
   if (aba === "avaliar") return comandoAvaliar(c.id);
+  if (aba === "chapa" && ["planificar", "dxf", "material"].includes(c.id)) return comandoChapa(c.id);
   if (editor) sairEsboco();
+  if (planificado) alternarPlanificado(false);
   if (comando) confirmarComando();
   criarRecurso(c.id);
 }
@@ -442,6 +447,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
+  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -467,6 +473,8 @@ function nomeNovo(tipo: Feature["tipo"]) {
 }
 
 function criarRecurso(id: string) {
+  // com a chapa já criada, a Flange base vira Aba (como nos CADs profissionais)
+  if (id === "flange-base" && ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida)) id = "aba-chapa";
   const tipo = TIPO_POR_COMANDO[id];
   if (!tipo) return;
   if (tipo === "furo") return iniciarFuro();
@@ -554,11 +562,18 @@ function criarRecurso(id: string) {
       f.faces = faces;
       f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XZ" }; // Superior
       break;
-    case "nervura": {
+    case "nervura":
+    case "flangeBase":
+    case "abaChapa":
+    case "corteChapa": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
       if (perfil) f.esboco = perfil.id;
       break;
     }
+    case "flangeAresta":
+    case "bainha":
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      break;
     case "padraoLinear":
     case "padraoCircular":
     case "espelhar":
@@ -1695,6 +1710,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
+  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -2650,6 +2666,74 @@ $("janela-fechar").onclick = () => {
   if (avaliacao?.tipo === "medir") fecharAvaliacao();
 };
 
+// ---------- chapa metálica: planificar, DXF, tabela ----------
+
+/** Vista planificada da chapa ligada (o kernel troca a peça pelo planificado). */
+let planificado = false;
+const temChapa = () => ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida);
+
+function alternarPlanificado(liga = !planificado) {
+  if (liga && !temChapa()) return avisar("Planificar: a peça não tem chapa metálica (comece por uma Flange base).");
+  if (liga === planificado) return;
+  planificado = liga;
+  limparSelPeca();
+  renderizarAbas();
+  regenerar();
+  primeiraRegeneracao = true; // enquadra a peça na nova forma
+  avisar(liga ? "Vista planificada (linhas de dobra em laranja). Toque Planificar de novo para dobrar." : "Chapa dobrada.");
+}
+
+async function comandoChapa(id: string) {
+  if (editor) sairEsboco();
+  if (comando) confirmarComando();
+  if (id === "planificar") return alternarPlanificado();
+  if (id === "material") return abrirTabelaChapa();
+  if (!temChapa()) return avisar("Exportar DXF: a peça não tem chapa metálica (comece por uma Flange base).");
+  try {
+    const { dxf, resumo } = await kernel.dxf(doc.nome);
+    baixar(new Blob([dxf], { type: "application/dxf" }), "dxf");
+    const mat = MATERIAIS[doc.material ?? ""];
+    const massa = mat ? (resumo.area * resumo.espessura * mat.densidade) / 1000 : null;
+    abrirJanela("Lista de corte (planificado)", `
+      <table class="tabela">
+        <tr><td>Caixa delimitadora</td><td>${num(resumo.largura)} × ${num(resumo.altura)} mm</td></tr>
+        <tr><td>Espessura</td><td>${num(resumo.espessura)} mm</td></tr>
+        <tr><td>Raio de dobra · fator K</td><td>${num(resumo.raio)} mm · ${num(resumo.fatorK)}</td></tr>
+        <tr><td>Nº de dobras</td><td>${resumo.dobras}</td></tr>
+        <tr><td>Comprimento de corte</td><td>${num(resumo.comprimentoCorte)} mm</td></tr>
+        <tr><td>Recortes internos</td><td>${resumo.recortes}</td></tr>
+        <tr><td>Área da chapa</td><td>${num(resumo.area)} mm²</td></tr>
+        <tr><td>Material · massa</td><td>${mat ? `${escapar(mat.nome)} · ${num(massa!)} g` : "— (defina em Avaliar → Massa)"}</td></tr>
+      </table>
+      <p class="dica">DXF R12 em mm baixado. Camadas: CONTORNO, DOBRA_CIMA, DOBRA_BAIXO e NOTAS (ângulo, raio e sentido de cada dobra).</p>`);
+  } catch (e) {
+    avisar("Exportar DXF: " + (e as Error).message);
+  }
+}
+
+/** Tabela de material/espessura: toca numa linha para aplicar na Flange base. */
+function abrirTabelaChapa() {
+  const fb = ativas().find((x): x is FeatureFlangeBase => x.tipo === "flangeBase" && !x.suprimida);
+  const atual = fb ? `${fb.espessura}|${fb.raio}|${fb.fatorK}` : "";
+  const linhas = TABELA_CHAPA.map((l, i) => {
+    const sel = atual === `${l.espessura}|${l.raio}|${l.k}` && fb?.tabela.startsWith(l.material);
+    return `<tr data-i="${i}" class="${sel ? "sel" : ""}" style="cursor:pointer"><td>${l.material}</td><td>${num(l.espessura)}</td><td>${num(l.raio)}</td><td>${num(l.k)}</td></tr>`;
+  }).join("");
+  abrirJanela("Material / espessura / fator K", `
+    <p class="dica">${fb ? `Toque numa linha para aplicar em <b>${escapar(fb.nome)}</b> (vale para toda a chapa). Valores próprios: edite a Flange base.` : "Crie uma Flange base para aplicar a tabela."}</p>
+    <table class="tabela"><tr><th>Material</th><th>Espessura</th><th>Raio interno</th><th>Fator K</th></tr>${linhas}</table>
+    <p class="dica">Referência para dobra no ar com raio ≈ espessura. Ajuste raio e K ao ferramental de quem vai dobrar.</p>`);
+  if (!fb) return;
+  $("janela-corpo").querySelectorAll<HTMLTableRowElement>("tr[data-i]").forEach((tr) => {
+    tr.onclick = () => {
+      const l = TABELA_CHAPA[Number(tr.dataset.i)];
+      Object.assign(fb, { tabela: `${l.material}|${l.espessura}`, espessura: l.espessura, raio: l.raio, fatorK: l.k });
+      alterou(true);
+      abrirTabelaChapa();
+    };
+  });
+}
+
 // ---------- equações ----------
 
 const escapar = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -3113,6 +3197,7 @@ function abrirDocumento(d: Documento) {
   fecharAvaliacao();
   fecharJanela();
   doc = d;
+  planificado = false;
   aberto = true;
   definirSel(null);
   selPeca = [];
@@ -3413,7 +3498,7 @@ function gravarJSON(chave: string, valor: unknown) {
 
 // ---------- testes automatizados (só em desenvolvimento) ----------
 if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()) };
+  (window as unknown as Record<string, unknown>).__cad = { viewport, doc: () => doc, abrirExemplo: () => abrirDocumento(documentoExemplo()), abrir: (d: Documento) => abrirDocumento(validarDocumento(d)) };
 }
 
 // ---------- início ----------
