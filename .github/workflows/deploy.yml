@@ -29,7 +29,7 @@ jobs:
       - run: pnpm teste
       - run: pnpm build
         env:
-          BASE_PATH: /CAD/
+          BASE_PATH: /${{ github.event.repository.name }}/ # acompanha o nome do repositório (CAD → GLOBAL)
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

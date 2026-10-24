@@ -1,4 +1,12 @@
-# JLSCAD — contexto para o Claude
+# Software Global — contexto para o Claude
+
+> **Ecossistema.** Este repositório é a base do **Software Global** (repositório a ser renomeado para
+> `GLOBAL`): CAD (JLSCAD, este app), Planilhas, Documentos, Apresentações, Cronogramas e Gestão e
+> Engenharia (ERP SaaS + PDM ligados ao CAD), tudo para **celular, tablet e notebook/computador**.
+> Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada face em **`docs/global/`**;
+> prompt de trabalho em `docs/global/prompt-mestre.md`. Até a fase G0 (monorepo) o código é só o CAD,
+> descrito abaixo. As regras de inspiração sem cópia valem para todas as faces (nomes registrados de
+> terceiros proibidos também na UI das outras faces; importar/exportar formatos abertos é permitido).
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
@@ -113,7 +121,7 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 - Erros do OpenCascade chegam como `WebAssembly.Exception` sem texto: traduzir para mensagem útil
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
-- `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/CAD/`.
+- `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/<nome do repositório>/`.
 - Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
   (plugin `offline` em `vite.config.ts`); o service worker baixa tudo na instalação. Não editar a
   versão do cache à mão.

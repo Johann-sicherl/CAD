@@ -18,6 +18,8 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Tabela material / espessura / raio / K (janela Material / K e caixa Bitolas) | 🟡 tabela fixa; editar e salvar tabela própria: F4 |
 | Planificar (liga/desliga, linhas de dobra em laranja) | ✅ |
 | Exportar DXF R12 (camadas CONTORNO, DOBRA_CIMA, DOBRA_BAIXO, NOTAS) + lista de corte | ✅ |
+| Canto automático entre flanges vizinhas da mesma flange de aresta (meia-esquadria pela bissetriz, distância de folga, alívio nas dobras) — hoje as abas se interceptam no canto | F4 (próximo) |
+| Árvore: item "Chapa metálica" (parâmetros globais) e "Padrão planificado"; bloquear OK de Aba/Corte sem esboço | F4 |
 | Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
