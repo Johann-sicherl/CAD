@@ -12,10 +12,10 @@ pendentes). ✅ Linha / Linha de centro / Linha de ponto médio · Retângulo de
 de canto por 3 pontos / pelo centro por 3 pontos / Paralelogramo · Rasgo reto / reto pelo centro /
 em arco por 3 pontos / em arco pelo centro · Círculo / perimetral · Arco pelo centro / tangente /
 3 pontos · Filete / Chanfro de esboço · Aparar / Estender · Converter entidades (aresta/vértice da
-peça vira geometria fixa do esboço) · Padrão ▾ abre a caixa de padrões do painel.
+peça vira geometria fixa do esboço) · Padrão linear / circular de esboço · Exibir/Excluir relações ·
+painéis completos de Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
 Pendentes: Esboço 3D, Spline de estilo, Curva por equação, Elipse/Elipse parcial/Parábola/Cônica,
-Texto, Entidades de silhueta, Curva de interseção, Exibir/Excluir relações, painéis completos de
-Polígono, Aparar, Offset, Espelhar e Padrões (abaixo).
+Texto, Entidades de silhueta, Curva de interseção.
 
 Botões com **menu ▾** (o botão executa a última subfunção usada; a seta abre a lista):
 
@@ -129,7 +129,7 @@ Todos os painéis de entidade têm, além dos campos abaixo:
 ### Polígono — ✅
 - **Opções**: Para construção ✅
 - **Parâmetros**: nº de lados ✅ · **Círculo inscrito / circunscrito** ✅ ambos ·
-  centro X/Y · diâmetro · ângulo · botão **Novo polígono**
+  centro X/Y ✅ · diâmetro ✅ · ângulo ✅ (editam o último polígono criado) · botão **Novo polígono** ✅
 
 ### Spline — ✅ (passagem por pontos)
 - **Opções**: Para construção ✅ · Exibir pente de curvatura · Manter continuidade interna
@@ -156,12 +156,12 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 ### Chanfro de esboço — ✅ (distância igual)
 - Ângulo-distância · Distância-distância · Distâncias iguais; D1, D2, ângulo
 
-### Offset de entidades — ✅ (básico)
-- Distância ✅ · **Adicionar cotas** ✅ (1ª linha) · **Inverter** ✅ ("Lado oposto")
-- **Selecionar cadeia** ✅ (automático) · **Bidirecional** F3 · **Tampar extremidades**
-  (arcos / linhas) F3
-- **Geometria de construção**: entidades base / entidades deslocadas F3
-- Pré-visualização antes de aplicar F3
+### Offset de entidades — ✅
+- Distância ✅ · **Adicionar cotas** ✅ (uma por lado) · **Inverter** ✅
+- **Selecionar cadeia** ✅ (desligado: entidade por entidade) · **Bidirecional** ✅ ·
+  **Tampar extremidades** (arcos / linhas) ✅
+- **Geometria de construção**: geometria base / geometria do offset ✅
+- Pré-visualização tracejada antes de aplicar ✅
 
 ### Converter entidades (projetar arestas do modelo) — 🟡
 - ✅ Tocar aresta ou vértice da peça no esboço (Selecionar) cria a **referência do modelo**:
@@ -174,10 +174,12 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 ### Interseção de curvas — ⏸
 ### Segmento (dividir em N partes com pontos) — ⏸
 
-### Aparar entidades — ✅ (aparar o mais próximo)
-- **Opções**: Aparar potente (riscar várias) F3 · Canto F3 · Aparar dentro F3 · Aparar fora F3 ·
-  **Aparar o mais próximo** ✅
-- **Manter entidades aparadas como construção** F3 · Ignorar aparar geometria de construção F3
+### Aparar entidades — ✅
+- **Opções**: Aparar potente (arrastar riscando; um toque também apara) ✅ · Canto (duas linhas) ✅ ·
+  Aparar dentro ✅ · Aparar fora ✅ (dois limites, depois as entidades; linhas e arcos) ·
+  **Aparar até o mais próximo** ✅
+- **Manter entidades aparadas como construção** ✅ · Ignorar aparar geometria de construção ✅
+- Pendente: canto entre linha e arco; aparar potente estendendo ao arrastar pela ponta
 
 ### Estender entidades — ✅
 ### Dividir entidades (ponto de divisão) — F3
@@ -190,19 +192,22 @@ Curvas de apoio, texto, alinhamento, inverter, fator de largura, espaçamento, f
 - Esticar: entidades, ponto base/ΔXY
 
 ### Espelhar entidades — ✅
-- Entidades a espelhar ✅ (seleção) · **Copiar** (sempre copia hoje) · **Espelhar em torno de** ✅
-  (linha ou eixo) · relações de simetria ✅
+- Entidades a espelhar ✅ (campo de seleção) · **Copiar** ✅ · **Espelhar em relação a** ✅
+  (linha do esboço, eixo ou aresta reta da peça) · relações de simetria ✅ · pré-visualização ✅
+- Pendente: plano/face como espelho
 - Espelhamento dinâmico (desenhar e espelhar ao mesmo tempo) ⏸
 
 ### Padrão linear de esboço — ✅
-- **Direção 1/2**: inverter, espaçamento, **cota de espaçamento X/Y**, nº de instâncias,
-  exibir contagem, ângulo, **fixar direção do eixo X**
-- Entidades a padronizar · Instâncias a pular
+- **Direção 1/2** ✅: direção (eixo, linha do esboço ou aresta da peça), inverter, espaçamento,
+  **cotar espaçamento X/Y** (cota entre a semente e a 2ª instância), nº de instâncias, ângulo
+- Entidades a padronizar ✅ · Instâncias a pular ✅ ("3, 2-2") · pré-visualização ✅
+- Pendente: cotar ângulo entre eixos; instâncias amarradas entre si por relações
 
 ### Padrão circular de esboço — ✅
-- Centro (X/Y ou ponto), inverter, ângulo, **espaçamento igual**, nº de instâncias,
-  raio, ângulo do arco, cotar raio/ângulo
-- Entidades · Instâncias a pular
+- Centro (ponto do esboço ou X/Y; origem padrão) ✅, inverter ✅, ângulo ✅, **espaçamento igual** ✅,
+  nº de instâncias ✅, raio e ângulo do arco (leitura) ✅, cotar raio ✅
+- Entidades ✅ · Instâncias a pular ✅ · pré-visualização ✅
+- Pendente: cotar espaçamento angular; editar raio/ângulo do arco
 
 ### Outras — ⏸
 Bloco (criar, inserir, editar, explodir) · Imagem de esboço · Linha de deslocamento (jog) ·
@@ -295,12 +300,12 @@ chanfro.
 - **Adicionar relações**: só as aplicáveis à seleção ✅
 - Opção **Para construção** e **Fixar** no mesmo painel F3
 
-### Exibir/Excluir relações — 🟡
-- **Filtro**: Todas no esboço · Penduradas · **Superdefinindo/Não resolvidas** · Externas ·
-  Definidas no contexto · Travadas · Quebradas · **Entidades selecionadas** (✅ hoje só este)
-- **Informações**: estado de cada relação (Satisfeita · Superdefinindo · Não resolvida ·
-  Pendurada), entidades envolvidas
-- Excluir ✅ · Excluir todas · Desfazer · Substituir entidade · Fixar
+### Exibir/Excluir relações — ✅
+- **Filtro** ✅: Todas no esboço · Superdefinindo / redundantes · Externas (peça) · Fixas ·
+  Entidades selecionadas (tocar entidades no desenho filtra por elas)
+- **Informações** ✅: estado de cada relação (Satisfeita · Superdefinindo · Redundante); tocar a
+  relação destaca as entidades envolvidas
+- Excluir ✅ · Excluir todas (do filtro) ✅ · Desfazer (Ctrl+Z) ✅ · Substituir entidade ⏸
 - Selos de relação no desenho ✅ (mostrar/ocultar ✅)
 
 ## 6. Entrada (tablet e computador) — ✅

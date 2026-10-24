@@ -1567,13 +1567,14 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
         renderizarPainelEdicaoEsboco();
       }
       return;
+    case "exibirRelacoes":
+      if (!editor) return avisar("Relações: abra um esboço primeiro.");
+      editor.definirFerramenta(c.id);
+      return;
     case "padraoLinearEsboco":
     case "padraoCircularEsboco":
       if (!editor) return avisar("Padrão de esboço: abra um esboço primeiro.");
-      editor.definirFerramenta("selecionar");
-      editor.abrirTransformar = c.id === "padraoLinearEsboco" ? "padraoLinear" : "padraoCircular";
-      renderizarPainelEdicaoEsboco();
-      if (!editor.geosSelecionadas().length) avisar("Selecione as entidades a repetir e use a caixa de padrão no painel.");
+      editor.definirFerramenta(c.id);
       return;
     default: {
       // "ferramenta:variante" (ex.: retangulo:centro) — a variante vai para o editor antes

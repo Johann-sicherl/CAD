@@ -475,11 +475,16 @@ button svg { width: 22px; height: 22px; flex: none; }
 .st-estado[data-definicao="superdefinido"] { color: var(--erro); }
 .interruptor { display: flex; align-items: center; gap: 10px; min-height: var(--toque); font-size: 14px; }
 .interruptor input { width: 22px; height: 22px; accent-color: var(--acento); }
+.opcoes-radio { display: grid; gap: 2px; margin-bottom: 4px; }
+.opcoes-radio .radio { display: flex; align-items: center; gap: 10px; min-height: var(--toque); font-size: 14px; }
+.opcoes-radio input { width: 20px; height: 20px; accent-color: var(--acento); }
 button.largo { width: 100%; margin: 4px 0; }
 .cota-painel { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--linha); border-radius: 8px; }
 .lista-relacoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .lista-relacoes li { display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 10px; border: 1px solid var(--linha); border-radius: 8px; }
 .lista-relacoes li.conflito { border-color: var(--erro); color: var(--erro); }
+.lista-relacoes li.ativa { border-color: var(--acento); background: var(--acento-suave); }
+.lista-relacoes .rel-info { flex: 1; cursor: pointer; min-height: var(--toque); display: flex; align-items: center; }
 .lista-relacoes .remover { border: none; background: transparent; color: var(--texto-2); }
 .definicao.vazio { background: var(--painel-2); color: var(--texto-2); }
 

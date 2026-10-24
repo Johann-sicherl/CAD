@@ -19,13 +19,16 @@ import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
-  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter";
+  | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter"
+  | "padraoLinearEsboco" | "padraoCircularEsboco" | "exibirRelacoes";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
   rasgo: "Rasgo", poligono: "Polígono", spline: "Spline", aparar: "Aparar", estender: "Estender",
   fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota", converter: "Converter entidades",
+  padraoLinearEsboco: "Padrão linear de esboço", padraoCircularEsboco: "Padrão circular de esboço",
+  exibirRelacoes: "Exibir/Excluir relações",
 };
 
 export type TipoRetangulo = "canto" | "centro" | "3pontos" | "centro3" | "paralelogramo";
@@ -33,10 +36,20 @@ export type TipoLinha = "normal" | "centro" | "pontoMedio";
 export type TipoCirculo = "centro" | "perimetro";
 export type TipoArco = "3pontos" | "centro" | "tangente";
 export type TipoRasgo = "reto" | "centro" | "arco3" | "arcoCentro";
+export type ModoAparar = "potente" | "canto" | "dentro" | "fora" | "proximo";
 
 /** Instrução curta mostrada no painel para cada etapa da ferramenta. */
 function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
   if (ed) {
+    if (f === "aparar") {
+      const m = ed.aparo.modo, k = ed.qtdLimitesAparar;
+      if (m === "potente") return "Arraste o cursor cruzando as entidades: cada trecho tocado é apagado (um toque também apara).";
+      if (m === "canto") return k ? "Toque a segunda entidade (do lado que fica)." : "Toque a primeira entidade, do lado que fica.";
+      if (m === "dentro" || m === "fora") {
+        return k < 2 ? `Toque a ${k ? "segunda" : "primeira"} entidade de limite.`
+          : m === "dentro" ? "Toque as entidades a aparar: sai o trecho entre os limites." : "Toque as entidades a aparar: sai o que passa dos limites.";
+      }
+    }
     if (f === "retangulo" && ed.tipoRetangulo === "centro") return n ? "Toque um canto." : "Toque o centro.";
     if (f === "retangulo" && ed.tipoRetangulo === "centro3") return ["Toque o centro.", "Toque o meio de um lado (define a direção).", "Toque um canto."][n] ?? "";
     if (f === "retangulo" && ed.tipoRetangulo === "paralelogramo") return ["Toque o 1º canto.", "Toque o 2º canto.", "Toque o 3º canto (o 4º é calculado)."][n] ?? "";
@@ -66,7 +79,17 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "spline": return n ? "Mais pontos. Toque no último de novo (ou Esc) para terminar; no primeiro, fecha a curva." : "Toque o primeiro ponto da curva.";
     case "aparar": return "Toque o trecho a apagar (entre interseções).";
     case "offset": return "Toque uma entidade: a cadeia ligada a ela é copiada à distância indicada.";
-    case "espelhar": return "Toque a linha de espelho (linha do esboço ou eixo).";
+    case "exibirRelacoes": return "Toque uma relação da lista para ver as entidades; toque entidades no desenho para filtrar por elas.";
+    case "padraoLinearEsboco":
+    case "padraoCircularEsboco": {
+      const c = ed?.campoPadrao;
+      return c === "dir1" || c === "dir2" ? "Toque a direção: linha do esboço, eixo ou aresta reta da peça."
+        : c === "centro" ? "Toque o ponto de centro (ou um círculo/arco: vale o centro dele)."
+        : "Toque as entidades a padronizar.";
+    }
+    case "espelhar": return ed?.espelho.campo === "eixo"
+      ? "Toque a linha de espelho: linha do esboço, eixo ou aresta reta da peça."
+      : "Toque as entidades a espelhar; depois o campo \"Espelhar em relação a\".";
     case "cota": return n === 0 ? "Toque uma entidade (ou duas) e depois onde fica o número. Arestas e vértices da peça também valem." : n === 1 ? "Toque outra entidade (do esboço ou da peça), ou onde fica o número." : "Toque onde fica o número.";
   }
 }
@@ -132,13 +155,30 @@ export class EditorEsboco {
   tipoLinha: TipoLinha = "normal";
   /** Último polígono criado: o painel edita centro, diâmetro, ângulo, lados e tipo dele. */
   ultimoPoligono: { geos: string[]; circ: string; centro: string; vertice: string } | null = null;
-  /** Caixa do painel a abrir ("padraoLinear"/"padraoCircular"), pedida pelo menu ▾ Padrão. */
-  abrirTransformar: string | null = null;
+  /** Padrão linear de esboço (painel): direções 1 e 2 e instâncias a pular ("2, 3-2"). */
+  padraoLin = {
+    dir1: { ref: null as string | null, ang: 0, esp: 20, n: 3, inverter: false, cotar: true },
+    dir2: { ref: null as string | null, ang: 90, esp: 20, n: 1, inverter: false, cotar: true },
+    pular: "",
+  };
+  /** Padrão circular de esboço (painel). */
+  padraoCirc = { centro: null as string | null, cx: 0, cy: 0, angulo: 360, igual: true, n: 4, inverter: false, cotarRaio: false, pular: "" };
+  /** Campo de seleção ativo nos painéis de padrão. */
+  campoPadrao: "entidades" | "dir1" | "dir2" | "centro" = "entidades";
   poligonoCircunscrito = false;
   raioFilete = 3;
   cotarFilete = true;
   distChanfro = 2;
   distOffset = 5;
+  /** Opções do aparar (painel "Aparar"). */
+  aparo: { modo: ModoAparar; construcao: boolean; ignorarConstrucao: boolean } = { modo: "potente", construcao: false, ignorarConstrucao: false };
+  /** Entidades já tocadas no canto / limites do aparar dentro-fora. */
+  private aparoRefs: { id: string; p: P2 }[] = [];
+  /** Rastro do aparar potente enquanto o cursor é arrastado. */
+  private rastro: P2[] | null = null;
+  get qtdLimitesAparar() {
+    return this.aparoRefs.length;
+  }
   /** Opções do offset (painel "Offset de entidades"). */
   offset: Required<op.OpcoesOffset> & { inverter: boolean; cadeia: boolean } = {
     cotar: true, inverter: false, cadeia: true, bidirecional: false, tampar: "nenhuma", baseConstrucao: false, construcao: false,
@@ -233,15 +273,16 @@ export class EditorEsboco {
   }
 
   definirFerramenta(f: Ferramenta) {
-    if (f === "espelhar" && !this.geosSelecionadas().length) {
-      this.h.avisar("Espelhar: selecione primeiro as entidades (ferramenta Selecionar) e toque Espelhar de novo.");
-      return;
+    if (f === "espelhar") {
+      this.espelho = { campo: this.geosSelecionadas().length ? "eixo" : "entidades", eixo: null, copiar: this.espelho.copiar };
     }
     this.ferramenta = f;
     this.cliques = [];
     this.cotaEntidades = [];
+    this.aparoRefs = [];
     this.fecharCaixaRelacoes();
-    if (f !== "selecionar" && f !== "espelhar" && f !== "offset") {
+    if (f === "padraoLinearEsboco" || f === "padraoCircularEsboco") this.campoPadrao = "entidades";
+    if (!["selecionar", "espelhar", "offset", "padraoLinearEsboco", "padraoCircularEsboco", "exibirRelacoes"].includes(f)) {
       this.selecao.clear();
       if (podarExternas(this.esb, this.selecao)) this.resolver(false);
     }
@@ -442,7 +483,8 @@ export class EditorEsboco {
   }
 
   private ferramentaUsaEncaixe() {
-    return !["selecionar", "aparar", "estender", "fileteEsboco", "chanfroEsboco", "offset", "espelhar", "cota", "converter"].includes(this.ferramenta);
+    return !["selecionar", "aparar", "estender", "fileteEsboco", "chanfroEsboco", "offset", "espelhar", "cota", "converter",
+      "padraoLinearEsboco", "padraoCircularEsboco", "exibirRelacoes"].includes(this.ferramenta);
   }
 
   private aoMover(e: PointerEvent) {
@@ -457,6 +499,13 @@ export class EditorEsboco {
 
     if (pt && this.ferramenta === "selecionar") {
       if (pt.moveu && pt.alvo) this.arrastar(pt, p);
+      return;
+    }
+    if (pt && pt.moveu && this.ferramenta === "aparar" && this.aparo.modo === "potente") {
+      (this.rastro ??= [pt.enc.p]).push(p);
+      const alvo = this.achar(p, tol);
+      if (alvo?.tipo === "geo") this.aparoNoPonto(alvo.id, p);
+      this.redesenhar();
       return;
     }
     if (this.ferramentaUsaEncaixe()) {
@@ -485,6 +534,12 @@ export class EditorEsboco {
 
     if (this.ferramenta === "converter") {
       if (pt.modelo && !pt.moveu) this.converterModelo(pt.modelo);
+      return;
+    }
+    if (this.rastro) {
+      // fim do aparar potente: um passo de desfazer para tudo o que foi riscado
+      this.rastro = null;
+      this.resolver(true);
       return;
     }
     if (this.ferramenta === "selecionar") {
@@ -538,7 +593,10 @@ export class EditorEsboco {
     const pt = this.ponteiro;
     this.ponteiro = null;
     this.fecharLupa();
-    if (pt?.arraste) this.resolver(true);
+    if (pt?.arraste || this.rastro) {
+      this.rastro = null;
+      this.resolver(true);
+    }
     this.redesenhar();
   }
 
@@ -603,7 +661,41 @@ export class EditorEsboco {
     }
     if (f === "aparar") {
       const alvo = this.achar(enc.p, tol);
-      if (alvo?.tipo === "geo" && alvo.id !== EIXO_H && alvo.id !== EIXO_V && op.aparar(esb, alvo.id, enc.p)) this.resolver(true);
+      const id = alvo?.tipo === "geo" && alvo.id !== EIXO_H && alvo.id !== EIXO_V ? alvo.id : null;
+      if (!id) return;
+      const m = this.aparo.modo;
+      if (m === "potente" || m === "proximo") {
+        if (this.aparoNoPonto(id, enc.p)) this.resolver(true);
+        return;
+      }
+      if (m === "canto") {
+        if (!this.aparoRefs.length) {
+          this.aparoRefs = [{ id, p: enc.p }];
+          this.selecao = new Set([id]);
+        } else {
+          const r = this.aparoRefs[0];
+          this.aparoRefs = [];
+          this.selecao.clear();
+          if (op.canto(esb, r.id, r.p, id, enc.p)) this.resolver(true);
+          else this.h.avisar("Canto: toque duas linhas que não sejam paralelas.");
+        }
+        this.redesenhar();
+        this.h.atualizarInterface();
+        return;
+      }
+      // dentro / fora: dois limites, depois as entidades a aparar
+      if (this.aparoRefs.length < 2) {
+        if (!this.aparoRefs.some((r) => r.id === id)) this.aparoRefs.push({ id, p: enc.p });
+        this.selecao = new Set(this.aparoRefs.map((r) => r.id));
+        this.redesenhar();
+        this.h.atualizarInterface();
+        return;
+      }
+      const g = esb.geos.find((x) => x.id === id);
+      if (g?.construcao && this.aparo.ignorarConstrucao) return;
+      const lim: [string, string] = [this.aparoRefs[0].id, this.aparoRefs[1].id];
+      if (op.apararEntre(esb, id, lim, m === "dentro", this.aparo.construcao)) this.resolver(true);
+      else this.h.avisar("A entidade precisa cruzar as duas entidades de limite.");
       return;
     }
     if (f === "offset") {
@@ -616,18 +708,45 @@ export class EditorEsboco {
       this.h.atualizarInterface();
       return;
     }
+    if (f === "padraoLinearEsboco" || f === "padraoCircularEsboco") {
+      this.toquePadrao(this.achar(enc.p, tol));
+      return;
+    }
+    if (f === "exibirRelacoes") {
+      const alvo = this.achar(enc.p, tol);
+      if (!alvo) this.selecao.clear();
+      else if (this.selecao.has(alvo.id)) this.selecao.delete(alvo.id);
+      else this.selecao.add(alvo.id);
+      if (this.selecao.size) this.filtroRelacoes = "selecionadas";
+      this.redesenhar();
+      this.h.atualizarInterface();
+      return;
+    }
     if (f === "espelhar") {
       const alvo = this.achar(enc.p, tol);
-      const g = alvo && esb.geos.find((x) => x.id === alvo.id);
-      const eixo = alvo && (alvo.id === EIXO_H || alvo.id === EIXO_V || g?.tipo === "linha") ? alvo.id : null;
-      if (!eixo) {
-        this.h.avisar("Toque uma linha (ou um eixo) para servir de espelho.");
-        return;
+      if (this.espelho.campo === "entidades") {
+        if (alvo?.tipo !== "geo" || alvo.id === EIXO_H || alvo.id === EIXO_V) return;
+        if (this.selecao.has(alvo.id)) this.selecao.delete(alvo.id);
+        else this.selecao.add(alvo.id);
+        if (this.espelho.eixo && this.selecao.has(this.espelho.eixo)) this.espelho.eixo = null;
+      } else {
+        const g = alvo && esb.geos.find((x) => x.id === alvo.id);
+        let eixo = alvo && (alvo.id === EIXO_H || alvo.id === EIXO_V || g?.tipo === "linha") ? alvo.id : null;
+        if (!eixo) {
+          // aresta reta da peça: vira referência do modelo e serve de espelho
+          const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["aresta"]);
+          const ge = m && criarExterna(this.esb, m.proj, m.ref);
+          if (ge?.tipo === "linha") eixo = ge.id;
+        }
+        if (!eixo) {
+          this.h.avisar("Toque uma linha do esboço, um eixo ou uma aresta reta da peça para servir de espelho.");
+          return;
+        }
+        this.espelho.eixo = eixo;
+        this.selecao.delete(eixo);
       }
-      const novas = op.espelhar(esb, this.geosSelecionadas(), eixo);
-      this.selecao = new Set(novas);
-      this.ferramenta = "selecionar";
-      this.resolver(true);
+      this.redesenhar();
+      this.h.atualizarInterface();
       return;
     }
     if (f === "cota") {
@@ -893,6 +1012,187 @@ export class EditorEsboco {
     else if (this.selecao.size || this.caixaRel) this.limparSelecao();
   }
 
+  /** Campo ativo do espelhar (como os campos rosa dos comandos), eixo escolhido e Copiar. */
+  espelho: { campo: "entidades" | "eixo"; eixo: string | null; copiar: boolean } = { campo: "entidades", eixo: null, copiar: true };
+
+  definirCampoEspelho(c: "entidades" | "eixo") {
+    this.espelho.campo = c;
+    this.h.atualizarInterface();
+  }
+
+  /** Nome curto do eixo do espelho para o painel. */
+  get nomeEixoEspelho(): string | null {
+    const e = this.espelho.eixo;
+    if (!e) return null;
+    if (e === EIXO_H) return "Eixo horizontal";
+    if (e === EIXO_V) return "Eixo vertical";
+    return this.esb.geos.find((g) => g.id === e)?.externa ? "Aresta da peça" : "Linha do esboço";
+  }
+
+  aplicarEspelho() {
+    const geos = this.geosSelecionadas();
+    const eixo = this.espelho.eixo;
+    if (!geos.length || !eixo) return;
+    const novas = op.espelhar(this.esb, geos, eixo);
+    if (!this.espelho.copiar) op.excluir(this.esb, geos);
+    this.espelho = { campo: "entidades", eixo: null, copiar: this.espelho.copiar };
+    this.selecao = new Set(novas.filter((id) => this.esb.geos.some((g) => g.id === id)));
+    this.ferramenta = "selecionar";
+    this.resolver(true);
+  }
+
+  private previaEspelho(): { segmentos: P2[]; pontos: P2[] } | undefined {
+    const geos = this.geosSelecionadas();
+    if (!geos.length || !this.espelho.eixo) return undefined;
+    const copia: FeatureEsboco = structuredClone(this.esb);
+    return this.contornoDasNovas(copia, op.espelhar(copia, geos, this.espelho.eixo));
+  }
+
+  /** Segmentos (para a pré-visualização tracejada) das geometrias novas de uma cópia do esboço. */
+  private contornoDasNovas(copia: FeatureEsboco, novas: string[]): { segmentos: P2[]; pontos: P2[] } {
+    const pts = mapaPontos(copia);
+    const segs: P2[] = [];
+    for (const g of copia.geos) {
+      if (!novas.includes(g.id)) continue;
+      const am = amostrar(g, pts);
+      for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
+    }
+    return { segmentos: segs, pontos: [] };
+  }
+
+  // ---------- padrões de esboço ----------
+
+  definirCampoPadrao(c: EditorEsboco["campoPadrao"]) {
+    this.campoPadrao = c;
+    this.h.atualizarInterface();
+  }
+
+  private toquePadrao(alvo: Alvo | null) {
+    const c = this.campoPadrao;
+    if (c === "entidades") {
+      if (alvo?.tipo !== "geo" || alvo.id === EIXO_H || alvo.id === EIXO_V) return;
+      if (this.selecao.has(alvo.id)) this.selecao.delete(alvo.id);
+      else this.selecao.add(alvo.id);
+    } else if (c === "centro") {
+      const pts = mapaPontos(this.esb);
+      const g = alvo?.tipo === "geo" ? this.esb.geos.find((x) => x.id === alvo.id) : null;
+      const id = alvo?.tipo === "ponto" ? alvo.id : g && (g.tipo === "circulo" || g.tipo === "arco") ? g.c : null;
+      if (!id || !pts.has(id)) return this.h.avisar("Toque um ponto (ou um círculo/arco) para o centro.");
+      const p = pts.get(id)!;
+      Object.assign(this.padraoCirc, { centro: id, cx: p.x, cy: p.y });
+      this.campoPadrao = "entidades";
+    } else {
+      // direção: linha do esboço, eixo ou aresta reta da peça
+      let id = alvo?.tipo === "geo" ? alvo.id : null;
+      let g = id ? this.esb.geos.find((x) => x.id === id) : undefined;
+      if (!id || (g && g.tipo !== "linha")) {
+        const m = this.tela && this.acharModelo(this.tela.x, this.tela.y, this.tela.tipo, ["aresta"]);
+        const ge = m && criarExterna(this.esb, m.proj, m.ref);
+        id = ge?.tipo === "linha" ? ge.id : null;
+        g = ge ?? undefined;
+      }
+      if (!id) return this.h.avisar("Toque uma linha, um eixo ou uma aresta reta da peça para a direção.");
+      let ang = id === EIXO_V ? 90 : 0;
+      if (g?.tipo === "linha") {
+        const pts = mapaPontos(this.esb);
+        const a = pts.get(g.p1)!, b = pts.get(g.p2)!;
+        ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+      }
+      const d = this.padraoLin[c];
+      d.ref = id;
+      d.ang = Number(ang.toFixed(6));
+      this.campoPadrao = "entidades";
+    }
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+
+  /** Nome curto da referência de direção/centro para o painel. */
+  nomeRefPadrao(id: string | null): string | null {
+    if (!id) return null;
+    if (id === EIXO_H) return "Eixo horizontal";
+    if (id === EIXO_V) return "Eixo vertical";
+    if (id === ORIGEM) return "Origem";
+    const g = this.esb.geos.find((x) => x.id === id);
+    return g?.externa ? "Aresta da peça" : g ? "Linha do esboço" : "Ponto do esboço";
+  }
+
+  /** "2, 4" → [2, 4]; "2-3" → par (2, 3). Valores inválidos são ignorados. */
+  private static lerPular(t: string): [number, number][] {
+    return t.split(/[,;\s]+/).filter(Boolean).flatMap((x) => {
+      const [i, j] = x.split("-").map(Number);
+      return Number.isInteger(i) && i > 0 ? [[i, Number.isInteger(j) && j > 0 ? j : 1] as [number, number]] : [];
+    });
+  }
+
+  /** Raio e ângulo da semente em relação ao centro (só leitura no painel circular). */
+  get posicaoSementeCircular(): { raio: number; angulo: number } | null {
+    const geos = this.geosSelecionadas();
+    const g = this.esb.geos.find((x) => geos.includes(x.id));
+    const pid = g && pontosDaGeo(g)[0];
+    const p = pid && mapaPontos(this.esb).get(pid);
+    if (!p) return null;
+    const c = { x: this.padraoCirc.cx, y: this.padraoCirc.cy };
+    return { raio: dist(c, p), angulo: (angulo(c, p) * 180) / Math.PI };
+  }
+
+  private executarPadrao(esb: FeatureEsboco): string[] {
+    const geos = this.geosSelecionadas();
+    if (!geos.length) return [];
+    if (this.ferramenta === "padraoLinearEsboco") {
+      const { dir1: a, dir2: b, pular } = this.padraoLin;
+      return op.padraoLinearEsboco(esb, geos, {
+        n1: a.n, esp1: a.esp, ang1: a.ang + (a.inverter ? 180 : 0), cotar1: a.cotar,
+        n2: b.n, esp2: b.esp, ang2: b.ang + (b.inverter ? 180 : 0), cotar2: b.cotar,
+        pular: EditorEsboco.lerPular(pular),
+      });
+    }
+    const c = this.padraoCirc;
+    return op.padraoCircularEsboco(esb, geos, {
+      centro: { x: c.cx, y: c.cy }, n: c.n, angulo: c.inverter ? -c.angulo : c.angulo, igual: c.igual,
+      pular: EditorEsboco.lerPular(c.pular).map(([i]) => i), centroId: c.centro, cotarRaio: c.cotarRaio,
+    });
+  }
+
+  private previaPadrao(): { segmentos: P2[]; pontos: P2[] } | undefined {
+    if (!this.geosSelecionadas().length) return undefined;
+    const copia: FeatureEsboco = structuredClone(this.esb);
+    try {
+      return this.contornoDasNovas(copia, this.executarPadrao(copia));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Mudou um campo do painel de padrão: redesenha a pré-visualização. */
+  mudouPadrao() {
+    this.redesenhar();
+  }
+
+  aplicarPadrao() {
+    const novas = this.executarPadrao(this.esb);
+    if (!novas.length) return this.h.avisar("Nada a repetir: selecione as entidades e confira o nº de instâncias.");
+    this.selecao.clear();
+    this.ferramenta = "selecionar";
+    this.resolver(true);
+  }
+
+  /** Apara (o mais próximo) a geometria no ponto, respeitando as opções do painel. */
+  private aparoNoPonto(id: string, p: P2): boolean {
+    const g = this.esb.geos.find((x) => x.id === id);
+    if (!g || g.externa || (g.construcao && this.aparo.ignorarConstrucao)) return false;
+    return op.aparar(this.esb, id, p, { construcao: this.aparo.construcao });
+  }
+
+  /** Mudou o modo do aparar: recomeça a escolha de limites. */
+  definirModoAparar(m: ModoAparar) {
+    this.aparo.modo = m;
+    this.aparoRefs = [];
+    this.selecao.clear();
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+
   /** Geometrias ligadas pelas extremidades à geometria tocada (para offset). */
   private cadeiaDe(id: string): string[] {
     const pts = mapaPontos(this.esb);
@@ -938,20 +1238,11 @@ export class EditorEsboco {
     if (!geos.length || !this.distOffset) return undefined;
     const copia: FeatureEsboco = structuredClone(this.esb);
     const [d, opc] = this.opcoesOffset();
-    let novas: string[];
     try {
-      novas = op.deslocar(copia, geos, d, opc);
+      return this.contornoDasNovas(copia, op.deslocar(copia, geos, d, opc));
     } catch {
       return undefined;
     }
-    const pts = mapaPontos(copia);
-    const segs: P2[] = [];
-    for (const g of copia.geos) {
-      if (!novas.includes(g.id)) continue;
-      const am = amostrar(g, pts);
-      for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
-    }
-    return { segmentos: segs, pontos: [] };
   }
 
   // ---------- cotas ----------
@@ -1251,14 +1542,12 @@ export class EditorEsboco {
     return pid ? pts.get(pid)! : { x: 0, y: 0 };
   }
 
-  transformarSelecao(oque: "mover" | "copiar" | "girar" | "girarCopia" | "padraoLinear" | "padraoCircular", v: { dx?: number; dy?: number; angulo?: number; n?: number; esp?: number }) {
+  transformarSelecao(oque: "mover" | "copiar" | "girar" | "girarCopia", v: { dx?: number; dy?: number; angulo?: number }) {
     const geos = this.geosSelecionadas();
     if (!geos.length) return this.h.avisar("Selecione as entidades primeiro.");
     let novas: string[] = [];
     if (oque === "mover" || oque === "copiar") novas = op.transformar(this.esb, geos, op.transladar({ x: v.dx ?? 0, y: v.dy ?? 0 }), oque === "copiar");
-    else if (oque === "girar" || oque === "girarCopia") novas = op.transformar(this.esb, geos, op.girar(this.centroSelecao(), v.angulo ?? 0), oque === "girarCopia");
-    else if (oque === "padraoLinear") novas = op.padraoLinearEsboco(this.esb, geos, v.n ?? 2, v.esp ?? 10, v.angulo ?? 0);
-    else novas = op.padraoCircularEsboco(this.esb, geos, this.centroSelecao(), v.n ?? 2, v.angulo ?? 360);
+    else novas = op.transformar(this.esb, geos, op.girar(this.centroSelecao(), v.angulo ?? 0), oque === "girarCopia");
     this.selecao = new Set(novas);
     this.resolver(true);
   }
@@ -1294,6 +1583,45 @@ export class EditorEsboco {
   }
 
   /** Relações (não cotas) que citam algo selecionado — listadas no painel. */
+  /** Filtro do painel Exibir/Excluir relações. */
+  filtroRelacoes: "todas" | "problemas" | "externas" | "fixas" | "selecionadas" = "todas";
+
+  /** Relações (não cotas) do esboço que passam no filtro do painel. */
+  relacoesFiltradas(): RestricaoEsboco[] {
+    const rels = this.esb.restricoes.filter((r) => !ehCota(r));
+    const externas = new Set(this.esb.geos.filter((g) => g.externa).flatMap((g) => [g.id, ...pontosDaGeo(g)]));
+    switch (this.filtroRelacoes) {
+      case "problemas": return rels.filter((r) => this.estadoRelacao(r) !== "Satisfeita");
+      case "externas": return rels.filter((r) => op.referencias(r).some((x) => externas.has(x)));
+      case "fixas": return rels.filter((r) => r.tipo === "fixo");
+      case "selecionadas": return this.relacoesDaSelecao();
+      default: return rels;
+    }
+  }
+
+  estadoRelacao(r: RestricaoEsboco): "Satisfeita" | "Superdefinindo" | "Redundante" {
+    return this.estado.conflitantes.includes(r.id) ? "Superdefinindo" : this.estado.redundantes.includes(r.id) ? "Redundante" : "Satisfeita";
+  }
+
+  /** Destaca as entidades de uma relação (a relação fica marcada na lista). */
+  mostrarRelacao(id: string) {
+    const r = this.esb.restricoes.find((x) => x.id === id);
+    if (!r) return;
+    this.relacaoAtiva = id;
+    this.selecao = new Set(op.referencias(r).filter((x) => x !== ORIGEM));
+    this.redesenhar();
+    this.h.atualizarInterface();
+  }
+  relacaoAtiva: string | null = null;
+
+  excluirRelacoes(ids: string[]) {
+    if (!ids.length) return;
+    const fora = new Set(ids);
+    this.esb.restricoes = this.esb.restricoes.filter((r) => !fora.has(r.id));
+    this.relacaoAtiva = null;
+    this.resolver(true);
+  }
+
   relacoesDaSelecao(): RestricaoEsboco[] {
     return this.esb.restricoes.filter((r) =>
       !ehCota(r) && (this.selecao.has(r.id) || op.referencias(r).some((x) => this.selecao.has(x))));
@@ -1542,7 +1870,11 @@ export class EditorEsboco {
       livres: this.livres,
       selecao: this.selecao,
       conflitantes: this.conflito,
-      previa: this.ferramentaUsaEncaixe() ? this.previa() : this.ferramenta === "offset" ? this.previaOffset() : undefined,
+      previa: this.ferramentaUsaEncaixe() ? this.previa()
+        : this.ferramenta === "offset" ? this.previaOffset()
+        : this.ferramenta === "espelhar" ? this.previaEspelho()
+        : this.ferramenta === "padraoLinearEsboco" || this.ferramenta === "padraoCircularEsboco" ? this.previaPadrao()
+        : this.rastro ? { segmentos: this.rastro.flatMap((q, i) => (i ? [this.rastro![i - 1], q] : [])), pontos: [] } : undefined,
       marcador,
       mostrarEixos: true,
       cotaPrevia: this.cotaPrevia,

@@ -165,10 +165,10 @@ interface Corte {
   cortador: string; // geometria que cruza
 }
 
-function cortesNaGeo(esb: FeatureEsboco, g: GeoEsboco, pts: MapaPontos): Corte[] {
+function cortesNaGeo(esb: FeatureEsboco, g: GeoEsboco, pts: MapaPontos, cortadores?: string[]): Corte[] {
   const cortes: Corte[] = [];
   for (const o of esb.geos) {
-    if (o.id === g.id) continue;
+    if (o.id === g.id || (cortadores && !cortadores.includes(o.id))) continue;
     for (const p of intersecoes(g, o, pts)) cortes.push({ p, param: 0, cortador: o.id });
   }
   if (g.tipo === "linha") {
@@ -199,25 +199,33 @@ function pontoDeCorte(esb: FeatureEsboco, c: Corte): string {
   return id;
 }
 
+/** Opções do aparar. */
+export interface OpcoesAparar {
+  /** Manter o trecho aparado como geometria de construção (em vez de apagar). */
+  construcao?: boolean;
+  /** Só estas geometrias cortam (aparar dentro/fora). */
+  cortadores?: string[];
+}
+
 /**
  * Apaga o trecho da geometria entre as interseções vizinhas ao ponto tocado.
  * Sem interseções, apaga a geometria inteira. Devolve false se não houve mudança.
  */
-export function aparar(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
+export function aparar(esb: FeatureEsboco, geoId: string, toque: P2, opc: OpcoesAparar = {}): boolean {
   const g = esb.geos.find((x) => x.id === geoId);
   if (!g) return false;
   const pts = mapaPontos(esb);
-  if (g.tipo === "spline" || g.tipo === "ponto") {
-    excluir(esb, [g.id]);
+  const manter = !!opc.construcao && !g.construcao;
+  const apagarInteira = () => {
+    if (manter) g.construcao = true;
+    else excluir(esb, [g.id]);
     return true;
-  }
-  const cortes = cortesNaGeo(esb, g, pts);
+  };
+  if (g.tipo === "spline" || g.tipo === "ponto") return apagarInteira();
+  const cortes = cortesNaGeo(esb, g, pts, opc.cortadores);
 
   if (g.tipo === "circulo") {
-    if (cortes.length < 2) {
-      excluir(esb, [g.id]);
-      return true;
-    }
+    if (cortes.length < 2) return opc.cortadores ? false : apagarInteira();
     const ctr = pts.get(g.c)!;
     const t = norm(angulo(ctr, toque));
     const ords = [...cortes].sort((a, b) => a.param - b.param);
@@ -228,6 +236,7 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
     const ini = pontoDeCorte(esb, depois), fim = pontoDeCorte(esb, antes);
     const novo: Geo<"arco"> = { id: g.id, tipo: "arco", c: g.c, ini, fim, r: g.r, ...(g.construcao && { construcao: true }) };
     esb.geos[esb.geos.indexOf(g)] = novo;
+    if (manter) arco(esb, g.c, fim, ini, true); // o trecho tirado vai de "antes" a "depois"
     limpar(esb);
     return true;
   }
@@ -243,16 +252,23 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
   const antes = cortes.filter((c) => c.param < t).sort((a, b) => b.param - a.param)[0];
   const depois = cortes.filter((c) => c.param > t).sort((a, b) => a.param - b.param)[0];
 
-  if (!antes && !depois) {
-    excluir(esb, [g.id]);
-    return true;
-  }
+  if (!antes && !depois) return opc.cortadores ? false : apagarInteira();
   const [chIni, chFim] = g.tipo === "linha" ? (["p1", "p2"] as const) : (["ini", "fim"] as const);
   const gg = g as unknown as Record<string, unknown>;
+  // o trecho tirado, como construção, entre os pontos a e b
+  const sobra = (a: string, b: string) => {
+    if (!manter) return;
+    if (g.tipo === "linha") linha(esb, a, b, true);
+    else if (g.tipo === "arco") arco(esb, g.c, a, b, true);
+  };
   if (!antes) {
+    const velho = gg[chIni] as string;
     gg[chIni] = pontoDeCorte(esb, depois!);
+    sobra(velho, gg[chIni] as string);
   } else if (!depois) {
+    const velho = gg[chFim] as string;
     gg[chFim] = pontoDeCorte(esb, antes);
+    sobra(gg[chFim] as string, velho);
   } else {
     // trecho do meio: a geometria vira duas
     const fimOriginal = gg[chFim] as string;
@@ -265,9 +281,80 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
       const novo = arco(esb, g.c, pd, fimOriginal, g.construcao);
       restringir(esb, { tipo: "igual", a: g.id, b: novo.id });
     }
+    sobra(pa, pd);
   }
   // cotas de comprimento da linha original deixam de valer
   esb.restricoes = esb.restricoes.filter((r) => !(r.tipo === "distancia" && r.a === g.id && !r.b));
+  limpar(esb);
+  return true;
+}
+
+/** Ponto no parâmetro 0..1 de uma linha ou arco. */
+function pontoNoParametro(g: GeoEsboco, pts: MapaPontos, t: number): P2 | null {
+  if (g.tipo === "linha") {
+    const a = pts.get(g.p1)!, b = pts.get(g.p2)!;
+    return soma(a, mult(sub(b, a), t));
+  }
+  if (g.tipo === "arco") {
+    const c = pts.get(g.c)!, pi = pts.get(g.ini)!;
+    const [a0, a1] = angulosArco(c, pi, pts.get(g.fim)!);
+    return polar(c, dist(c, pi), a0 + (a1 - a0) * t);
+  }
+  return null;
+}
+
+/**
+ * Aparar dentro / fora: com duas entidades de limite, tira o trecho entre elas (dentro) ou o que
+ * passa delas (fora). A geometria precisa cruzar os dois limites.
+ */
+export function apararEntre(esb: FeatureEsboco, geoId: string, limites: [string, string], dentro: boolean, construcao = false): boolean {
+  const g = esb.geos.find((x) => x.id === geoId);
+  if (!g || (g.tipo !== "linha" && g.tipo !== "arco") || limites.includes(geoId)) return false;
+  const pts = mapaPontos(esb);
+  const cortes = cortesNaGeo(esb, g, pts, limites);
+  const c1 = cortes.filter((c) => c.cortador === limites[0]), c2 = cortes.filter((c) => c.cortador === limites[1]);
+  if (!c1.length || !c2.length) return false;
+  const lo = Math.min(c1[0].param, c2[0].param), hi = Math.max(c1[0].param, c2[0].param);
+  const opc = { cortadores: limites, construcao };
+  if (dentro) return aparar(esb, geoId, pontoNoParametro(g, pts, (lo + hi) / 2)!, opc);
+  const pFim = hi < 1 - 1e-6 ? pontoNoParametro(g, pts, (hi + 1) / 2) : null;
+  const pIni = lo > 1e-6 ? pontoNoParametro(g, pts, lo / 2) : null;
+  let mudou = false;
+  if (pFim) mudou = aparar(esb, geoId, pFim, opc) || mudou;
+  if (pIni) mudou = aparar(esb, geoId, pIni, opc) || mudou;
+  return mudou;
+}
+
+/**
+ * Canto: estende ou apara duas linhas até se encontrarem. Em cada linha fica a ponta do lado
+ * tocado (a mais distante do canto); a outra vai para o canto, compartilhado pelas duas.
+ */
+export function canto(esb: FeatureEsboco, id1: string, toque1: P2, id2: string, toque2: P2): boolean {
+  const l1 = esb.geos.find((x): x is Geo<"linha"> => x.id === id1 && x.tipo === "linha");
+  const l2 = esb.geos.find((x): x is Geo<"linha"> => x.id === id2 && x.tipo === "linha");
+  if (!l1 || !l2 || l1 === l2) return false;
+  const pts = mapaPontos(esb);
+  const a1 = pts.get(l1.p1)!, u1 = sub(pts.get(l1.p2)!, a1);
+  const a2 = pts.get(l2.p1)!, u2 = sub(pts.get(l2.p2)!, a2);
+  const den = cruz2(u1, u2);
+  if (Math.abs(den) < 1e-12) return false; // paralelas
+  const x = soma(a1, mult(u1, cruz2(sub(a2, a1), u2) / den));
+  const idx = ponto(esb, x);
+  for (const [l, toque] of [[l1, toque1], [l2, toque2]] as const) {
+    const u = sub(pts.get(l.p2)!, pts.get(l.p1)!);
+    const lado = (q: P2) => esc2(sub(q, x), u);
+    const sToque = Math.sign(lado(toque));
+    const ponta = (pid: string) => {
+      const q = pts.get(pid)!;
+      return { pid, mesmoLado: Math.sign(lado(q)) === sToque, d: dist(q, x) };
+    };
+    const [p1, p2] = [ponta(l.p1), ponta(l.p2)];
+    // fica a ponta do lado tocado mais distante do canto
+    const ficaP1 = p1.mesmoLado !== p2.mesmoLado ? p1.mesmoLado : p1.d >= p2.d;
+    if (ficaP1) l.p2 = idx;
+    else l.p1 = idx;
+    esb.restricoes = esb.restricoes.filter((r) => !(r.tipo === "distancia" && r.a === l.id && !r.b));
+  }
   limpar(esb);
   return true;
 }
@@ -803,21 +890,85 @@ export const girar = (c: P2, graus: number) => (p: P2): P2 => {
   return { x: c.x + d.x * co - d.y * s, y: c.y + d.x * s + d.y * co };
 };
 
-/** Padrão linear de esboço: N cópias ao longo de uma direção (ângulo em graus). */
-export function padraoLinearEsboco(esb: FeatureEsboco, geoIds: string[], n: number, espacamento: number, anguloGraus: number): string[] {
-  const a = (anguloGraus * Math.PI) / 180;
-  const u = { x: Math.cos(a), y: Math.sin(a) };
+/** Opções do padrão linear de esboço (ângulos em graus; direção 2 só com n2 > 1). */
+export interface OpcoesPadraoLinear {
+  n1: number;
+  esp1: number;
+  ang1: number;
+  n2?: number;
+  esp2?: number;
+  ang2?: number;
+  /** Instâncias a pular, como (i, j) a partir de (1, 1) = a semente. */
+  pular?: [number, number][];
+  cotar1?: boolean;
+  cotar2?: boolean;
+}
+
+/** Primeiro ponto (referência para as cotas do padrão) da primeira geometria da lista. */
+function pontoReferencia(esb: FeatureEsboco, geoIds: string[]): string | null {
+  const g = esb.geos.find((x) => geoIds.includes(x.id));
+  return g ? pontosDaGeo(g)[0] ?? null : null;
+}
+
+/** Cota entre a semente e uma instância, horizontal/vertical quando a direção é de eixo. */
+function cotarPasso(esb: FeatureEsboco, a: string | null, b: string | null, valor: number, angGraus: number) {
+  if (!a || !b || a === b) return;
+  const ang = ((angGraus % 180) + 180) % 180;
+  if (Math.abs(ang) < 1e-9) restringir(esb, { tipo: "distanciaH", a, b, valor: Math.abs(valor) });
+  else if (Math.abs(ang - 90) < 1e-9) restringir(esb, { tipo: "distanciaV", a, b, valor: Math.abs(valor) });
+  else restringir(esb, { tipo: "distancia", a, b, valor: Math.abs(valor) });
+}
+
+/** Padrão linear de esboço em uma ou duas direções. */
+export function padraoLinearEsboco(esb: FeatureEsboco, geoIds: string[], o: OpcoesPadraoLinear): string[] {
+  const dir = (g: number) => ({ x: Math.cos((g * Math.PI) / 180), y: Math.sin((g * Math.PI) / 180) });
+  const u = dir(o.ang1), v = dir(o.ang2 ?? 90);
+  const n1 = Math.max(1, Math.round(o.n1)), n2 = Math.max(1, Math.round(o.n2 ?? 1));
+  const pula = new Set((o.pular ?? []).map(([i, j]) => `${i}|${j}`));
+  const ref = pontoReferencia(esb, geoIds);
   const out: string[] = [];
-  for (let i = 1; i < Math.round(n); i++) out.push(...transformar(esb, geoIds, transladar(mult(u, espacamento * i)), true));
+  for (let j = 1; j <= n2; j++) {
+    for (let i = 1; i <= n1; i++) {
+      if ((i === 1 && j === 1) || pula.has(`${i}|${j}`)) continue;
+      const desl = soma(mult(u, o.esp1 * (i - 1)), mult(v, (o.esp2 ?? 0) * (j - 1)));
+      const novas = transformar(esb, geoIds, transladar(desl), true);
+      out.push(...novas);
+      const refNova = pontoReferencia(esb, novas.slice(0, 1));
+      if (o.cotar1 && i === 2 && j === 1) cotarPasso(esb, ref, refNova, o.esp1, o.ang1);
+      if (o.cotar2 && i === 1 && j === 2) cotarPasso(esb, ref, refNova, o.esp2 ?? 0, o.ang2 ?? 90);
+    }
+  }
   return out;
 }
 
-/** Padrão circular de esboço em torno do centro (ângulo total; 360 = volta completa). */
-export function padraoCircularEsboco(esb: FeatureEsboco, geoIds: string[], centro: P2, n: number, total: number): string[] {
-  const k = Math.round(n);
-  const passo = Math.abs(total) >= 360 ? total / k : total / Math.max(1, k - 1);
+/** Opções do padrão circular de esboço (ângulos em graus). */
+export interface OpcoesPadraoCircular {
+  centro: P2;
+  n: number;
+  /** Com espaçamento igual: ângulo total (360 = volta completa); sem: ângulo entre instâncias. */
+  angulo: number;
+  igual?: boolean;
+  /** Instâncias a pular (1 = a semente). */
+  pular?: number[];
+  /** Ponto do esboço no centro (para cotar o raio). */
+  centroId?: string | null;
+  cotarRaio?: boolean;
+}
+
+/** Padrão circular de esboço em torno do centro. */
+export function padraoCircularEsboco(esb: FeatureEsboco, geoIds: string[], o: OpcoesPadraoCircular): string[] {
+  const k = Math.max(1, Math.round(o.n));
+  const passo = o.igual === false ? o.angulo : Math.abs(o.angulo) >= 360 ? o.angulo / k : o.angulo / Math.max(1, k - 1);
+  const pula = new Set(o.pular ?? []);
   const out: string[] = [];
-  for (let i = 1; i < k; i++) out.push(...transformar(esb, geoIds, girar(centro, passo * i), true));
+  for (let i = 2; i <= k; i++) {
+    if (pula.has(i)) continue;
+    out.push(...transformar(esb, geoIds, girar(o.centro, passo * (i - 1)), true));
+  }
+  if (o.cotarRaio && o.centroId) {
+    const ref = pontoReferencia(esb, geoIds);
+    if (ref && ref !== o.centroId) restringir(esb, { tipo: "distancia", a: o.centroId, b: ref, valor: dist(mapaPontos(esb).get(ref)!, o.centro) });
+  }
   return out;
 }
 

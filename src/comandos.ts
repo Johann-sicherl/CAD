@@ -192,7 +192,7 @@ export const ABAS: Aba[] = [
       {
         id: "grupo-relacoes", rotulo: "Relações", icone: "relacao", dica: "Relações do esboço", grupo: 4,
         itens: [
-          { id: "exibirRelacoes", rotulo: "Exibir/Excluir relações", icone: "exibirRelacoes", dica: "Lista todas as relações do esboço", grupo: 4, emBreve: true },
+          { id: "exibirRelacoes", rotulo: "Exibir/Excluir relações", icone: "exibirRelacoes", dica: "Lista todas as relações do esboço", grupo: 4 },
           { id: "relacao", rotulo: "Adicionar relação", icone: "relacao", dica: "Coincidente, horizontal, paralelo, tangente… para a seleção", grupo: 4 },
         ],
       },

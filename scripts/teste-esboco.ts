@@ -189,9 +189,9 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
 
   const e4 = plano();
   const cc = op.circulo(e4, op.ponto(e4, { x: 20, y: 0 }), 2);
-  op.padraoCircularEsboco(e4, [cc.id], { x: 0, y: 0 }, 6, 360);
+  op.padraoCircularEsboco(e4, [cc.id], { centro: { x: 0, y: 0 }, n: 6, angulo: 360 });
   verdade("padrão circular de esboço: 6 círculos", e4.geos.filter((g) => g.tipo === "circulo").length === 6);
-  op.padraoLinearEsboco(e4, [cc.id], 3, 10, 90);
+  op.padraoLinearEsboco(e4, [cc.id], { n1: 3, esp1: 10, ang1: 90 });
   verdade("padrão linear de esboço: +2", e4.geos.filter((g) => g.tipo === "circulo").length === 8);
   op.transformar(e4, [cc.id], op.girar({ x: 0, y: 0 }, 90), false);
   const centro = e4.pontos.find((p) => p.id === (cc as { c: string }).c)!;
@@ -298,6 +298,65 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   op.deslocar(e3, [ci.id], 2, { bidirecional: true, construcao: true });
   verdade("círculo bidirecional: r 8 e 12 de construção",
     e3.geos.filter((g) => g.tipo === "circulo" && g.construcao).map((g) => (g as { r: number }).r).sort().join() === "12,8");
+}
+
+// 15. Aparar: canto (duas linhas viram um L), dentro/fora entre dois limites e manter o
+// trecho aparado como construção
+{
+  const e = plano();
+  const h = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 30, y: 0 }));
+  const v = op.linha(e, op.ponto(e, { x: 20, y: -10 }), op.ponto(e, { x: 20, y: 5 }));
+  verdade("canto entre duas linhas", op.canto(e, h.id, { x: 5, y: 0 }, v.id, { x: 20, y: 3 }));
+  const pts = new Map(e.pontos.map((p) => [p.id, p]));
+  const comprimento = (l: { p1: string; p2: string }) => Math.hypot(pts.get(l.p2)!.x - pts.get(l.p1)!.x, pts.get(l.p2)!.y - pts.get(l.p1)!.y);
+  confere("canto: horizontal até x = 20", comprimento(e.geos.find((g) => g.id === h.id) as never), 20);
+  confere("canto: vertical de y = 0 a 5", comprimento(e.geos.find((g) => g.id === v.id) as never), 5);
+  verdade("canto: ponto compartilhado", (e.geos.find((g) => g.id === h.id) as { p2: string }).p2 === (e.geos.find((g) => g.id === v.id) as { p1: string }).p1);
+
+  const linhas = (fora: boolean, construcao: boolean) => {
+    const e2 = plano();
+    const b1 = op.linha(e2, op.ponto(e2, { x: 10, y: -5 }), op.ponto(e2, { x: 10, y: 5 }));
+    const b2 = op.linha(e2, op.ponto(e2, { x: 30, y: -5 }), op.ponto(e2, { x: 30, y: 5 }));
+    const alvo = op.linha(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 40, y: 0 }));
+    const ok = op.apararEntre(e2, alvo.id, [b1.id, b2.id], !fora, construcao);
+    const m = new Map(e2.pontos.map((p) => [p.id, p]));
+    const soma = (c: boolean) => e2.geos.filter((g) => g.tipo === "linha" && !!g.construcao === c && g.id !== b1.id && g.id !== b2.id)
+      .reduce((t, g) => t + Math.hypot(m.get((g as { p2: string }).p2)!.x - m.get((g as { p1: string }).p1)!.x, m.get((g as { p2: string }).p2)!.y - m.get((g as { p1: string }).p1)!.y), 0);
+    return { ok, normal: soma(false), construcao: soma(true) };
+  };
+  const dentro = linhas(false, false);
+  verdade("aparar dentro", dentro.ok);
+  confere("aparar dentro: sobra 10 + 10", dentro.normal, 20);
+  const fora = linhas(true, true);
+  confere("aparar fora: sobra o trecho de 20 entre os limites", fora.normal, 20);
+  confere("aparar fora: pontas viram construção (10 + 10)", fora.construcao, 20);
+
+  const e3 = plano();
+  const l = op.linha(e3, op.ponto(e3, { x: 0, y: 0 }), op.ponto(e3, { x: 10, y: 0 }));
+  op.aparar(e3, l.id, { x: 5, y: 0 }, { construcao: true });
+  verdade("aparar sem cortes com construção: vira construção", !!e3.geos.find((g) => g.id === l.id)?.construcao);
+}
+
+// 16. Padrões de esboço: linear 3 × 2 pulando (2, 2) com cota de espaçamento; circular sem
+// espaçamento igual (passo de 30°) pulando a 3ª instância
+{
+  const e = plano();
+  const c = op.circulo(e, op.ponto(e, { x: 0, y: 0 }), 2);
+  const novas = op.padraoLinearEsboco(e, [c.id], { n1: 3, esp1: 10, ang1: 0, n2: 2, esp2: 15, ang2: 90, pular: [[2, 2]], cotar1: true, cotar2: true });
+  verdade("linear 3 × 2 menos 1 pulada = 4 cópias", novas.length === 4);
+  verdade("linear: cotas de espaçamento H e V", e.restricoes.some((r) => r.tipo === "distanciaH" && r.valor === 10) && e.restricoes.some((r) => r.tipo === "distanciaV" && r.valor === 15));
+  const centros = e.geos.filter((g) => g.tipo === "circulo").map((g) => e.pontos.find((p) => p.id === (g as { c: string }).c)!);
+  verdade("linear: (2, 2) ficou de fora", !centros.some((p) => Math.abs(p.x - 10) < 1e-9 && Math.abs(p.y - 15) < 1e-9));
+  verdade("linear resolve", solver.resolver(e).conflitantes.length === 0);
+
+  const e2 = plano();
+  const c2 = op.circulo(e2, op.ponto(e2, { x: 20, y: 0 }), 2);
+  const n2 = op.padraoCircularEsboco(e2, [c2.id], { centro: { x: 0, y: 0 }, n: 4, angulo: 30, igual: false, pular: [3], centroId: ORIGEM, cotarRaio: true });
+  verdade("circular: 4 instâncias menos a 3ª = 2 cópias", n2.length === 2);
+  const ult = e2.geos.find((g) => g.id === n2[1]) as { c: string };
+  const q = e2.pontos.find((p) => p.id === ult.c)!;
+  confere("circular: 4ª instância a 90°", (Math.atan2(q.y, q.x) * 180) / Math.PI, 90);
+  verdade("circular: cota do raio", e2.restricoes.some((r) => r.tipo === "distancia" && r.a === ORIGEM && Math.abs((r as { valor: number }).valor - 20) < 1e-9));
 }
 
 if (falhas) {
