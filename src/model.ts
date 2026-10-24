@@ -96,8 +96,40 @@ export type GeoEsboco =
   | (GeoBase & { tipo: "arcoElipse"; c: string; m1: string; m2: string; n1: string; n2: string; ini: string; fim: string })
   /** Arco de parábola pelo vértice `v` e foco `f`, de `ini` a `fim` (parâmetro crescente). */
   | (GeoBase & { tipo: "parabola"; v: string; f: string; ini: string; fim: string })
+  /**
+   * Texto: contornos das letras (gerados da fonte no editor e guardados, para o arquivo abrir
+   * igual em qualquer aparelho), relativos ao ponto `p`. Com `curva`, segue a linha/arco/círculo.
+   * `transf` é a matriz 2×2 de cópias giradas/espelhadas.
+   */
+  | (GeoBase & { tipo: "texto"; p: string; opc: OpcoesTexto; curva?: string; contornos: ComandoTexto[][]; transf?: [number, number, number, number] })
   /** Ponto solto (posição de furo, referência). */
   | (GeoBase & { tipo: "ponto"; p: string });
+
+export interface OpcoesTexto {
+  texto: string;
+  /** Altura das maiúsculas (mm). */
+  altura: number;
+  negrito: boolean;
+  italico: boolean;
+  /** Giro do texto (graus); sem curva. */
+  angulo: number;
+  alinhamento: "esquerda" | "centro" | "direita" | "justificado";
+  inverterV: boolean;
+  inverterH: boolean;
+  /** Fator de largura das letras (%). */
+  largura: number;
+  /** Espaçamento entre letras (%). */
+  espacamento: number;
+  fonte: "noto-sans";
+}
+
+/** Comandos de contorno (como no SVG): mover, linha, Bézier quadrática e cúbica, fechar. */
+export type ComandoTexto =
+  | ["M", number, number]
+  | ["L", number, number]
+  | ["Q", number, number, number, number]
+  | ["C", number, number, number, number, number, number]
+  | ["Z"];
 
 /** Relações geométricas e cotas. Referências são ids de pontos ou de geometrias. */
 export type RestricaoEsboco =

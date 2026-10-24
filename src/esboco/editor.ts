@@ -3,15 +3,18 @@
 // e lupa de precisão); no computador o botão esquerdo desenha, o do meio arrasta, o direito gira.
 
 import type * as THREE from "three";
-import type { CotaEsboco, FeatureEsboco, GeoEsboco, Referencia, RestricaoEsboco } from "../model";
+import type { CotaEsboco, FeatureEsboco, GeoEsboco, OpcoesTexto, Referencia, RestricaoEsboco } from "../model";
 import { ehCota, novoId } from "../model";
 import type { TipoEntidade, Viewport } from "../viewport";
 import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
-  amostrar, angulo, centroTresPontos, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
+  amostrar, angulo, angulosArco, centroTresPontos, tracosDaGeo, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
+import { carregarFonte, fonteLida } from "./fontesTexto";
+import { gerarContornos, OPCOES_TEXTO_PADRAO, type GuiaTexto } from "./texto";
+import type { Font } from "opentype.js";
 import { atualizarExternas, criarExterna, idsExternos, podarExternas, pontoNaProjecao, projetar, type ProjecaoExterna } from "./externas";
 import { referencial, type Referencial } from "./referencial";
 import type { ResultadoSolver, SolverEsboco } from "./solver";
@@ -19,14 +22,14 @@ import { construirCamada, descartarCamada } from "./visual";
 
 export type Ferramenta =
   | "selecionar" | "ponto" | "linha" | "retangulo" | "circulo" | "arco" | "rasgo" | "poligono" | "spline"
-  | "elipse" | "elipseParcial" | "parabola"
+  | "elipse" | "elipseParcial" | "parabola" | "texto"
   | "aparar" | "estender" | "fileteEsboco" | "chanfroEsboco" | "offset" | "espelhar" | "cota" | "converter"
   | "padraoLinearEsboco" | "padraoCircularEsboco" | "exibirRelacoes";
 
 export const ROTULO_FERRAMENTA: Record<Ferramenta, string> = {
   selecionar: "Selecionar", ponto: "Ponto", linha: "Linha", retangulo: "Retângulo", circulo: "Círculo", arco: "Arco",
   rasgo: "Rasgo", poligono: "Polígono", spline: "Spline",
-  elipse: "Elipse", elipseParcial: "Elipse parcial", parabola: "Parábola", aparar: "Aparar", estender: "Estender",
+  elipse: "Elipse", elipseParcial: "Elipse parcial", parabola: "Parábola", texto: "Texto de esboço", aparar: "Aparar", estender: "Estender",
   fileteEsboco: "Filete de esboço", chanfroEsboco: "Chanfro de esboço", offset: "Offset",
   espelhar: "Espelhar", cota: "Cota", converter: "Converter entidades",
   padraoLinearEsboco: "Padrão linear de esboço", padraoCircularEsboco: "Padrão circular de esboço",
@@ -81,6 +84,9 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "elipse": return ["Toque o centro.", "Toque a ponta do eixo maior.", "Toque para definir o eixo menor."][n] ?? "";
     case "elipseParcial":
       return ["Toque o centro.", "Toque a ponta do eixo maior.", "Toque para definir o eixo menor e o início do arco.", "Toque o fim do arco (sentido anti-horário)."][n] ?? "";
+    case "texto": return ed?.campoTexto === "curva"
+      ? "Toque a linha, o arco ou o círculo que o texto deve seguir."
+      : ed?.ultimoTexto ? "Edite o texto no painel; toque no desenho para começar outro texto ali." : "Toque onde o texto começa.";
     case "parabola": return ["Toque o foco.", "Toque o vértice.", "Toque o início do arco.", "Toque o fim do arco."][n] ?? "";
     case "spline": return n ? "Mais pontos. Toque no último de novo (ou Esc) para terminar; no primeiro, fecha a curva." : "Toque o primeiro ponto da curva.";
     case "aparar": return "Toque o trecho a apagar (entre interseções).";
@@ -288,6 +294,11 @@ export class EditorEsboco {
     this.aparoRefs = [];
     this.fecharCaixaRelacoes();
     if (f === "padraoLinearEsboco" || f === "padraoCircularEsboco") this.campoPadrao = "entidades";
+    if (f === "texto" && !this.editandoTexto) {
+      this.ultimoTexto = null;
+      this.campoTexto = "posicao";
+    }
+    this.editandoTexto = false;
     if (!["selecionar", "espelhar", "offset", "padraoLinearEsboco", "padraoCircularEsboco", "exibirRelacoes"].includes(f)) {
       this.selecao.clear();
       if (podarExternas(this.esb, this.selecao)) this.resolver(false);
@@ -319,6 +330,7 @@ export class EditorEsboco {
   resolver(final: boolean, notificar = true) {
     podarExternas(this.esb, this.selecao);
     this.estado = this.h.solver.resolver(this.esb);
+    this.atualizarTextosNaCurva();
     this.conflito = new Set(this.estado.conflitantes);
     for (const r of this.esb.restricoes) if (this.conflito.has(r.id)) op.referencias(r).forEach((x) => this.conflito.add(x));
     this.livres = this.estado.definicao === "subdefinido" ? this.h.solver.livres(this.esb) : new Set();
@@ -720,6 +732,10 @@ export class EditorEsboco {
       this.toquePadrao(this.achar(enc.p, tol));
       return;
     }
+    if (f === "texto") {
+      this.toqueTexto(enc, tol);
+      return;
+    }
     if (f === "exibirRelacoes") {
       const alvo = this.achar(enc.p, tol);
       if (!alvo) this.selecao.clear();
@@ -1081,10 +1097,152 @@ export class EditorEsboco {
     const segs: P2[] = [];
     for (const g of copia.geos) {
       if (!novas.includes(g.id)) continue;
-      const am = amostrar(g, pts);
-      for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
+      for (const am of tracosDaGeo(g, pts)) for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
     }
     return { segmentos: segs, pontos: [] };
+  }
+
+  // ---------- texto de esboço ----------
+
+  /** Opções do painel de texto (valem para o próximo texto e editam o texto atual). */
+  textoOpc: OpcoesTexto = { ...OPCOES_TEXTO_PADRAO };
+  /** Texto sendo editado pelo painel (o último criado ou o escolhido em "Editar texto"). */
+  ultimoTexto: string | null = null;
+  /** Campo ativo: tocar no desenho posiciona o texto, ou escolhe a curva que ele segue. */
+  campoTexto: "posicao" | "curva" = "posicao";
+  private editandoTexto = false;
+
+  private geoTexto(): Extract<GeoEsboco, { tipo: "texto" }> | null {
+    const g = this.esb.geos.find((x) => x.id === this.ultimoTexto);
+    return g?.tipo === "texto" ? g : null;
+  }
+
+  /** Curva do texto atual (para o campo do painel). */
+  get curvaTexto(): string | null {
+    const g = this.geoTexto();
+    if (!g?.curva) return null;
+    const c = this.esb.geos.find((x) => x.id === g.curva);
+    return c ? ({ linha: "Linha", arco: "Arco", circulo: "Círculo" } as Record<string, string>)[c.tipo] ?? "Curva" : null;
+  }
+
+  /** Abre o painel do texto com um texto existente. */
+  editarTexto(id: string) {
+    const g = this.esb.geos.find((x) => x.id === id);
+    if (g?.tipo !== "texto") return;
+    this.textoOpc = { ...g.opc };
+    this.editandoTexto = true;
+    this.definirFerramenta("texto");
+    this.ultimoTexto = id;
+    this.campoTexto = "posicao";
+    this.h.atualizarInterface();
+  }
+
+  definirCampoTexto(c: "posicao" | "curva") {
+    this.campoTexto = c;
+    this.h.atualizarInterface();
+  }
+
+  /** Ponto de ancoragem e guia (em coordenadas locais) de um texto que segue uma curva. */
+  private guiaDaCurva(curvaId: string): { p: string; guia: GuiaTexto } | null {
+    const c = this.esb.geos.find((x) => x.id === curvaId);
+    const pts = mapaPontos(this.esb);
+    if (c?.tipo === "linha") {
+      const a = pts.get(c.p1)!, b = pts.get(c.p2)!;
+      return { p: c.p1, guia: { tipo: "reta", a: { x: 0, y: 0 }, b: sub(b, a) } };
+    }
+    if (c?.tipo === "arco") {
+      const ctr = pts.get(c.c)!;
+      const [a0, a1] = angulosArco(ctr, pts.get(c.ini)!, pts.get(c.fim)!);
+      return { p: c.c, guia: { tipo: "arco", c: { x: 0, y: 0 }, r: dist(ctr, pts.get(c.ini)!), a0, a1 } };
+    }
+    if (c?.tipo === "circulo") {
+      // começa embaixo e corre no sentido horário: centralizado, fica no topo
+      return { p: c.c, guia: { tipo: "arco", c: { x: 0, y: 0 }, r: c.r, a0: -Math.PI / 2, a1: (3 * Math.PI) / 2 } };
+    }
+    return null;
+  }
+
+  /** Recalcula os contornos das letras (a fonte precisa estar lida). */
+  private regenerarTexto(g: Extract<GeoEsboco, { tipo: "texto" }>, fonte: Font) {
+    const gc = g.curva ? this.guiaDaCurva(g.curva) : null;
+    if (g.curva && !gc) delete g.curva; // a curva foi apagada: o texto fica onde está
+    if (gc) g.p = gc.p;
+    g.contornos = gerarContornos(fonte, g.opc, gc?.guia);
+    delete g.transf;
+  }
+
+  /** Textos que seguem curvas acompanham a curva depois de resolver o esboço. */
+  private atualizarTextosNaCurva() {
+    for (const g of this.esb.geos) {
+      if (g.tipo !== "texto" || !g.curva) continue;
+      const f = fonteLida(g.opc.negrito, g.opc.italico);
+      if (f) this.regenerarTexto(g, f);
+    }
+  }
+
+  /** Mudou uma opção do painel: vale para o próximo texto e refaz o texto atual. */
+  async mudarTexto(m: Partial<OpcoesTexto>, digitando = false) {
+    Object.assign(this.textoOpc, m);
+    const g = this.geoTexto();
+    if (!g) return;
+    g.opc = { ...this.textoOpc };
+    try {
+      this.regenerarTexto(g, await carregarFonte(g.opc.negrito, g.opc.italico));
+    } catch {
+      return this.h.avisar("Não foi possível ler a fonte do texto.");
+    }
+    if (digitando) {
+      // enquanto digita: só redesenha (refazer o painel tiraria o foco da caixa de texto)
+      this.redesenhar();
+      this.h.alterou(false);
+    } else this.resolver(true);
+  }
+
+  /** Fim da digitação: grava o passo de desfazer sem refazer o painel. */
+  confirmarTexto() {
+    if (this.geoTexto()) this.h.alterou(true);
+  }
+
+  /** Tira o texto atual da curva: ele fica parado onde está. */
+  soltarTextoDaCurva() {
+    const g = this.geoTexto();
+    if (!g?.curva) return;
+    const p = mapaPontos(this.esb).get(g.p)!;
+    delete g.curva;
+    g.p = op.ponto(this.esb, p);
+    op.pontoSolto(this.esb, g.p, true);
+    void this.mudarTexto({});
+  }
+
+  private async toqueTexto(enc: Encaixe, tol: number) {
+    let fonte: Font;
+    try {
+      fonte = await carregarFonte(this.textoOpc.negrito, this.textoOpc.italico);
+    } catch {
+      return this.h.avisar("Não foi possível ler a fonte do texto.");
+    }
+    if (this.campoTexto === "curva") {
+      const alvo = this.achar(enc.p, tol);
+      const c = alvo?.tipo === "geo" ? this.esb.geos.find((x) => x.id === alvo.id) : null;
+      if (!c || !["linha", "arco", "circulo"].includes(c.tipo)) return this.h.avisar("O texto segue uma linha, um arco ou um círculo do esboço.");
+      let g = this.geoTexto();
+      if (!g) {
+        g = op.texto(this.esb, op.ponto(this.esb, enc.p), this.textoOpc, [], c.id, this.construcao);
+        this.ultimoTexto = g.id;
+      }
+      g.curva = c.id;
+      this.regenerarTexto(g, fonte);
+      this.campoTexto = "posicao";
+      this.resolver(true);
+      return;
+    }
+    // ponto de partida do texto: um ponto solto de construção (para cotar a posição)
+    const p = this.pontoDo(enc);
+    if (!this.esb.geos.some((g) => g.tipo === "ponto" && g.p === p) && p !== ORIGEM) op.pontoSolto(this.esb, p, true);
+    const g = op.texto(this.esb, p, this.textoOpc, [], undefined, this.construcao);
+    this.regenerarTexto(g, fonte);
+    this.ultimoTexto = g.id;
+    this.resolver(true);
   }
 
   // ---------- padrões de esboço ----------

@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/noto-sans':
+        specifier: 5.3.0
+        version: 5.3.0
       '@salusoft89/planegcs':
         specifier: 1.3.0
         version: 1.3.0
+      opentype.js:
+        specifier: 2.0.0
+        version: 2.0.0
       replicad:
         specifier: ^1.1.0
         version: 1.1.0
@@ -194,6 +200,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/noto-sans@5.3.0':
+    resolution: {integrity: sha512-fBCog2PY7DiVVTEEqtI/Qdinx/knobHYfoGpjFXdfBX5RoJaBp1Prw2G75p0OIsdlMZg3cLo0c+YbIUYOxnQJw==}
 
   '@oxc-project/types@0.154.0':
     resolution: {integrity: sha512-KYOUGQFlLWR+s4QMV2Q9ko38TZm7EdO87Qm7rvZLqk/webse/cDjtyxKhg/47l0byCbs/k46LT8qc4PKjAikzA==}
@@ -554,6 +563,10 @@ packages:
     engines: {node: '>= 8.0.0'}
     hasBin: true
 
+  opentype.js@2.0.0:
+    resolution: {integrity: sha512-kCyjv6xdDY1W/jLWZ/L3QhhTlKUqDZMQ5+Jdlw12b3dXkKNpYBqqlMMj0YDQPShWFTMwgZI1hG14kN3XUDSg/A==}
+    hasBin: true
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -727,6 +740,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@fontsource/noto-sans@5.3.0': {}
 
   '@oxc-project/types@0.154.0': {}
 
@@ -959,6 +974,8 @@ snapshots:
     dependencies:
       string.prototype.codepointat: 0.2.1
       tiny-inflate: 1.0.3
+
+  opentype.js@2.0.0: {}
 
   picocolors@1.1.1: {}
 

@@ -892,3 +892,11 @@ body.disp-celular .status { font-size: 12px; }
 .cmd-seta:hover { background: var(--painel-2); color: var(--acento); }
 body.disp-computador .cmd-seta { min-height: 0; }
 .selo { text-transform: none; }
+
+/* painel do texto de esboço */
+textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 8px; border: 1px solid var(--linha); border-radius: 8px; resize: vertical; }
+.barra-alternar { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.barra-alternar .alternar { min-width: var(--toque); padding: 0 8px; }
+.barra-alternar .alternar[aria-pressed="true"] { background: var(--acento-suave); color: var(--acento); border-color: var(--acento); }
+.barra-alternar .negrito { font-weight: 800; }
+.barra-alternar .italico { font-style: italic; font-family: serif; }

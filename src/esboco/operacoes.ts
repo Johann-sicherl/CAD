@@ -2,7 +2,7 @@
 // aparar, offset, espelhar e exclusão. Funções puras sobre o modelo (testáveis em Node);
 // depois de cada operação o editor chama o solver.
 
-import type { FeatureEsboco, GeoEsboco, RestricaoEsboco } from "../model";
+import type { ComandoTexto, FeatureEsboco, GeoEsboco, OpcoesTexto, RestricaoEsboco } from "../model";
 import { novoId } from "../model";
 import {
   angulo, angulosArco, areaAssinada, centroTresPontos, cruz2, dist, distPontoSegmento, EIXO_H, EIXO_V,
@@ -222,7 +222,7 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2, opc: Opcoes
     return true;
   };
   // sem interseção analítica: a curva sai inteira
-  if (g.tipo === "spline" || g.tipo === "ponto" || g.tipo === "elipse" || g.tipo === "arcoElipse" || g.tipo === "parabola") return apagarInteira();
+  if (g.tipo === "spline" || g.tipo === "ponto" || g.tipo === "elipse" || g.tipo === "arcoElipse" || g.tipo === "parabola" || g.tipo === "texto") return apagarInteira();
   const cortes = cortesNaGeo(esb, g, pts, opc.cortadores);
 
   if (g.tipo === "circulo") {
@@ -623,7 +623,7 @@ export function espelhar(esb: FeatureEsboco, geoIds: string[], eixo: string): st
       restringir(esb, { tipo: "igual", a: g.id, b: n.id });
     } else if (g.tipo === "arco") n = arco(esb, par(g.c), par(g.fim), par(g.ini), g.construcao); // espelho inverte o sentido
     else if (g.tipo === "ponto") n = pontoSolto(esb, par(g.p), g.construcao);
-    else n = copiarCurva(esb, g, par, true);
+    else n = copiarCurva(esb, g, par, true, (v) => sub(refletir(v, a, b), refletir({ x: 0, y: 0 }, a, b)));
     novas.push(n.id);
   }
   return novas;
@@ -633,7 +633,13 @@ export function espelhar(esb: FeatureEsboco, geoIds: string[], eixo: string): st
  * Cópia de spline, elipse ou parábola com os pontos trocados por `m`. Espelhada, a orientação
  * se inverte: o eixo menor positivo passa a ser o outro lado e o arco troca início e fim.
  */
-function copiarCurva(esb: FeatureEsboco, g: Geo<"spline" | "elipse" | "arcoElipse" | "parabola">, m: (id: string) => string, espelhada: boolean): GeoEsboco {
+function copiarCurva(
+  esb: FeatureEsboco,
+  g: Geo<"spline" | "elipse" | "arcoElipse" | "parabola" | "texto">,
+  m: (id: string) => string,
+  espelhada: boolean,
+  linear: (v: P2) => P2,
+): GeoEsboco {
   const k = !!g.construcao;
   if (g.tipo === "spline") return spline(esb, g.pontos.map(m), k);
   const novo = (x: Record<string, unknown>) => {
@@ -641,6 +647,13 @@ function copiarCurva(esb: FeatureEsboco, g: Geo<"spline" | "elipse" | "arcoElips
     esb.geos.push(n);
     return n;
   };
+  if (g.tipo === "texto") {
+    // as letras vão junto: a matriz da cópia compõe a transformação (giro/espelho) com a atual
+    const [a, b, c, d] = g.transf ?? [1, 0, 0, 1];
+    const e1 = linear({ x: 1, y: 0 }), e2 = linear({ x: 0, y: 1 });
+    const t: [number, number, number, number] = [e1.x * a + e2.x * c, e1.x * b + e2.x * d, e1.y * a + e2.y * c, e1.y * b + e2.y * d];
+    return novo({ tipo: "texto", p: m(g.p), opc: { ...g.opc }, contornos: g.contornos, transf: t });
+  }
   if (g.tipo === "parabola") {
     const [ini, fim] = espelhada ? [g.fim, g.ini] : [g.ini, g.fim];
     return novo({ tipo: "parabola", v: m(g.v), f: m(g.f), ini: m(ini), fim: m(fim) });
@@ -650,6 +663,15 @@ function copiarCurva(esb: FeatureEsboco, g: Geo<"spline" | "elipse" | "arcoElips
   if (g.tipo === "elipse") return novo({ tipo: "elipse", ...eixos });
   const [ini, fim] = espelhada ? [g.fim, g.ini] : [g.ini, g.fim];
   return novo({ tipo: "arcoElipse", ...eixos, ini: m(ini), fim: m(fim) });
+}
+
+// ---------- texto ----------
+
+/** Texto ancorado no ponto `p` (contornos já gerados da fonte, relativos a `p`). */
+export function texto(esb: FeatureEsboco, p: string, opc: OpcoesTexto, contornos: ComandoTexto[][], curva?: string, construcao = false): Geo<"texto"> {
+  const g: Geo<"texto"> = { id: novoId(), tipo: "texto", p, opc: { ...opc }, contornos, ...(curva && { curva }), ...(construcao && { construcao }) };
+  esb.geos.push(g);
+  return g;
 }
 
 // ---------- elipse, elipse parcial e parábola ----------
@@ -946,6 +968,13 @@ export function transformar(esb: FeatureEsboco, geoIds: string[], f: (p: P2) => 
       p.x = q.x;
       p.y = q.y;
     }
+    // texto girado/espelhado no lugar: as letras acompanham pela matriz
+    for (const g of geos) {
+      if (g.tipo !== "texto") continue;
+      const e1 = sub(f({ x: 1, y: 0 }), f({ x: 0, y: 0 })), e2 = sub(f({ x: 0, y: 1 }), f({ x: 0, y: 0 }));
+      const [a, b, c, d] = g.transf ?? [1, 0, 0, 1];
+      g.transf = [e1.x * a + e2.x * c, e1.x * b + e2.x * d, e1.y * a + e2.y * c, e1.y * b + e2.y * d];
+    }
     // relações que prendem os pontos movidos em lugares fixos deixam de valer
     esb.restricoes = esb.restricoes.filter((r) => !(r.tipo === "fixo" && idsPontos.includes(r.a)));
     return geoIds;
@@ -959,7 +988,7 @@ export function transformar(esb: FeatureEsboco, geoIds: string[], f: (p: P2) => 
     else if (g.tipo === "circulo") n = circulo(esb, m(g.c), g.r, g.construcao);
     else if (g.tipo === "arco") n = arco(esb, m(g.c), m(g.ini), m(g.fim), g.construcao);
     else if (g.tipo === "ponto") n = pontoSolto(esb, m(g.p), g.construcao);
-    else n = copiarCurva(esb, g, m, false);
+    else n = copiarCurva(esb, g, m, false, (v) => sub(f(v), f({ x: 0, y: 0 })));
     novas.push(n.id);
   }
   return novas;

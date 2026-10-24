@@ -2305,7 +2305,22 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
   dispositivo: { rotulo: "Dispositivo (celular, tablet, computador)…", icone: "tablet", fazer: () => escolherDispositivo(false) },
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
+  sobre: { rotulo: "Sobre e licenças", icone: "menu", fazer: mostrarSobre },
 };
+
+/** Componentes de terceiros usados no app (com as licenças). */
+function mostrarSobre() {
+  abrirJanela("Sobre o JLSCAD", `<p>JLSCAD — CAD paramétrico para tablet, celular e computador. Funciona offline.</p>
+  ${tabela([
+    ["OpenCascade (replicad-opencascadejs)", "Núcleo de sólidos — LGPL 2.1 com exceção"],
+    ["replicad", "Ponte com o OpenCascade — MIT"],
+    ["PlaneGCS (@salusoft89/planegcs, do FreeCAD)", "Solver do esboço — LGPL 2.0 ou posterior"],
+    ["Three.js", "Visualização 3D — MIT"],
+    ["opentype.js", "Leitura de fontes do texto de esboço — MIT"],
+    ["Noto Sans (@fontsource/noto-sans)", "Fonte do texto de esboço — SIL Open Font License 1.1, © The Noto Project Authors"],
+  ])}
+  <p class="dica">As fontes OFL podem ser usadas, embutidas e redistribuídas livremente com o programa; não podem ser vendidas sozinhas.</p>`);
+}
 
 document.querySelectorAll<HTMLButtonElement>("[data-acao]").forEach((b) => {
   const a = ACOES[b.dataset.acao!];

@@ -163,7 +163,7 @@ export const ABAS: Aba[] = [
           { id: "chanfroEsboco", rotulo: "Chanfro de esboço", icone: "chanfroEsboco", dica: "Chanfra um canto do esboço", grupo: 2 },
         ],
       },
-      { id: "texto", rotulo: "Texto", icone: "texto", dica: "Texto de esboço (gravação, marcação)", grupo: 2, emBreve: true },
+      { id: "texto", rotulo: "Texto", icone: "texto", dica: "Texto de esboço (gravação, marcação)", grupo: 2 },
       { id: "ponto", rotulo: "Ponto", icone: "ponto", dica: "Ponto solto (posição de furo, referência)", grupo: 2 },
       {
         id: "grupo-aparar", rotulo: "Aparar", icone: "aparar", dica: "Aparar e estender", grupo: 3,

@@ -22,7 +22,7 @@ import type {
   Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
-import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, type Laco, type P2 } from "../esboco/geometria";
+import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
@@ -240,15 +240,17 @@ export function desenhoDoEsboco(esb: FeatureEsboco, contornos?: (string | number
   if (contornos?.length) lacos = lacos.filter((_, i) => contornos.map(Number).includes(i));
   if (!lacos.length) throw new Error("Nenhum contorno selecionado.");
   const prof = aninhamento(lacos);
+  // cada região (laço externo ou ilha) menos os seus furos diretos; depois une as regiões.
+  // Cortar furos de um desenho com várias regiões separadas perde regiões no replicad.
   let res: Drawing | null = null;
-  const niveis = [...new Set(prof)].sort((a, b) => a - b);
-  for (const n of niveis) {
-    lacos.forEach((l, i) => {
-      if (prof[i] !== n) return;
-      const d = desenhoDoLaco(l);
-      res = n % 2 === 0 ? (res ? res.fuse(d) : d) : res!.cut(d);
+  lacos.forEach((l, i) => {
+    if (prof[i] % 2) return;
+    let regiao = desenhoDoLaco(l);
+    lacos.forEach((h, j) => {
+      if (prof[j] === prof[i] + 1 && pontoNoPoligono(h.poligono[0], l.poligono)) regiao = regiao.cut(desenhoDoLaco(h));
     });
-  }
+    res = res ? res.fuse(regiao) : regiao;
+  });
   return res!;
 }
 
