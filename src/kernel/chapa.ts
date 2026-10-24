@@ -10,7 +10,7 @@
 // Planificado: a filha é posta no plano da mãe, a uma distância BA = θ·(r + K·t) da aresta
 // (comprimento da linha neutra), sem girar. O 3D e o planificado saem da mesma árvore.
 
-import { drawRectangle, Plane, type Drawing, type Shape3D } from "replicad";
+import { draw, drawRectangle, Plane, type Drawing, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
 import type { P2 } from "../esboco/geometria";
 
@@ -37,6 +37,16 @@ interface Plano2 {
   v: P2;
 }
 
+/**
+ * Corte por plano (canto automático entre flanges vizinhas): fica o lado em que
+ * m·(x − p) ≥ 0. No 3D corta pelo plano; no planificado, perpendicular à chapa pela face que
+ * tira mais (a peça dobrada não colide).
+ */
+export interface Corte {
+  p: Vec3;
+  m: Vec3;
+}
+
 export interface Parede {
   id: string;
   q: Quadro;
@@ -46,6 +56,7 @@ export interface Parede {
   forma: Drawing;
   /** Contornos (em coordenadas locais) usados para achar arestas tocadas no modelo. */
   contornos: P2[][];
+  cortes?: Corte[];
 }
 
 export interface Dobra {
@@ -65,6 +76,7 @@ export interface Dobra {
   ba: number;
   /** Para cima (+) ou para baixo (−) visto do planificado. */
   sentidoPlano: 1 | -1;
+  cortes?: Corte[];
 }
 
 // ---------- vetores ----------
@@ -107,6 +119,34 @@ export function transformarDesenho(D: Drawing, a: number, b: number, c: number, 
   const ang = (Math.atan2(c, a) * 180) / Math.PI;
   if (Math.abs(ang) > 1e-9) r = r.rotate(ang, [0, 0]);
   return r.translate(tx, ty);
+}
+
+/** Polígono fechado como desenho (pontos repetidos seguidos são ignorados). */
+function poligonoDesenho(pts: P2[]): Drawing {
+  const q = pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > 1e-9);
+  if (q.length > 1 && Math.hypot(q[0].x - q[q.length - 1].x, q[0].y - q[q.length - 1].y) < 1e-9) q.pop();
+  let d = draw([q[0].x, q[0].y]);
+  for (const p of q.slice(1)) d = d.lineTo([p.x, p.y]);
+  return d.close();
+}
+
+const GRANDE = 1e4; // mm: maior que qualquer peça de chapa
+
+/** Semiplano a·x + b·y + c < 0 (o lado removido) como desenho. */
+function semiplano(a: number, b: number, c: number): Drawing {
+  const l = Math.hypot(a, b);
+  const na = a / l, nb = b / l, cn = c / l;
+  const q0 = { x: -cn * na, y: -cn * nb };
+  const dir = { x: -nb, y: na }, fora = { x: -na, y: -nb };
+  const p = (s: number, f: number) => ({ x: q0.x + dir.x * s + fora.x * f, y: q0.y + dir.y * s + fora.y * f });
+  return poligonoDesenho([p(-GRANDE, 0), p(GRANDE, 0), p(GRANDE, GRANDE), p(-GRANDE, GRANDE)]);
+}
+
+/** Meio-espaço removido por um corte (m·(x − p) < 0). */
+function semiespaco(c: Corte): Shape3D {
+  const x = unit(Math.abs(c.m[0]) < 0.9 ? cruz(c.m, [1, 0, 0]) : cruz(c.m, [0, 1, 0]));
+  const sk = drawRectangle(2 * GRANDE, 2 * GRANDE).sketchOnPlane(new Plane(c.p, x, c.m)) as unknown as { extrude(d: number): Shape3D };
+  return sk.extrude(-GRANDE);
 }
 
 /** Retângulo [x0, x1] × [y0, y1] como desenho. */
@@ -195,14 +235,15 @@ export class ModeloChapa {
     const partes: Shape3D[] = [];
     for (const w of this.paredes) {
       const sk = w.forma.sketchOnPlane(new Plane(w.q.o, w.q.u, w.q.n)) as unknown as { extrude(d: number): Shape3D };
-      partes.push(sk.extrude(w.s * t));
+      partes.push(cortar(sk.extrude(w.s * t), w.cortes));
     }
-    for (const b of this.dobras) partes.push(this.solidoDobra(b));
+    for (const b of this.dobras) partes.push(cortar(this.solidoDobra(b), b.cortes));
     if (!partes.length) throw new Error("A chapa ficou vazia.");
     return partes.slice(1).reduce((acc, x) => acc.fuse(x), partes[0]);
   }
 
-  private solidoDobra(b: Dobra): Shape3D {
+  /** Geometria da dobra: aresta da mãe (E0, e3, d3), eixo (A, e3) e ângulo com sinal. */
+  private geomDobra(b: Dobra) {
     const P = this.parede(b.pai)!;
     const t = this.p.t;
     const E0 = local3(P.q, b.e0);
@@ -211,6 +252,48 @@ export class ModeloChapa {
     const A = soma(E0, mul(P.q.n, zA));
     const b3 = mul(P.q.n, b.paraMaterial ? P.s : -P.s);
     const phi = esc(cruz(e3, d3), b3) >= 0 ? b.theta : -b.theta;
+    return { P, E0, e3, d3, A, phi };
+  }
+
+  /**
+   * Trecho [lo, hi] (ao longo da aresta) da dobra que sobra depois dos cortes no ângulo ψ,
+   * conferido nas duas faces da chapa (fica o menor).
+   */
+  private faixaDobra(b: Dobra, psi: number): [number, number] {
+    const g = this.geomDobra(b);
+    let lo = b.s0, hi = b.s1;
+    for (const c of b.cortes ?? []) {
+      for (const z of [0, g.P.s * this.p.t]) {
+        const X = soma(g.A, girar(sub(soma(g.E0, mul(g.P.q.n, z)), g.A), g.e3, psi));
+        const k = esc(c.m, sub(X, c.p)), a = esc(c.m, g.e3);
+        if (Math.abs(a) < 1e-12) {
+          if (k < 0) hi = lo;
+          continue;
+        }
+        if (a > 0) lo = Math.max(lo, -k / a);
+        else hi = Math.min(hi, -k / a);
+      }
+    }
+    if (hi < lo) lo = hi = (lo + hi) / 2;
+    return [lo, hi];
+  }
+
+  /** Forma da parede no planificado: cortes perpendiculares à chapa pela face que tira mais. */
+  private formaPlana(w: Parede): Drawing {
+    let D = w.forma;
+    for (const c of w.cortes ?? []) {
+      for (const z of [0, w.s * this.p.t]) {
+        const a = esc(c.m, w.q.u), b = esc(c.m, w.q.v), k = esc(c.m, sub(soma(w.q.o, mul(w.q.n, z)), c.p));
+        if (Math.hypot(a, b) < 1e-9) continue;
+        D = D.cut(semiplano(a, b, k));
+      }
+    }
+    return D;
+  }
+
+  private solidoDobra(b: Dobra): Shape3D {
+    const t = this.p.t;
+    const { P, E0, e3, d3, A, phi } = this.geomDobra(b);
     // seção da chapa na aresta (retângulo largura × espessura) girada em torno do eixo
     const plano = new Plane(soma(E0, mul(e3, b.s0)), e3, d3);
     const yN = esc(P.q.n, cruz(d3, e3)); // ±1: n no eixo y do plano
@@ -227,12 +310,26 @@ export class ModeloChapa {
     const juntar = (x: Drawing) => (D = D ? D.fuse(x) : x);
     for (const w of this.paredes) {
       const p = w.plano;
-      juntar(transformarDesenho(w.forma, p.u.x, p.v.x, p.u.y, p.v.y, p.o.x, p.o.y));
+      juntar(transformarDesenho(this.formaPlana(w), p.u.x, p.v.x, p.u.y, p.v.y, p.o.x, p.o.y));
     }
     const linhas: { a: P2; b: P2; cima: boolean; angulo: number; raio: number }[] = [];
     for (const b of this.dobras) {
       const P = this.parede(b.pai)!;
       const ponto = (s: number, h: number) => plano2(P.plano, s2(b.e0, s2(m2(b.e, s), m2(b.d, h))));
+      if (b.cortes?.length) {
+        // região da dobra aparada pelo canto: contorno por amostras do ângulo (linha neutra)
+        const N = 16, esq: P2[] = [], dir: P2[] = [];
+        const phi = this.geomDobra(b).phi;
+        for (let i = 0; i <= N; i++) {
+          const [lo, hi] = this.faixaDobra(b, (phi * i) / N);
+          esq.push(ponto(lo, (b.ba * i) / N));
+          dir.push(ponto(hi, (b.ba * i) / N));
+        }
+        juntar(poligonoDesenho([...esq, ...dir.reverse()]));
+        const [lo, hi] = this.faixaDobra(b, phi / 2);
+        linhas.push({ a: ponto(lo, b.ba / 2), b: ponto(hi, b.ba / 2), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
+        continue;
+      }
       const c = [ponto(b.s0, 0), ponto(b.s1, 0), ponto(b.s1, b.ba), ponto(b.s0, b.ba)];
       // região da dobra no planificado (retângulo de largura BA)
       const minx = Math.min(...c.map((q) => q.x)), maxx = Math.max(...c.map((q) => q.x));
@@ -291,6 +388,12 @@ export class ModeloChapa {
     }
     return null;
   }
+}
+
+/** Aplica os cortes de canto a um sólido. */
+function cortar(x: Shape3D, cortes: Corte[] | undefined): Shape3D {
+  for (const c of cortes ?? []) x = x.cut(semiespaco(c));
+  return x;
 }
 
 /** Normal externa (no plano) da aresta p→q de um contorno com área assinada `area`. */

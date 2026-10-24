@@ -69,10 +69,10 @@ Legenda de status (igual à do CAD): ✅ existe · 🟡 parcial · **G0…G8** f
    - antes de cada commit: `pnpm check && pnpm teste && pnpm build`;
    - dependência nova só com justificativa, de projeto conhecido e com revisão do lockfile.
 
-## 2. Arquitetura proposta (monorepo `GLOBAL`)
+## 2. Arquitetura proposta (monorepo `WJProMaster`)
 
 ```
-GLOBAL/
+WJProMaster/
 ├─ apps/
 │  ├─ inicio/          WJProMaster (hub): arquivos recentes, busca global, notificações, abrir qualquer face
 │  ├─ cad/             WJCAD (o app atual, movido de src/)

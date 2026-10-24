@@ -495,6 +495,8 @@ export interface FeatureFlangeAresta extends FeatureBase {
   raio: number;
   deslocInicio: number;
   deslocFim: number;
+  /** Distância de folga entre flanges vizinhas desta mesma flange (canto automático). */
+  folga?: number;
 }
 
 /** Bainha: dobra a borda sobre ela mesma. */
@@ -702,7 +704,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
     case "flangeAresta":
       return {
         ...base, tipo, nome: `FlangeAresta${indice}`, arestas: [], angulo: 90, comprimento: 20, medicao: "externoVirtual",
-        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0,
+        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0, folga: 0.25,
       };
     case "bainha":
       return {
@@ -779,6 +781,7 @@ export function validarDocumento(dados: unknown): Documento {
   d.formato = "wjcad";
   if ((d.versao ?? 1) < 3) migrarParaYParaCima(d);
   for (const f of d.features) {
+    if (f.tipo === "flangeAresta") f.folga ??= 0.25;
     if (f.tipo === "extrusao") {
       // versão 1: profundidade negativa = sentido oposto
       if (f.profundidade < 0) {

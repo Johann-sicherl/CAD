@@ -42,8 +42,7 @@ Aqui fica só o que o CAD precisa **expor ou receber** para fazer parte do ecoss
   Arquivo.
 
 ## 4. Pendências do CAD que entram na G1
-- Chapa: canto automático entre flanges vizinhas da mesma flange de aresta (meia-esquadria pela
-  bissetriz + distância de folga + alívio na região das dobras), dobra esboçada, junta,
+- Chapa: (canto automático ✅) dobra esboçada, junta,
   meia-esquadria, cantos, desdobrar/dobrar, converter em chapa; item "Chapa metálica" (parâmetros
   globais) e "Padrão planificado" na árvore; bloquear OK de Aba/Corte sem esboço.
 - Fase 5: propriedades de seção.

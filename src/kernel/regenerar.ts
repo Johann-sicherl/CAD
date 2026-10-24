@@ -27,7 +27,7 @@ import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referen
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
 import { arestaDe, encadear, trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
-import { areaContorno, comprimentoReto, ModeloChapa, normalExterna, recuo, retanguloDesenho, transformarDesenho } from "./chapa";
+import { areaContorno, comprimentoReto, local3, ModeloChapa, normalExterna, recuo, retanguloDesenho, transformarDesenho, type Dobra, type Parede } from "./chapa";
 import { dxfDoPlanificado, type ResumoPlanificado } from "./dxf";
 import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe, projetarEmFaces } from "./curvas";
 import { lofting } from "./loft";
@@ -680,9 +680,10 @@ function arestasDaChapa(m: ModeloChapa, refs: Referencia[], ctx: Ctx, oque: stri
 /** Dobra uma aba em cada aresta (flange de aresta e bainha). */
 function dobrarArestas(
   m: ModeloChapa, f: { id: string }, arestas: ReturnType<typeof arestasDaChapa>,
-  o: { theta: number; r: number; inverter: boolean; setback: number; compReto: number; desloc0: number; desloc1: number },
+  o: { theta: number; r: number; inverter: boolean; setback: number; compReto: number; desloc0: number; desloc1: number; folga?: number },
 ) {
   const t = m.p.t;
+  const feitas: AbaFeita[] = [];
   arestas.forEach((h, i) => {
     const s0 = h.ta * h.L + o.desloc0, s1 = h.tb * h.L - o.desloc1;
     if (s1 - s0 <= 1e-6) throw new Error("Os deslocamentos são maiores que a aresta.");
@@ -698,11 +699,84 @@ function dobrarArestas(
     }
     const e0 = { x: h.p.x - h.d.x * o.setback, y: h.p.y - h.d.y * o.setback };
     const forma = o.compReto > 1e-6 ? retanguloDesenho(s0, s1, 0, o.compReto) : null;
-    m.dobrar({
+    const filha = m.dobrar({
       pai: h.parede, idDobra: `${f.id}:d${i}`, idFilha: `${f.id}:${i}`, e0, e: h.e, d: h.d, s0, s1, theta: o.theta, r: o.r,
       paraMaterial, forma, contornos: forma ? [[{ x: s0, y: 0 }, { x: s1, y: 0 }, { x: s1, y: o.compReto }, { x: s0, y: o.compReto }]] : [],
     });
+    feitas.push({ h, filha, dobra: m.dobras[m.dobras.length - 1], s0, s1, comParede: !!forma });
   });
+  if (o.folga !== undefined) cantosAutomaticos(m, feitas, Math.max(0, o.folga));
+}
+
+interface AbaFeita {
+  h: ReturnType<typeof arestasDaChapa>[number];
+  filha: Parede;
+  dobra: Dobra;
+  s0: number;
+  s1: number;
+  comParede: boolean;
+}
+
+/**
+ * Canto automático: abas da mesma flange em arestas que se encontram num canto são aparadas
+ * pelo plano bissetor das duas paredes (meia-esquadria), afastadas pela folga. O corte pega a
+ * parede e a dobra de cada aba; no planificado vira corte perpendicular à chapa.
+ */
+function cantosAutomaticos(m: ModeloChapa, feitas: AbaFeita[], folga: number) {
+  const t = m.p.t;
+  const ponta = (f: AbaFeita, s: number) => ({ x: f.h.p.x + f.h.e.x * s, y: f.h.p.y + f.h.e.y * s });
+  const meio = (w: Parede) => ({ p: local3(w.q, { x: 0, y: 0 }, (w.s * t) / 2), n: w.q.n });
+  const longe = (f: AbaFeita) => local3(f.filha.q, { x: (f.s0 + f.s1) / 2, y: 0 }, (f.filha.s * t) / 2);
+  for (let i = 0; i < feitas.length; i++) {
+    for (let j = i + 1; j < feitas.length; j++) {
+      const A = feitas[i], B = feitas[j];
+      if (A.h.parede !== B.h.parede || !A.comParede || !B.comParede) continue;
+      const pa = [ponta(A, A.s0), ponta(A, A.s1)], pb = [ponta(B, B.s0), ponta(B, B.s1)];
+      let canto: { x: number; y: number } | null = null;
+      for (const p of pa) for (const q of pb) if (Math.hypot(p.x - q.x, p.y - q.y) < 1e-3) canto = p;
+      if (!canto) continue;
+      const mA = meio(A.filha), mB = meio(B.filha), fA = longe(A), fB = longe(B);
+      // bissetor: nA·(x − pA) = σ·nB·(x − pB); o certo deixa cada aba de um lado
+      let melhor: { N: Vec3; K: number; sep: number; lado: number } | null = null;
+      for (const sg of [1, -1]) {
+        const N = sub3(mA.n, mul3(mB.n, sg));
+        const l = Math.hypot(...N);
+        if (l < 1e-6) continue;
+        const K = esc3(mA.n, mA.p) - sg * esc3(mB.n, mB.p);
+        const vA = (esc3(N, fA) - K) / l, vB = (esc3(N, fB) - K) / l;
+        if (vA * vB >= 0) continue;
+        const sep = Math.min(Math.abs(vA), Math.abs(vB));
+        if (!melhor || sep > melhor.sep) melhor = { N, K, sep, lado: Math.sign(vA) };
+      }
+      let p0: Vec3, n: Vec3;
+      if (melhor) {
+        const l2 = esc3(melhor.N, melhor.N);
+        p0 = mul3(melhor.N, melhor.K / l2);
+        n = mul3(melhor.N, melhor.lado / Math.sqrt(l2));
+      } else {
+        // paredes paralelas (bainhas): plano perpendicular à mãe pela bissetriz do canto
+        const W = A.h.parede;
+        const sai = (f: AbaFeita) => {
+          const outra = Math.hypot(ponta(f, f.s0).x - canto!.x, ponta(f, f.s0).y - canto!.y) < 1e-3 ? f.s1 : f.s0;
+          const q = ponta(f, outra);
+          const l = Math.hypot(q.x - canto!.x, q.y - canto!.y);
+          return { x: (q.x - canto!.x) / l, y: (q.y - canto!.y) / l };
+        };
+        const uA = sai(A), uB = sai(B);
+        const d = { x: uA.x - uB.x, y: uA.y - uB.y };
+        const l = Math.hypot(d.x, d.y);
+        if (l < 1e-6) continue;
+        p0 = local3(W.q, canto, 0);
+        n = sub3(local3(W.q, { x: d.x / l, y: d.y / l }, 0), local3(W.q, { x: 0, y: 0 }, 0));
+      }
+      const corteA = { p: soma3(p0, mul3(n, folga / 2)), m: n };
+      const corteB = { p: soma3(p0, mul3(n, -folga / 2)), m: mul3(n, -1) };
+      for (const [f, c] of [[A, corteA], [B, corteB]] as const) {
+        (f.filha.cortes ??= []).push(c);
+        (f.dobra.cortes ??= []).push(c);
+      }
+    }
+  }
 }
 
 function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
@@ -714,6 +788,7 @@ function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
   dobrarArestas(m, f, arestas, {
     theta, r, inverter: f.inverter, setback: recuo(f.posicao, theta, r, m.p.t),
     compReto: comprimentoReto(f.medicao, f.comprimento, theta, r, m.p.t), desloc0: f.deslocInicio, desloc1: f.deslocFim,
+    folga: f.folga ?? 0.25,
   });
 }
 
@@ -738,7 +813,7 @@ function bainha(f: FeatureBainha, ctx: Ctx) {
   }
   if (f.estilo !== "enrolada" && !(f.comprimento > 0)) throw new Error("O comprimento da bainha deve ser maior que zero.");
   dobrarArestas(m, f, arestas, {
-    theta, r, inverter: f.inverter, setback: f.posicao === "materialInterno" ? r + t : 0, compReto, desloc0: 0, desloc1: 0,
+    theta, r, inverter: f.inverter, setback: f.posicao === "materialInterno" ? r + t : 0, compReto, desloc0: 0, desloc1: 0, folga: 0.25,
   });
 }
 

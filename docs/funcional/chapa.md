@@ -18,7 +18,7 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Tabela material / espessura / raio / K (janela Material / K e caixa Bitolas) | 🟡 tabela fixa; editar e salvar tabela própria: F4 |
 | Planificar (liga/desliga, linhas de dobra em laranja) | ✅ |
 | Exportar DXF R12 (camadas CONTORNO, DOBRA_CIMA, DOBRA_BAIXO, NOTAS) + lista de corte | ✅ |
-| Canto automático entre flanges vizinhas da mesma flange de aresta (meia-esquadria pela bissetriz, distância de folga, alívio nas dobras) — hoje as abas se interceptam no canto | F4 (próximo) |
+| Canto automático entre abas vizinhas da mesma flange de aresta ou bainha: meia-esquadria pela bissetriz das paredes, com **distância de folga** (padrão 0,25 mm); as dobras também são aparadas. No planificado o corte é perpendicular à chapa pela face de dentro (dobrada, a peça não colide; o canto fica com fresta de até t) | ✅ |
 | Árvore: item "Chapa metálica" (parâmetros globais) e "Padrão planificado"; bloquear OK de Aba/Corte sem esboço | F4 |
 | Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
@@ -53,7 +53,7 @@ Perfil: esboço fechado (placa) ou aberto (perfil dobrado)
 
 ## 2. Flange de aresta (Edge Flange)
 - **Parâmetros da flange**: arestas (lista), **editar perfil da flange**, usar raio padrão / raio,
-  distância de folga (entre flanges adjacentes)
+  distância de folga (entre flanges adjacentes) ✅
 - **Ângulo**: ângulo da flange, face de referência, perpendicular / paralela à face
 - **Comprimento da flange**: condição (Cego, Até o vértice), inverter, comprimento;
   medição: **Externo virtual** · **Interno virtual** · **Tangente à dobra**
