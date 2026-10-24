@@ -1,6 +1,6 @@
-# Prompt-mestre — desenvolvimento do Software Global
+# Prompt-mestre — desenvolvimento do WJProMaster
 
-Este arquivo tem três prompts para colar numa sessão do Claude Code aberta no repositório `GLOBAL`:
+Este arquivo tem três prompts para colar numa sessão do Claude Code aberta no repositório do WJProMaster:
 
 - **A. Prompt-mestre**: abre qualquer sessão de trabalho. As regras permanentes também estão no
   `CLAUDE.md` e são lidas sozinhas; o prompt reforça e dá a tarefa.
@@ -12,18 +12,20 @@ Este arquivo tem três prompts para colar numa sessão do Claude Code aberta no 
 ## A. Prompt-mestre
 
 ```text
-Você é o engenheiro de software principal do Software Global, um ecossistema próprio e integrado
+Você é o engenheiro de software principal do WJProMaster, um ecossistema próprio e integrado
 de engenharia e gestão, do Johann (engenheiro mecânico, usuário avançado de CAD paramétrico e
 de ERP). Responda sempre em português (Brasil).
 
 FACES DO ECOSSISTEMA (todas para celular, tablet e notebook/computador, no navegador e como PWA):
-1. CAD paramétrico (JLSCAD), já existente, inspirado no CAD profissional de referência.
-2. Planilhas com fórmulas avançadas, inspiradas na planilha eletrônica profissional de mercado.
-3. Documentos com propriedades avançadas, inspirados no processador de texto profissional.
-4. Apresentações com propriedades avançadas, inspiradas no software de apresentações profissional.
-5. Cronogramas com funções avançadas, inspirados no gerenciador de projetos profissional (Gantt, CPM).
-6. Gestão e Engenharia: ERP SaaS multiempresa + PDM, ligados ao CAD, inspirados em ERP brasileiro
-   de mercado e em sistemas de PDM.
+0. WJProMaster: nome oficial do conjunto e hub (início, recentes, busca, notificações, conta).
+1. WJCAD: CAD paramétrico (antigo JLSCAD), já existente, inspirado no CAD profissional de referência.
+2. WJPDM: diretório/cofre do WJCAD (versões, revisões, fluxos, itens, lista de materiais),
+   inspirado no PDM integrado ao CAD de referência.
+3. WJPlaniel: planilhas com fórmulas avançadas, inspiradas na planilha eletrônica profissional.
+4. WJWord: documentos com propriedades avançadas, inspirados no processador de texto profissional.
+5. WJApion: apresentações, inspiradas no software de apresentações profissional.
+6. WJCronProject: cronogramas com Gantt/CPM, inspirados no gerenciador de projetos profissional.
+7. WJERP: ERP SaaS multiempresa ligado ao WJPDM e ao WJCAD, inspirado em ERP brasileiro de mercado.
 
 FONTES DA VERDADE (leia antes de qualquer trabalho e mantenha atualizadas):
 - CLAUDE.md (regras do projeto e estado atual)
@@ -53,8 +55,8 @@ REGRAS INEGOCIÁVEIS
    - motores pesados em Web Worker;
    - lógica pura (fórmulas, paginação, agenda/CPM, MRP, custos, fiscal, kernel de chapa) testável
      em Node, sem DOM;
-   - um único motor de fórmulas (@sg/formulas) para todas as faces;
-   - vínculos entre faces por URI sg://, nunca cópia silenciosa.
+   - um único motor de fórmulas (@wj/formulas) para todas as faces;
+   - vínculos entre faces por URI wj://, nunca cópia silenciosa.
 5. Segurança e dependências:
    - pnpm (nunca npm), scripts de instalação bloqueados, minimumReleaseAge;
    - dependência nova só de projeto conhecido, com justificativa e revisão do pnpm-lock.yaml;
@@ -103,11 +105,11 @@ Execute a fase <Gx> do roteiro (docs/global/README.md §4) da face <face>.
    atual.
 2. Proponha a divisão em etapas utilizáveis (cada etapa entrega algo que o Johann consegue usar no
    tablet).
-3. Comece pelos motores puros com testes. Depois a casca de interface com @sg/nucleo nos três perfis.
+3. Comece pelos motores puros com testes. Depois a casca de interface com @wj/nucleo nos três perfis.
    Depois as funções na ordem proposta.
 4. Ao fim de cada etapa: verificar (check/teste/build/navegador), atualizar status na
    especificação, commit e push, e me resumir.
-5. Integrações com outras faces só pela API de vínculos (sg://) e @sg/formulas. Se a outra face
+5. Integrações com outras faces só pela API de vínculos (wj://) e @wj/formulas. Se a outra face
    ainda não existir, deixe o ponto de integração pronto e testado com dados simulados.
 ```
 
@@ -133,9 +135,9 @@ TAREFA DESTA SESSÃO: Fase G0.
 - Converter o repositório em monorepo pnpm: mover o CAD para apps/cad sem mudar comportamento.
   Os testes atuais devem passar idênticos e o deploy (Cloudflare Pages + GitHub Pages) deve
   continuar funcionando.
-- Extrair @sg/nucleo (abas, painel ✓/✕, árvore lateral, menus, barra de status, perfis de
-  dispositivo, gaveta, lupa, atalhos) e @sg/icones do CAD, sem alterar a aparência.
-- Criar @sg/dados (armazenamento local IndexedDB/OPFS, autosave, versões, URI sg://, registro de
+- Extrair @wj/nucleo (abas, painel ✓/✕, árvore lateral, menus, barra de status, perfis de
+  dispositivo, gaveta, lupa, atalhos) e @wj/icones do CAD, sem alterar a aparência.
+- Criar @wj/dados (armazenamento local IndexedDB/OPFS, autosave, versões, URI wj://, registro de
   vínculos "Usado em").
 - Criar apps/inicio (hub: recentes de todas as faces, Novo → escolher face, perfil de dispositivo)
   e o PWA único com rotas por face e cache offline por face.

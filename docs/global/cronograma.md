@@ -1,10 +1,10 @@
-# Cronogramas — planejamento e controle de projetos (G6)
+# WJCronProject — planejamento e controle de projetos (G6)
 
 Inspiração funcional: gerenciador de projetos profissional com Gantt. Nomes, ícones e telas são nossos.
-Arquivo nativo `.sgcron` (e projetos no servidor a partir da G5/G6).
+Arquivo nativo `.wjcron` (e projetos no servidor a partir da G5/G6).
 Importa/exporta **MSPDI XML** (formato XML documentado), `.xlsx`/`.csv` (mapa de campos), exporta PDF.
 O binário `.mpp` não é suportado: ele é proprietário; quem tiver deve salvar em XML.
-Motor de agendamento puro em `@sg/agenda`, testado em Node (CPM, calendários, nivelamento, valor agregado).
+Motor de agendamento puro em `@wj/agenda`, testado em Node (CPM, calendários, nivelamento, valor agregado).
 Status de tudo: **G6** salvo indicação.
 
 ---
@@ -28,7 +28,7 @@ Status de tudo: **G6** salvo indicação.
   - calendário da tarefa (ignorar calendário dos recursos);
   - % concluído, % trabalho concluído, % físico;
   - início/término reais, duração real/restante, trabalho real/restante, custo real;
-  - anotações (texto rico), anexos, vínculos `sg://` (item PDM, OP do ERP, documento).
+  - anotações (texto rico), anexos, vínculos `wj://` (item PDM, OP do ERP, documento).
 - **Vínculos**:
   - Término-Início (TI), Início-Início (II), Término-Término (TT), Início-Término (IT);
   - latência/antecipação em tempo ou % (`TI+2d`, `II-25%`);
@@ -139,7 +139,7 @@ Status de tudo: **G6** salvo indicação.
   - curva S (gráfico).
 - Relatórios:
   - visão geral, custo, trabalho, tarefas atrasadas, marcos, recursos superalocados, fluxo de caixa;
-  - painéis personalizáveis (gráficos e tabelas do `@sg/graficos`);
+  - painéis personalizáveis (gráficos e tabelas do `@wj/graficos`);
   - exportar para Documentos/Apresentações (vinculados).
 
 ## 5. Campos personalizados

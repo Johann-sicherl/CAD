@@ -1,6 +1,6 @@
 {
-  "name": "JLSCAD",
-  "short_name": "JLSCAD",
+  "name": "WJCAD — WJProMaster",
+  "short_name": "WJCAD",
   "description": "CAD paramétrico para celular, tablet e computador",
   "start_url": "./",
   "scope": "./",

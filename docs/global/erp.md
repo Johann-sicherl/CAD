@@ -1,4 +1,4 @@
-# Gestão e Engenharia — ERP + PDM conectados ao CAD (G5 PDM, G7 ERP, G8 fiscal/contábil)
+# WJERP — gestão empresarial SaaS conectada ao WJPDM e ao WJCAD (G7; fiscal/contábil G8)
 
 Inspiração funcional:
 - ERP brasileiro de mercado: módulos integrados, multiempresa/filial, parametrização, fluxos de
@@ -60,65 +60,14 @@ cliente PWA nos três aparelhos.
 - **LGPD**: base legal por cadastro de pessoa, consentimento, anonimização/exportação de dados do
   titular, retenção.
 
-## 1. PDM — Engenharia de produto (G5)
+## 1. Engenharia (vem do WJPDM)
 
-### 1.1 Cofre e arquivos
-- Pastas por empresa/projeto. Arquivos de todas as faces (`.jlscad`, `.sgplan`, `.sgdoc`, …)
-  e externos (PDF, DXF, STEP, imagens).
-- **Check-out / check-in**:
-  - trava exclusiva por usuário (Durable Object);
-  - check-in com comentário cria **versão** (1, 2, 3…);
-  - desfazer check-out;
-  - edição offline com check-out prévio.
-- Versão ≠ **revisão**:
-  - versões são salvamentos de trabalho;
-  - revisões (A, B, C… ou 00, 01; esquema configurável) são liberações formais.
-- Visualização leve (`@sg/visualizador-3d`) no navegador, sem abrir o CAD: orbitar, medir, cortar,
-  marcar (anotações em 3D) — também no celular.
-- Busca por propriedades, conteúdo e geometria simples (dimensões da caixa, massa, material).
-
-### 1.2 Itens e propriedades
-- **Item** (código do produto) é o objeto central compartilhado com o ERP:
-  - código (numeração automática por família/máscara, ex.: `12-0034`), descrição, descrição técnica;
-  - tipo: produto acabado, semiacabado, peça fabricada, comprado, matéria-prima, consumível, serviço;
-  - unidade, família/grupo, material, massa, acabamento/tratamento;
-  - **propriedades personalizadas**.
-- **Vínculo item ↔ arquivo CAD**: propriedades do `.jlscad` mapeadas para campos do item, nos dois
-  sentidos:
-  - massa, volume, material, dimensões da caixa;
-  - espessura e planificado (chapa), comprimento de corte, nº de dobras.
-- Item comprado: fabricante, código do fabricante, fornecedores homologados (ERP).
-
-### 1.3 Ciclo de vida e fluxos
-- Estados configuráveis. Padrão: Em trabalho → Em revisão → Aprovado/Liberado → Obsoleto, com
-  Cancelado.
-- Transições com:
-  - condições (propriedades obrigatórias preenchidas, filhos já liberados, desenho anexo);
-  - aprovadores (pessoa, papel, maioria/todos);
-  - ações automáticas: incrementa revisão, gera PDF/DXF/STEP de liberação, trava edição,
-    notifica, cria item no ERP.
-- **Solicitação de mudança (ECR)** → **Ordem de mudança (ECO)**:
-  - itens afetados, motivo, impacto (estoque, OPs em aberto, pedidos);
-  - efetividade (data ou lote);
-  - disposição do estoque antigo (usar, retrabalhar, sucatear);
-  - ao liberar, a estrutura do ERP é atualizada com data de vigência.
-- Histórico completo e comparação entre revisões (propriedades, estrutura, geometria: realce do que
-  mudou no visualizador).
-
-### 1.4 Estrutura de produto (BOM)
-- **Estrutura de engenharia** (EBOM):
-  - pai → filhos com quantidade, unidade, posição/balão, observação;
-  - montagens do CAD quando existirem; até lá, montada à mão na ficha do item ou por planilha.
-- **Onde é usado** (where-used) em todos os níveis.
-- Comparar estruturas (revisões ou itens).
-- Exportar estrutura indentada para a Planilha.
-- **Transferência para o ERP**: EBOM → **estrutura de manufatura** (MBOM) com:
-  - perdas (%);
-  - itens fantasmas;
-  - alternativos;
-  - consumo de matéria-prima por peça (ex.: chapa: área planificada × espessura × densidade + perda
-    do aninhamento);
-  - roteiro de fabricação.
+Cofre, versões/revisões, fluxos de aprovação, mudanças de engenharia (ECR/ECO), itens e lista de
+materiais de engenharia são do **WJPDM** ([pdm.md](pdm.md)). O WJERP recebe do WJPDM:
+- o **item** liberado (mesmo cadastro, campos de gestão completados aqui);
+- a **EBOM**, convertida em **estrutura de manufatura** (MBOM) com perdas, fantasmas, alternativos,
+  consumo de matéria-prima e vigência das mudanças;
+- os arquivos de fabricação da revisão liberada (DXF, PDF) para as ordens de produção.
 
 ## 2. Cadastros básicos (G7)
 
@@ -301,6 +250,6 @@ cliente PWA nos três aparelhos.
   tempos sugeridos de roteiro; DXF da revisão liberada vai para a OP.
 - **ERP → CAD**: CAD consulta itens comprados (parafusos, perfis) do cadastro para inserir;
   material da peça vem do cadastro (densidade e custo); custo estimado da peça aparece em Avaliar.
-- **Planilha**: consultas vivas, `SG.ITEM`, importação de listas.
+- **Planilha**: consultas vivas, `WJ.ITEM`, importação de listas.
 - **Documentos/Apresentações**: modelos com campos dos registros (proposta, OP, relatório, painel).
 - **Cronograma**: projetos, capacidade finita, recursos, apontamentos, ações de qualidade.

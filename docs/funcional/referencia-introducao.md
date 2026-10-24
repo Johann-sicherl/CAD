@@ -1,8 +1,8 @@
-# Referência: guia introdutório do CAD profissional × JLSCAD
+# Referência: guia introdutório do CAD profissional × WJCAD
 
 O Johann forneceu o guia introdutório oficial do CAD de referência (versão em inglês,
 135 páginas). O arquivo **não vai para o repositório**. Aqui fica só a análise, com as nossas
-palavras: o que o guia apresenta como fluxo básico, como está no JLSCAD e o que falta.
+palavras: o que o guia apresenta como fluxo básico, como está no WJCAD e o que falta.
 Use este arquivo junto com `features.md`, `sketch.md`, `chapa.md` e `avaliar.md` ao planejar pedidos.
 
 Análise feita sobre as páginas 1–80: fundamentos, interface, esboço, peças, montagens e início
@@ -14,7 +14,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 
 ## 1. Interface e interação
 
-| Tema do guia | JLSCAD | Status |
+| Tema do guia | WJCAD | Status |
 |---|---|---|
 | Árvore de histórico à esquerda (editar, suprimir, reordenar) | árvore com planos, origem, recursos, esboços aninhados | ✅ |
 | Painel de propriedades do comando (substitui a árvore) | painel de comando à esquerda com ✓/✕ | ✅ |
@@ -34,7 +34,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 
 ## 2. Esboço
 
-| Tema do guia | JLSCAD | Status |
+| Tema do guia | WJCAD | Status |
 |---|---|---|
 | Origem como âncora; começar o esboço nela | origem e eixos do esboço, encaixe | ✅ |
 | Esboçar em planos padrão (frontal, superior, lateral), em planos criados e em faces planas | planos, faces e planos criados | ✅ |
@@ -86,7 +86,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 
 ## 5. Avaliar
 
-| Tema do guia | JLSCAD | Status |
+| Tema do guia | WJCAD | Status |
 |---|---|---|
 | Medir (usado para decidir a cota de posição) | Medir | ✅ |
 | Vista de seção | Vista de seção | ✅ |

@@ -1,7 +1,7 @@
-# Planilhas — planilha eletrônica com fórmulas avançadas (G2)
+# WJPlaniel — planilha eletrônica com fórmulas avançadas (G2)
 
 Inspiração funcional: planilha eletrônica profissional de mercado. Nomes, ícones e telas são nossos.
-Arquivo nativo `.sgplan`. Importa/exporta `.xlsx` (OOXML), `.ods`, `.csv`/`.tsv`, PDF (exporta).
+Arquivo nativo `.wjpl`. Importa/exporta `.xlsx` (OOXML), `.ods`, `.csv`/`.tsv`, PDF (exporta).
 Status de tudo: **G2** salvo indicação.
 
 Formato de cada comando: **Nosso nome** → caixas do painel → campos e opções (como no CAD).
@@ -26,7 +26,7 @@ Formato de cada comando: **Nosso nome** → caixas do painel → campos e opçõ
 - Tipos de dados vinculados (G5/G7): célula contém um **objeto** (item do ERP, peça do CAD, tarefa,
   cliente) com campos acessíveis por `A1.Preço`, `A1.Massa`, `A1.Estoque`.
 
-## 1. Motor de fórmulas (`@sg/formulas`) — compartilhado por todas as faces
+## 1. Motor de fórmulas (`@wj/formulas`) — compartilhado por todas as faces
 
 ### 1.1 Linguagem
 - Começa com `=`. Operadores:
@@ -42,7 +42,7 @@ Formato de cada comando: **Nosso nome** → caixas do painel → campos e opçõ
   - estilos A1 e L1C1 (alternável);
   - relativas, absolutas e mistas (`$A$1`, F4 alterna);
   - entre planilhas (`'Custos 2026'!B3`);
-  - entre arquivos (`[Orçamento.sgplan]Resumo!B3`, com atualização de vínculos);
+  - entre arquivos (`[Orçamento.wjpl]Resumo!B3`, com atualização de vínculos);
   - 3D (`Jan:Dez!B3`).
 - **Nomes definidos** (pasta ou planilha): constante, intervalo ou fórmula. Gerenciador de nomes.
 - **Tabelas estruturadas**: `Vendas[Valor]`, `Vendas[@Qtd]`, `Vendas[[#Totais];[Valor]]`.
@@ -51,10 +51,10 @@ Formato de cada comando: **Nosso nome** → caixas do painel → campos e opçõ
 - `LET` (variáveis), `LAMBDA` (funções do usuário com nome) e funções auxiliares de lambda:
   MAP, REDUCE, SCAN, MAKEARRAY, BYROW, BYCOL.
 - **Funções vinculadas ao ecossistema** (G5+):
-  - `SG.ITEM("cód";"campo")` e `SG.ESTOQUE("cód";"armazém")`;
-  - `SG.CAD("arquivo";"Massa"|"Volume"|"D1@Esboço1")`;
-  - `SG.TAREFA("proj";"id";"Término")`;
-  - `SG.CONSULTA("nome")` (consulta salva do ERP, devolve matriz).
+  - `WJ.ITEM("cód";"campo")` e `WJ.ESTOQUE("cód";"armazém")`;
+  - `WJ.CAD("arquivo";"Massa"|"Volume"|"D1@Esboço1")`;
+  - `WJ.TAREFA("proj";"id";"Término")`;
+  - `WJ.CONSULTA("nome")` (consulta salva do ERP, devolve matriz).
 
 ### 1.2 Cálculo
 - Grafo de dependências com recálculo **incremental**: só recalcula o que depende do que mudou.
@@ -84,7 +84,7 @@ Formato de cada comando: **Nosso nome** → caixas do painel → campos e opçõ
 | Engenharia | CONVERTER (unidades SI/imperial, incluindo mm, N, MPa, kgf), BIN/DEC/HEX/OCT entre si, COMPLEXO e IM* (complexos), DELTA, DEGRAU, FUNERRO, BESSELJ/Y/I/K |
 | Informação | É.CÉL.VAZIA, ÉERRO, ÉERROS, ÉNÚM, ÉTEXTO, ÉLÓGICO, ÉNÃO.DISP, ÉFÓRMULA, TIPO, TIPO.ERRO, CÉL, INFORMAÇÃO, N, NÃO.DISP, FÓRMULATEXTO, PLAN, PLANS |
 | Banco de dados | BDSOMA, BDMÉDIA, BDCONTAR, BDCONTARA, BDMÁX, BDMÍN, BDEXTRAIR, BDPRODUTO, BDDESVPA |
-| Web/ecossistema | SG.ITEM, SG.ESTOQUE, SG.CAD, SG.TAREFA, SG.CONSULTA, SERVIÇOWEB (só com permissão), FILTROXML ⏸ |
+| Web/ecossistema | WJ.ITEM, WJ.ESTOQUE, WJ.CAD, WJ.TAREFA, WJ.CONSULTA, SERVIÇOWEB (só com permissão), FILTROXML ⏸ |
 
 Ajuda: dica de argumentos ao digitar (assinatura com o argumento atual em negrito), lista
 de funções com autocompletar, janela **Inserir função** (busca por categoria e por descrição, campos
@@ -195,7 +195,7 @@ por argumento com valor parcial).
   - atualizar ao abrir;
   - **gráfico dinâmico** e segmentações/linha do tempo ligadas.
 - **Consultas de dados** (nome nosso: "Obter e transformar"):
-  - fontes: CSV/TXT, xlsx, JSON, pasta, web (com permissão), outra planilha, **ERP do Software Global** (G7);
+  - fontes: CSV/TXT, xlsx, JSON, pasta, web (com permissão), outra planilha, **ERP do WJProMaster** (G7);
   - etapas registradas: promover cabeçalho, alterar tipo, filtrar, remover colunas, dividir, mesclar
     consultas (junções), acrescentar, agrupar, dinamizar/despivotar, coluna personalizada (fórmula);
   - atualizar sob demanda ou ao abrir; carregar em tabela ou no modelo de dados.
@@ -212,7 +212,7 @@ por argumento com valor parcial).
   correlação, média móvel, amostragem, teste t, ANOVA de fator único.
 - **Previsão**: planilha de previsão a partir de série temporal (ETS), com intervalo de confiança.
 
-## 6. Gráficos (`@sg/graficos`, compartilhado)
+## 6. Gráficos (`@wj/graficos`, compartilhado)
 
 - Tipos:
   - coluna, barra, linha, área (empilhados e 100 %), pizza, rosca;
@@ -232,7 +232,7 @@ por argumento com valor parcial).
 - Margens, orientação, tamanho, área de impressão, títulos a imprimir (linhas/colunas repetidas).
 - Ajustar para N páginas de largura × M de altura, escala.
 - Cabeçalho/rodapé com campos (página, total, data, arquivo, planilha, imagem).
-- Quebras manuais; ordem das páginas. Visualizar impressão; exportar PDF (`@sg/paginacao`).
+- Quebras manuais; ordem das páginas. Visualizar impressão; exportar PDF (`@wj/paginacao`).
 
 ## 8. Revisão e proteção
 
@@ -260,7 +260,7 @@ por argumento com valor parcial).
     parâmetros `D1@Esboço1`);
   - variáveis globais do CAD vinculadas a células;
   - exportar propriedades de massa e lista de corte para a planilha.
-- **ERP**: consultas, `SG.ITEM`, gravação de volta somente por ação explícita (importar lista de
+- **ERP**: consultas, `WJ.ITEM`, gravação de volta somente por ação explícita (importar lista de
   preços, ajuste de inventário) com conferência e permissão.
 - **Cronograma**: exportar/importar tarefas; gráficos de curva S.
 

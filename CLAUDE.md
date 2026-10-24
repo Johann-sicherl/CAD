@@ -1,12 +1,15 @@
-# Software Global — contexto para o Claude
+# WJProMaster — contexto para o Claude
 
-> **Ecossistema.** Este repositório é a base do **Software Global** (repositório a ser renomeado para
-> `GLOBAL`): CAD (JLSCAD, este app), Planilhas, Documentos, Apresentações, Cronogramas e Gestão e
-> Engenharia (ERP SaaS + PDM ligados ao CAD), tudo para **celular, tablet e notebook/computador**.
-> Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada face em **`docs/global/`**;
-> prompt de trabalho em `docs/global/prompt-mestre.md`. Até a fase G0 (monorepo) o código é só o CAD,
-> descrito abaixo. As regras de inspiração sem cópia valem para todas as faces (nomes registrados de
-> terceiros proibidos também na UI das outras faces; importar/exportar formatos abertos é permitido).
+> **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
+> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlaniel**
+> (planilhas), **WJWord** (documentos), **WJApion** (apresentações), **WJCronProject**
+> (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
+> notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
+> face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
+> Até a fase G0 (monorepo), o código é só o WJCAD, descrito abaixo. As regras de inspiração sem
+> cópia valem para todas as faces: nomes registrados de terceiros ficam proibidos na UI;
+> importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
+> risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
@@ -35,7 +38,7 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Visualização: Three.js (`src/viewport.ts`), **Y para cima** (Frontal = XY, Superior = XZ, Lateral = YZ;
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
-- Modelo: lista de features serializada em JSON (`.jlscad`; abre `.cadt` antigos), em `src/model.ts`
+- Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`
 - PWA (manifest + `public/sw.js`). Hospedagem principal: **Cloudflare Pages** (site na raiz, cabeçalhos
   COOP/COEP em `public/_headers` → `crossOriginIsolated`, requisito do kernel com várias threads).
   O GitHub Actions (`.github/workflows/deploy.yml`) roda check/teste/build e publica também no GitHub Pages.
@@ -54,7 +57,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   (sem perspectiva/ponto de fuga).
 - **Início limpo:** o app abre sem documento (só Novo/Abrir e recentes); **Novo** abre a janela de
   escolha do ambiente (por enquanto só **Peça**).
-- **Nome:** **JLSCAD**; arquivo de projeto **`.jlscad`** (abre também `.cadt` do nome antigo).
+- **Nome:** **WJCAD** (face do WJProMaster; antes JLSCAD); arquivo de peça **`.wjcad`** (abre também
+  `.jlscad` e `.cadt` dos nomes antigos). Chaves internas (`jlscad:` no localStorage, cache `jlscad-`)
+  ficam como estão para não perder o autosave e as preferências de quem já usa.
 - **Perfil de dispositivo** escolhido na janela inicial (Celular / Tablet / Computador; trocar em
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.

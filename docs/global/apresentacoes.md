@@ -1,9 +1,9 @@
-# Apresentações — slides com propriedades avançadas (G4)
+# WJApion — apresentações com propriedades avançadas (G4)
 
 Inspiração funcional: software de apresentações profissional de mercado. Nomes, ícones e telas são nossos.
-Arquivo nativo `.sgapr`. Importa/exporta `.pptx` (OOXML) e `.odp`. Exporta PDF (com ou sem notas,
+Arquivo nativo `.wjapn`. Importa/exporta `.pptx` (OOXML) e `.odp`. Exporta PDF (com ou sem notas,
 folhetos), imagens PNG/SVG por slide e vídeo MP4/WebM (WebCodecs).
-Reaproveita `@sg/texto-rico` (caixas de texto), `@sg/graficos`, `@sg/formulas` e `@sg/visualizador-3d`.
+Reaproveita `@wj/texto-rico` (caixas de texto), `@wj/graficos`, `@wj/formulas` e `@wj/visualizador-3d`.
 Status de tudo: **G4** salvo indicação.
 
 ---
@@ -66,7 +66,7 @@ Status de tudo: **G4** salvo indicação.
   - **substituir imagem** mantendo tamanho/formato;
   - texto alternativo.
 - **Tabelas** (estilos, mesclar, bordas, sombreamento, fórmulas simples do motor comum).
-- **Gráficos** (`@sg/graficos`) com dados embutidos ou **vinculados à Planilha**; animar por série
+- **Gráficos** (`@wj/graficos`) com dados embutidos ou **vinculados à Planilha**; animar por série
   ou categoria.
 - **Diagramas** (nome nosso):
   - layouts de lista, processo, ciclo, hierarquia, relação, matriz, pirâmide;
@@ -84,7 +84,7 @@ Status de tudo: **G4** salvo indicação.
 - Objetos vinculados do ecossistema:
   - tabela do ERP (consulta);
   - Gantt/linha do tempo do cronograma;
-  - campo de propriedade (`{SG Item … Preço}`).
+  - campo de propriedade (`{WJ Item … Preço}`).
 
 ## 3. Organizar
 

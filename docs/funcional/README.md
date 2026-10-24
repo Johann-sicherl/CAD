@@ -1,6 +1,6 @@
 # Especificação funcional — ambiente de Peça
 
-Referência de **comportamento** para o JLSCAD: cada comando, suas caixas (subformulários)
+Referência de **comportamento** para o WJCAD: cada comando, suas caixas (subformulários)
 e campos, tomando como modelo o fluxo de trabalho de CADs paramétricos profissionais
 (o SOLIDWORKS é a referência que o Johann usa no dia a dia).
 

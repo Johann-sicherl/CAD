@@ -1,7 +1,7 @@
-# Documentos — processador de texto com propriedades avançadas (G3)
+# WJWord — processador de texto com propriedades avançadas (G3)
 
 Inspiração funcional: processador de texto profissional de mercado. Nomes, ícones e telas são nossos.
-Arquivo nativo `.sgdoc`. Importa/exporta `.docx` (OOXML), `.odt`, `.md`, `.html`, `.txt`, `.rtf` ⏸.
+Arquivo nativo `.wjdoc`. Importa/exporta `.docx` (OOXML), `.odt`, `.md`, `.html`, `.txt`, `.rtf` ⏸.
 Exporta PDF (com marcadores, links, PDF/A ⏸).
 Status de tudo: **G3** salvo indicação.
 
@@ -18,7 +18,7 @@ Status de tudo: **G3** salvo indicação.
 - Objetos flutuantes ancorados ao parágrafo: imagem, forma, caixa de texto, gráfico, vista do CAD.
 - Estilos em cascata: padrão do documento → estilo de parágrafo → estilo de caractere →
   formatação direta.
-- Motor de paginação próprio (`@sg/paginacao`):
+- Motor de paginação próprio (`@wj/paginacao`):
   - medição com as fontes reais (Canvas/OffscreenCanvas);
   - quebra de linha por Unicode (Intl.Segmenter) com hifenização PT-BR;
   - viúvas/órfãs, manter com o próximo, manter linhas juntas, quebra de página antes;
@@ -99,19 +99,19 @@ Status de tudo: **G3** salvo indicação.
   - texto alternativo.
 - Formas e caixas de texto (vinculadas em cadeia), ícones (biblioteca nossa), diagramas (organograma,
   processo, ciclo, hierarquia — nome nosso "Diagramas").
-- Gráfico (`@sg/graficos`) com dados embutidos ou **vinculados a uma Planilha**.
+- Gráfico (`@wj/graficos`) com dados embutidos ou **vinculados a uma Planilha**.
 - **Objetos vinculados do ecossistema**:
   - vista de peça do CAD (vista, escala, estilo de exibição, revisão);
   - intervalo de planilha;
   - tarefa ou Gantt do cronograma;
   - ficha de item do ERP;
   - todos atualizáveis (seção 8).
-- Links (URL, lugar no documento, e-mail, objeto `sg://`), indicadores, referência cruzada.
+- Links (URL, lugar no documento, e-mail, objeto `wj://`), indicadores, referência cruzada.
 - Cabeçalho, rodapé, número de página (posição, formato, iniciar em, por capítulo "2-5").
 - **Campos**:
   - data/hora, autor, título, página, NUMPÁGS, SEÇÃO, nome do arquivo;
   - propriedades do documento e **propriedades personalizadas**;
-  - **propriedade de objeto do ecossistema** (`{SG Item "12-0034" Descrição}`, `{SG CAD "Suporte.jlscad" Massa}`);
+  - **propriedade de objeto do ecossistema** (`{WJ Item "12-0034" Descrição}`, `{WJ CAD "Suporte.jlscad" Massa}`);
   - fórmula, SE, sequência (SEQ), referência (REF);
   - atualizar campos (F9), alternar código (Shift+F9), bloquear campo.
 - Símbolos e caracteres especiais. **Equações**: editor visual (frações, raízes, matrizes,
@@ -168,7 +168,7 @@ Status de tudo: **G3** salvo indicação.
 
 ## 8. Vínculos vivos (G5+)
 
-- Todo objeto vinculado guarda URI `sg://…` + versão/revisão usada.
+- Todo objeto vinculado guarda URI `wj://…` + versão/revisão usada.
 - Ao abrir: "Há N vínculos desatualizados" → atualizar todos / revisar / manter.
 - Opções por vínculo: automático, manual, travado numa revisão (ex.: documento técnico aprovado
   fica preso à revisão B da peça).
@@ -177,12 +177,12 @@ Status de tudo: **G3** salvo indicação.
 
 - Controles de conteúdo: texto, texto rico, lista suspensa, caixa de combinação, data, caixa de
   seleção, imagem, seção repetitiva; vinculação a propriedades/XML personalizado.
-- Modelos (`.sgdot`):
+- Modelos (`.wjdot`):
   - modelos nossos: relatório técnico, memorial descritivo, proposta comercial, ata, procedimento
     (POP), especificação técnica, laudo;
   - **modelos da empresa** (G5) com estilos travados.
 - **Documento gerado pelo ERP**: proposta, ordem de produção, instrução de trabalho, certificado ⏸.
-  O modelo é um `.sgdoc` com campos e regiões repetitivas preenchidos com os dados do registro.
+  O modelo é um `.wjdoc` com campos e regiões repetitivas preenchidos com os dados do registro.
 
 ## 10. Exibir e navegação
 

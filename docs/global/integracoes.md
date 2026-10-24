@@ -1,7 +1,7 @@
-# Integrações entre as faces do Software Global
+# Integrações entre as faces do WJProMaster
 
 Regra geral: **vínculo por URI, nunca cópia silenciosa**.
-- O objeto de destino guarda `sg://<face>/<arquivo|tabela>/<id>` e a versão/revisão usada.
+- O objeto de destino guarda `wj://<face>/<arquivo|tabela>/<id>` e a versão/revisão usada.
 - Atualização: automática, manual ou travada numa revisão.
 - Todo vínculo aparece no painel **Usado em** do objeto de origem.
 - Excluir algo que é usado avisa quem depende dele.
@@ -10,25 +10,25 @@ Regra geral: **vínculo por URI, nunca cópia silenciosa**.
 
 | Serviço | Pacote | Fase |
 |---|---|---|
-| URI global, resolução de objetos, "Usado em" | `@sg/dados` | G0 (local) / G5 (servidor) |
-| Motor de fórmulas único e funções `SG.*` | `@sg/formulas` | G2 |
-| Texto rico e campos | `@sg/texto-rico` | G3 |
-| Gráficos | `@sg/graficos` | G2 |
-| Visualizador 3D leve (sem kernel) | `@sg/visualizador-3d` | G5 |
-| Área de transferência rica entre faces | `@sg/nucleo` | G2 |
+| URI global, resolução de objetos, "Usado em" | `@wj/dados` | G0 (local) / G5 (servidor) |
+| Motor de fórmulas único e funções `WJ.*` | `@wj/formulas` | G2 |
+| Texto rico e campos | `@wj/texto-rico` | G3 |
+| Gráficos | `@wj/graficos` | G2 |
+| Visualizador 3D leve (sem kernel) | `@wj/visualizador-3d` | G5 |
+| Área de transferência rica entre faces | `@wj/nucleo` | G2 |
 | Contas, permissões, notificações, comentários | `servidor/` | G5 |
 | Eventos (pub/sub): "item liberado", "OP encerrada", "tarefa concluída" | `servidor/` | G5 |
 
 ## 2. Matriz de interações (origem → destino)
 
-| De \ Para | CAD | Planilha | Documentos | Apresentações | Cronograma | ERP/PDM |
+| De \ Para | WJCAD | WJPlaniel | WJWord | WJApion | WJCronProject | WJPDM / WJERP |
 |---|---|---|---|---|---|---|
-| **CAD** | — | propriedades de massa, lista de corte, tabela de configurações, cotas como valores | vistas vinculadas, propriedades em campos, tabela de cotas | modelo 3D interativo, vistas | progresso de modelagem ⏸ | item, propriedades, revisão, estrutura, DXF/STEP de liberação, tempos de roteiro |
-| **Planilha** | variáveis globais/equações e tabela de configurações vindas de células | — | tabelas e gráficos vinculados | tabelas e gráficos vinculados | importar tarefas e recursos | importar listas (preços, itens, inventário) com conferência |
-| **Documentos** | — | — | — | gerar slides da estrutura de tópicos | comentários viram tarefas | modelos para propostas, OP, laudos; instruções de trabalho vinculadas às operações |
-| **Apresentações** | — | — | exportar folhetos/roteiro | — | — | — |
-| **Cronograma** | — | exportar tarefas, curva S | relatório de status, linha do tempo vinculada | linha do tempo, Gantt vinculados | — | projetos ↔ pedidos, capacidade finita, recursos, custos |
-| **ERP/PDM** | itens comprados para inserir, material com densidade/custo, custo estimado | consultas vivas, `SG.ITEM` | dados de registros em modelos (mala direta) | painéis vinculados | OPs, apontamentos, recursos e calendários, ações de RNC | — |
+| **WJCAD** | — | propriedades de massa, lista de corte, tabela de configurações, cotas como valores | vistas vinculadas, propriedades em campos, tabela de cotas | modelo 3D interativo, vistas | progresso de modelagem ⏸ | item, propriedades, revisão, estrutura, DXF/STEP de liberação, tempos de roteiro |
+| **WJPlaniel** | variáveis globais/equações e tabela de configurações vindas de células | — | tabelas e gráficos vinculados | tabelas e gráficos vinculados | importar tarefas e recursos | importar listas (preços, itens, inventário) com conferência |
+| **WJWord** | — | — | — | gerar slides da estrutura de tópicos | comentários viram tarefas | modelos para propostas, OP, laudos; instruções de trabalho vinculadas às operações |
+| **WJApion** | — | — | exportar folhetos/roteiro | — | — | — |
+| **WJCronProject** | — | exportar tarefas, curva S | relatório de status, linha do tempo vinculada | linha do tempo, Gantt vinculados | — | projetos ↔ pedidos, capacidade finita, recursos, custos |
+| **WJPDM / WJERP** | itens comprados para inserir, material com densidade/custo, custo estimado | consultas vivas, `WJ.ITEM` | dados de registros em modelos (mala direta) | painéis vinculados | OPs, apontamentos, recursos e calendários, ações de RNC | — |
 
 ## 3. Fluxos ponta a ponta (cenários de aceitação)
 
@@ -75,7 +75,7 @@ Regra geral: **vínculo por URI, nunca cópia silenciosa**.
    para o cliente.
 
 ### F5 — Planilha como painel de engenharia
-1. Planilha com `=SG.CAD("Suporte.jlscad";"Massa")` em linhas por peça e `=SG.ITEM(A2;"Custo")`.
+1. Planilha com `=WJ.CAD("Suporte.jlscad";"Massa")` em linhas por peça e `=WJ.ITEM(A2;"Custo")`.
 2. Tabela de configurações do CAD vinculada à mesma pasta: mudar a célula `D1@Esboço1` da
    configuração "Longa" e a peça regenera ao abrir o CAD.
 3. Gráfico de massa por variante colado (vinculado) no relatório técnico.

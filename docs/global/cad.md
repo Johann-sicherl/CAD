@@ -1,6 +1,6 @@
-# CAD (JLSCAD) dentro do Software Global
+# WJCAD dentro do WJProMaster
 
-A especificação funcional completa do CAD continua em `docs/funcional/`:
+O WJCAD é o antigo JLSCAD (arquivos `.wjcad`; abre `.jlscad` e `.cadt`). A especificação funcional completa do CAD continua em `docs/funcional/`:
 - [features](../funcional/features.md)
 - [sketch](../funcional/sketch.md)
 - [chapa](../funcional/chapa.md)
@@ -23,9 +23,9 @@ Aqui fica só o que o CAD precisa **expor ou receber** para fazer parte do ecoss
   - Padrão: código, descrição, material, massa, volume, área, caixa delimitadora.
   - Personalizadas: valores ou fórmulas como `=Massa*1,1`.
   - Por configuração.
-- **Objetos endereçáveis** `sg://cad/<arquivo>/…`: propriedade, cota (`D1@Esboço1`), parâmetro de
+- **Objetos endereçáveis** `wj://cad/<arquivo>/…`: propriedade, cota (`D1@Esboço1`), parâmetro de
   recurso, configuração, vista salva, planificado, lista de corte.
-- **Funções para o motor comum**: `SG.CAD(arquivo; nome)`.
+- **Funções para o motor comum**: `WJ.CAD(arquivo; nome)`.
 - **Exportações de liberação** (chamadas pelo PDM, em Worker, sem UI):
   - STEP, STL;
   - DXF do planificado;
@@ -38,7 +38,7 @@ Aqui fica só o que o CAD precisa **expor ou receber** para fazer parte do ecoss
 - Material com densidade e custo do cadastro do ERP. A lista de materiais atual vira o fallback offline.
 - Itens comprados (parafusos, perfis, componentes) para inserir quando houver montagens ⏸.
 - Valores de células da Planilha para variáveis globais e tabela de configurações.
-- Estado do PDM: estado/revisão no título, travado quando liberado, check-out/check-in pelo menu
+- Estado do WJPDM (o diretório do WJCAD, ver [pdm.md](pdm.md)): estado/revisão no título, travado quando liberado, check-out/check-in pelo menu
   Arquivo.
 
 ## 4. Pendências do CAD que entram na G1

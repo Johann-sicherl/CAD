@@ -1,4 +1,4 @@
-// Service worker: guarda o JLSCAD inteiro em cache (inclusive o kernel .wasm de ~10 MB e o
+// Service worker: guarda o WJCAD inteiro em cache (inclusive o kernel .wasm de ~10 MB e o
 // solver do esboço) já na instalação, para funcionar sem internet em qualquer aparelho.
 // __VERSAO__ é trocado a cada build (vite.config.ts): versão nova → cache novo → app atualizado.
 const CACHE = "jlscad-__VERSAO__";

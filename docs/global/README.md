@@ -1,18 +1,20 @@
-# Software Global — visão do ecossistema
+# WJProMaster — visão do ecossistema
 
-Ecossistema próprio e integrado de software de engenharia e gestão, do Johann.
-O CAD (JLSCAD) é uma das faces. Todas as faces rodam no **celular, tablet e notebook/computador**
+Ecossistema próprio e integrado de software de engenharia e gestão, do Johann. **WJProMaster** é o
+nome oficial do conjunto (o "maestro" que reúne tudo); cada face tem o seu nome WJ. Todas as faces rodam no **celular, tablet e notebook/computador**
 (navegador Chrome/Edge e PWA instalável). Elas compartilham núcleo de interface, dados, fórmulas
 e identidade de objetos.
 
-| Face | Inspiração funcional | Arquivo / dado | Especificação |
-|---|---|---|---|
-| **CAD** (JLSCAD) | CAD paramétrico profissional | `.jlscad` | [cad.md](cad.md) + `docs/funcional/` |
-| **Planilhas** | planilha eletrônica profissional | `.sgplan` | [planilha.md](planilha.md) |
-| **Documentos** | processador de texto profissional | `.sgdoc` | [documentos.md](documentos.md) |
-| **Apresentações** | software de apresentações profissional | `.sgapr` | [apresentacoes.md](apresentacoes.md) |
-| **Cronogramas** | gerenciador de projetos com Gantt | `.sgcron` | [cronograma.md](cronograma.md) |
-| **Gestão e Engenharia** (ERP + PDM) | ERP brasileiro de mercado + PDM | banco no servidor | [erp-pdm.md](erp-pdm.md) |
+| Face | O que é | Inspiração funcional | Arquivo / dado | Especificação |
+|---|---|---|---|---|
+| **WJProMaster** | hub: início, arquivos recentes, busca, notificações, conta | — | — | este arquivo (§5) |
+| **WJCAD** | CAD paramétrico (antigo JLSCAD) | CAD paramétrico profissional | `.wjcad` (abre `.jlscad`/`.cadt`) | [cad.md](cad.md) + `docs/funcional/` |
+| **WJPDM** | diretório/cofre do WJCAD: versões, revisões, fluxos, itens, lista de materiais | PDM integrado ao CAD de referência | cofre no servidor | [pdm.md](pdm.md) |
+| **WJPlaniel** | planilhas com fórmulas avançadas | planilha eletrônica profissional | `.wjpl` | [planilha.md](planilha.md) |
+| **WJWord** | documentos com propriedades avançadas | processador de texto profissional | `.wjdoc` | [documentos.md](documentos.md) |
+| **WJApion** | apresentações | software de apresentações profissional | `.wjapn` | [apresentacoes.md](apresentacoes.md) |
+| **WJCronProject** | cronogramas e projetos | gerenciador de projetos com Gantt | `.wjcron` | [cronograma.md](cronograma.md) |
+| **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
@@ -23,7 +25,8 @@ Legenda de status (igual à do CAD): ✅ existe · 🟡 parcial · **G0…G8** f
 
 ## 1. Princípios (valem para todas as faces)
 
-1. **Inspiração, nunca cópia.** O fluxo e o comportamento podem ser parecidos com os softwares de
+1. **Inspiração, nunca cópia.** (Atenção ao nome **WJWord**: "Word" é marca registrada de
+   processador de texto — risco de conflito de marca; ver §6.) O fluxo e o comportamento podem ser parecidos com os softwares de
    referência, mas **não** se copia:
    - código, ícones, logotipos, cores de marca, textos de ajuda ou telas;
    - nomes registrados (ex.: "Excel", "Word", "PowerPoint", "Project", "Protheus", "SmartArt",
@@ -44,9 +47,9 @@ Legenda de status (igual à do CAD): ✅ existe · 🟡 parcial · **G0…G8** f
    - A exceção é o ERP, que é multiusuário por natureza: offline ele só lê o cache e enfileira
      lançamentos.
 5. **Tudo é objeto com endereço.** Cada coisa (célula, intervalo, parágrafo, slide, tarefa, item,
-   peça, cota, pedido…) tem um **URI global** `sg://<face>/<id-do-arquivo-ou-tabela>/<id-interno>`.
+   peça, cota, pedido…) tem um **URI global** `wj://<face>/<id-do-arquivo-ou-tabela>/<id-interno>`.
    Vínculos entre faces usam esse URI, nunca cópia de valor.
-6. **Um motor de fórmulas só** (`@sg/formulas`). A mesma linguagem serve para:
+6. **Um motor de fórmulas só** (`@wj/formulas`). A mesma linguagem serve para:
    - a Planilha;
    - as equações do CAD;
    - os campos calculados de Documentos e Apresentações;
@@ -71,13 +74,14 @@ Legenda de status (igual à do CAD): ✅ existe · 🟡 parcial · **G0…G8** f
 ```
 GLOBAL/
 ├─ apps/
-│  ├─ inicio/          hub: arquivos recentes, busca global, notificações, abrir qualquer face
-│  ├─ cad/             o JLSCAD atual (movido de src/)
-│  ├─ planilha/
-│  ├─ documentos/
-│  ├─ apresentacoes/
-│  ├─ cronograma/
-│  └─ gestao/          ERP + PDM (cliente web)
+│  ├─ inicio/          WJProMaster (hub): arquivos recentes, busca global, notificações, abrir qualquer face
+│  ├─ cad/             WJCAD (o app atual, movido de src/)
+│  ├─ planilha/        WJPlaniel
+│  ├─ documentos/      WJWord
+│  ├─ apresentacoes/   WJApion
+│  ├─ cronograma/      WJCronProject
+│  ├─ pdm/             WJPDM (explorador do cofre)
+│  └─ erp/             WJERP
 ├─ packages/
 │  ├─ nucleo/          casca da UI: abas de comando, painel ✓/✕, árvore/lista lateral, menus,
 │  │                   barra de status, perfis de dispositivo, atalhos, gaveta, lupa, toque/caneta
@@ -93,7 +97,7 @@ GLOBAL/
 └─ servidor/           API (Cloudflare Workers): contas, empresas, permissões, ERP, PDM, sync
 ```
 
-- **Um PWA só** ("Software Global"), com rotas por face (`/cad`, `/planilha`…).
+- **Um PWA só** ("WJProMaster"), com rotas por face (`/cad`, `/planilha`…).
   - Cache offline único; cada face é carregada sob demanda. O kernel do CAD e os motores pesados
     não entram nas outras faces.
   - Cabeçalhos COOP/COEP continuam valendo (exigência do kernel do CAD).
@@ -103,8 +107,8 @@ GLOBAL/
   - Durable Objects para colaboração em tempo real e travas de check-out.
   - Mantém a hospedagem atual (Cloudflare Pages). Se o volume do ERP pedir, avaliar Postgres
     gerenciado; essa decisão é do Johann.
-- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para Documentos, Planilhas, Apresentações e
-  Cronogramas. O ERP é transacional no servidor e não usa CRDT.
+- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para WJWord, WJPlaniel, WJApion e
+  WJCronProject. O ERP é transacional no servidor e não usa CRDT.
 - **Linguagem**: TypeScript em tudo (cliente, servidor, motores). DOM puro como hoje. Um framework
   de UI só entra com justificativa (avaliar quando a Planilha/ERP crescer; Lit ou Preact seriam
   os candidatos leves).
@@ -126,24 +130,24 @@ GLOBAL/
 
 | Fase | Entrega | Por que nessa ordem |
 |---|---|---|
-| **G0** Fundação | monorepo, `nucleo`, `icones`, `dados` local, hub Início, PWA único com rotas; CAD movido para `apps/cad` sem perder nada | base de tudo |
-| **G1** CAD | termina a Fase 4 (chapa) e a Fase 5 do CAD; propriedades personalizadas da peça (alimentam o PDM) | face que já existe |
-| **G2** Planilhas | `formulas` completo + Planilha (grade, formatos, gráficos, tabelas, dinâmica, xlsx/csv) | o motor de fórmulas é usado por todas as outras faces |
-| **G3** Documentos | `texto-rico` + `paginacao` + Documentos (estilos, sumário, campos, controle de alterações, docx/pdf) | base de texto para Apresentações e relatórios do ERP |
-| **G4** Apresentações | slides, mestres, animações, apresentador, pptx/pdf | reaproveita texto rico e gráficos |
-| **G5** Servidor + PDM | contas, empresas, permissões, sync/colaboração, cofre PDM, itens, revisões, estrutura, fluxos | liga o CAD ao mundo do ERP |
-| **G6** Cronogramas | EAP, CPM, recursos, linhas de base, valor agregado, MSPDI | usa servidor (recursos compartilhados) e fórmulas |
-| **G7** Gestão (ERP núcleo) | cadastros, estoque/custos, compras, vendas, PCP/MRP, financeiro, CRM simples | usa PDM (estrutura) e Cronograma (capacidade/projetos) |
-| **G8** Fiscal e contábil | NF-e/NFS-e (via provedor homologado), SPED, contabilidade, conciliação bancária, boletos/PIX | exige conformidade legal; por último |
+| **G0** Fundação | monorepo, `nucleo`, `icones`, `dados` local, hub WJProMaster, PWA único com rotas; CAD movido para `apps/cad` sem perder nada | base de tudo |
+| **G1** WJCAD | termina a Fase 4 (chapa) e a Fase 5 do CAD; propriedades personalizadas da peça (alimentam o WJPDM) | face que já existe |
+| **G2** WJPlaniel | `formulas` completo + planilha (grade, formatos, gráficos, tabelas, dinâmica, xlsx/csv) | o motor de fórmulas é usado por todas as outras faces |
+| **G3** WJWord | `texto-rico` + `paginacao` + documentos (estilos, sumário, campos, controle de alterações, docx/pdf) | base de texto para Apresentações e relatórios do ERP |
+| **G4** WJApion | slides, mestres, animações, apresentador, pptx/pdf | reaproveita texto rico e gráficos |
+| **G5** Servidor + WJPDM | contas, empresas, permissões, sync/colaboração, cofre do WJPDM, itens, revisões, estrutura, fluxos | liga o CAD ao mundo do ERP |
+| **G6** WJCronProject | EAP, CPM, recursos, linhas de base, valor agregado, MSPDI | usa servidor (recursos compartilhados) e fórmulas |
+| **G7** WJERP (núcleo) | cadastros, estoque/custos, compras, vendas, PCP/MRP, financeiro, CRM simples | usa PDM (estrutura) e Cronograma (capacidade/projetos) |
+| **G8** WJERP fiscal e contábil | NF-e/NFS-e (via provedor homologado), SPED, contabilidade, conciliação bancária, boletos/PIX | exige conformidade legal; por último |
 
-A ordem pode mudar por decisão do Johann (por exemplo, antecipar o PDM se o uso no trabalho pedir).
+A ordem pode mudar por decisão do Johann (por exemplo, antecipar o WJPDM se o uso no trabalho pedir).
 
 ## 5. Itens comuns a todas as faces (especificação)
 
 ### 5.1 Início (hub) — G0
 - Recentes de todas as faces (miniatura, face, local, data), fixados, busca global.
 - **Novo** → escolher a face e o modelo (em branco, modelos próprios, modelos da empresa).
-- **Abrir**: arquivo do aparelho, nuvem do Software Global (G5), importar formato aberto.
+- **Abrir**: arquivo do aparelho, nuvem do WJProMaster (G5), importar formato aberto.
 - Notificações: comentários, menções, aprovações pendentes (PDM/ERP), tarefas atrasadas.
 - Perfil de dispositivo, idioma, unidades, tema, conta.
 
@@ -174,3 +178,11 @@ Copiar de uma face e colar em outra mantém estrutura e **oferece vínculo**:
 ### 5.6 Assistente (IA) — ⏸ (decisão futura)
 Comando por linguagem natural em todas as faces (gerar fórmula, resumir documento, montar slides,
 sugerir cronograma). Só entra se o Johann decidir, com chave/API configurável.
+
+## 6. Nomes — observação de marca
+
+Os nomes WJ são do Johann (decisão de 24/10/2026). Antes de publicar ou registrar, vale uma busca
+no INPI: **WJWord** junta o prefixo a "Word", marca registrada de processador de texto na mesma
+classe de software, e é o nome com mais risco. Alternativas sem esse risco: WJDoc, WJTexto, WJWriter.
+"Project" (em WJCronProject) é palavra genérica, risco menor. Trocar o nome depois custa pouco
+(está concentrado na UI e nos docs); a extensão `.wjdoc` não depende dele.

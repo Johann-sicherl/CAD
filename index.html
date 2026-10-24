@@ -7,13 +7,13 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icone.svg" type="image/svg+xml" />
-    <title>JLSCAD</title>
+    <title>WJCAD — WJProMaster</title>
   </head>
   <body>
     <!-- 1. barra superior: menu + ações rápidas + nome da peça -->
     <header class="barra-topo">
       <button id="btn-lateral" class="btn-ic" title="Árvore / painel do comando" data-requer-doc></button>
-      <div class="marca"><img src="icone.svg" alt="" class="logo" /> JLSCAD</div>
+      <div class="marca"><img src="icone.svg" alt="" class="logo" /> WJCAD</div>
       <div class="menu-wrap">
         <button id="btn-menu" class="btn-ic" aria-haspopup="true" aria-expanded="false" title="Menu"></button>
         <div id="menu-arquivo" class="menu" role="menu" hidden>
@@ -36,7 +36,7 @@
       </div>
       <div class="rapidas">
         <button data-acao="novo" class="btn-ic" title="Novo documento"></button>
-        <button data-acao="abrir" class="btn-ic" title="Abrir (.jlscad)"></button>
+        <button data-acao="abrir" class="btn-ic" title="Abrir (.wjcad)"></button>
         <button data-acao="salvar" class="btn-ic" title="Salvar (Ctrl+S)" data-requer-doc></button>
         <span class="sep" data-requer-doc></span>
         <button id="btn-desfazer" class="btn-ic" title="Desfazer (Ctrl+Z)" data-requer-doc></button>
@@ -119,7 +119,7 @@
       <span title="Sistema de unidades">MMGS (mm, g, s)</span>
     </footer>
 
-    <!-- sem filtro de tipo: o Android não conhece a extensão .jlscad e deixaria o arquivo cinza -->
+    <!-- sem filtro de tipo: o Android não conhece a extensão .wjcad e deixaria o arquivo cinza -->
     <input type="file" id="arquivo" hidden />
     <script type="module" src="/src/main.ts"></script>
   </body>
