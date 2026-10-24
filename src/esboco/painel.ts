@@ -99,8 +99,30 @@ export function renderizarPainelEsboco(
   if (ed.ferramenta === "arco") tipo("Tipo", ed.tipoArco, [["3pontos", "3 pontos"], ["centro", "Centro-pontas"], ["tangente", "Tangente"]], (v) => (ed.tipoArco = v as never));
   if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto"], ["centro", "Reto pelo centro"], ["arco3", "Em arco por 3 pontos"], ["arcoCentro", "Em arco pelo centro"]], (v) => (ed.tipoRasgo = v as never));
   if (ed.ferramenta === "poligono") {
-    painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => (ed.lados = Math.max(3, Math.min(64, Math.round(v))))));
-    tipo("Círculo de construção", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Inscrito (vértices no círculo)"], ["circ", "Circunscrito (lados tangentes)"]], (v) => (ed.poligonoCircunscrito = v === "circ"));
+    // parâmetros do polígono (antes de criar valem para o próximo; depois editam o último)
+    painel.append(el("h3", "prop-titulo", "Parâmetros"));
+    painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => {
+      ed.lados = Math.max(3, Math.min(64, Math.round(v)));
+      ed.refazerPoligono();
+    }));
+    tipo("Círculo", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Círculo inscrito"], ["circ", "Círculo circunscrito"]], (v) => {
+      ed.poligonoCircunscrito = v === "circ";
+      ed.refazerPoligono();
+    });
+    const pp = ed.parametrosPoligono();
+    if (pp) {
+      const f = (x: number) => Number(x.toFixed(4));
+      painel.append(
+        campoNumero("Centro X", f(pp.x), "mm", (v) => ed.editarPoligono({ x: v })),
+        campoNumero("Centro Y", f(pp.y), "mm", (v) => ed.editarPoligono({ y: v })),
+        campoNumero("Diâmetro do círculo", f(pp.diametro), "mm", (v) => ed.editarPoligono({ diametro: v })),
+        campoNumero("Ângulo", f(pp.angulo), "°", (v) => ed.editarPoligono({ angulo: v })),
+      );
+      painel.append(botao("Novo polígono", () => {
+        ed.ultimoPoligono = null;
+        ed.definirFerramenta("poligono");
+      }, "largo"));
+    }
   }
   if (ed.ferramenta === "fileteEsboco") {
     painel.append(campoNumero("Raio", ed.raioFilete, "mm", (v) => (ed.raioFilete = Math.abs(v))));
@@ -108,10 +130,31 @@ export function renderizarPainelEsboco(
   }
   if (ed.ferramenta === "chanfroEsboco") painel.append(campoNumero("Distância", ed.distChanfro, "mm", (v) => (ed.distChanfro = Math.abs(v))));
   if (ed.ferramenta === "offset") {
-    painel.append(campoNumero("Distância", ed.distOffset, "mm", (v) => (ed.distOffset = Math.abs(v))));
-    const linha = el("div", "prop-rodape");
-    linha.append(botao("Aplicar", () => ed.aplicarOffset(false), "destaque"), botao("Lado oposto", () => ed.aplicarOffset(true)));
-    painel.append(linha);
+    const o = ed.offset;
+    const opcao = (rot: string, k: "cotar" | "inverter" | "cadeia" | "bidirecional" | "baseConstrucao" | "construcao") =>
+      interruptor(rot, o[k], (v) => { o[k] = v; ed.mudouOffset(); });
+    painel.append(el("h3", "prop-titulo", "Parâmetros"));
+    painel.append(campoNumero("Distância", ed.distOffset, "mm", (v) => { ed.distOffset = Math.abs(v); ed.mudouOffset(); }));
+    painel.append(
+      opcao("Adicionar cotas", "cotar"),
+      opcao("Inverter", "inverter"),
+      opcao("Selecionar cadeia", "cadeia"),
+      opcao("Bidirecional", "bidirecional"),
+    );
+    const tampar = el("label", "campo");
+    tampar.append(el("span", "campo-rotulo", "Tampar extremidades"));
+    const st = el("select");
+    for (const [v, r] of [["nenhuma", "Não"], ["arcos", "Arcos"], ["linhas", "Linhas"]]) st.add(new Option(r, v));
+    st.value = o.tampar;
+    st.onchange = () => { o.tampar = st.value as typeof o.tampar; ed.mudouOffset(); };
+    tampar.append(st);
+    painel.append(tampar);
+    painel.append(el("h3", "prop-titulo", "Geometria de construção"));
+    painel.append(
+      opcao("Geometria base", "baseConstrucao"),
+      opcao("Geometria do offset", "construcao"),
+    );
+    painel.append(botao(ed.selecao.size ? "Aplicar offset" : "Toque uma entidade", () => ed.aplicarOffset(), "destaque largo"));
   }
   if (ed.ferramenta === "spline") {
     painel.append(botao("Concluir curva", () => ed.concluirSpline(), "largo"));

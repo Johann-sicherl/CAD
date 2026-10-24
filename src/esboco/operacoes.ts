@@ -367,56 +367,127 @@ function juntar(x: Deslocada, y: Deslocada): P2 {
   return cand.sort((p, q) => dist(p, ref) - dist(q, ref))[0] ?? ref;
 }
 
+/** Opções do offset (painel "Offset de entidades"). */
+export interface OpcoesOffset {
+  /** Cotar a distância (uma cota por lado). */
+  cotar?: boolean;
+  /** Copiar para os dois lados. */
+  bidirecional?: boolean;
+  /** Fechar as pontas de cadeias abertas com arcos ou linhas. */
+  tampar?: "nenhuma" | "arcos" | "linhas";
+  /** Transformar as entidades de origem em geometria de construção. */
+  baseConstrucao?: boolean;
+  /** Criar as cópias como geometria de construção. */
+  construcao?: boolean;
+}
+
+/** Direção da tangente que sai da cadeia na ponta (início: para trás; fim: para frente). */
+function saidaDaCadeia(e: Elo, pts: MapaPontos, fim: boolean): P2 {
+  const g = e.g;
+  let t: P2;
+  if (g.tipo === "linha") {
+    const a = pts.get(g.p1)!, b = pts.get(g.p2)!;
+    t = sub(b, a);
+    if (e.invertido) t = mult(t, -1);
+  } else {
+    const arc = g as Geo<"arco">;
+    const c = pts.get(arc.c)!;
+    // ponta no sentido do percurso; tangente anti-horária, trocada se o elo está invertido
+    const ponta = pts.get(fim !== e.invertido ? arc.fim : arc.ini)!;
+    const r = sub(ponta, c);
+    t = { x: -r.y, y: r.x };
+    if (e.invertido) t = mult(t, -1);
+  }
+  const l = Math.hypot(t.x, t.y) || 1;
+  return mult(t, (fim ? 1 : -1) / l);
+}
+
 /**
  * Cria cópias deslocadas das geometrias. Distância positiva = para fora em contornos fechados
  * (e para a esquerda em cadeias abertas); negativa inverte. Devolve os ids das novas geometrias.
  */
-export function deslocar(esb: FeatureEsboco, geoIds: string[], d: number): string[] {
+export function deslocar(esb: FeatureEsboco, geoIds: string[], d: number, opc: OpcoesOffset = {}): string[] {
   const pts = mapaPontos(esb);
   const geos = esb.geos.filter((g) => geoIds.includes(g.id));
   const novas: string[] = [];
-  let cotada = false;
+  const cotar = opc.cotar ?? true;
+  const lados = opc.bidirecional ? [d, -d] : [d];
+  const constr = (g: GeoEsboco) => opc.construcao ?? g.construcao;
 
   for (const g of geos) {
     if (g.tipo !== "circulo") continue;
-    const nc = circulo(esb, g.c, Math.max(1e-3, g.r + d), g.construcao);
-    restringir(esb, { tipo: "concentrico", a: g.id, b: nc.id });
-    novas.push(nc.id);
+    for (const dd of lados) {
+      if (g.r + dd <= 1e-3) continue;
+      const nc = circulo(esb, g.c, g.r + dd, constr(g));
+      restringir(esb, { tipo: "concentrico", a: g.id, b: nc.id });
+      novas.push(nc.id);
+    }
   }
 
   for (const { elos, fechada } of cadeias(geos, pts)) {
-    let dd = d;
-    if (fechada) {
-      const pol = elos.map((e) => pts.get(e.invertido ? extremidades(e.g)![1] : extremidades(e.g)![0])!);
-      if (areaAssinada(pol) > 0) dd = -d; // anti-horário: a esquerda é o lado de dentro
-    }
-    const desl = elos.map((e) => deslocarElo(e, pts, dd));
-    const n = desl.length;
-    const juntas: string[] = [];
-    for (let i = 0; i < n; i++) {
-      const anterior = i === 0 ? (fechada ? desl[n - 1] : null) : desl[i - 1];
-      juntas.push(ponto(esb, anterior ? juntar(anterior, desl[i]) : desl[i].a));
-    }
-    const fimAberto = fechada ? juntas[0] : ponto(esb, desl[n - 1].b);
-    desl.forEach((x, i) => {
-      const a = juntas[i], b = i + 1 < n ? juntas[i + 1] : fimAberto;
-      const orig = elos[i].g;
-      if (x.tipo === "linha") {
-        const nl = linha(esb, a, b, orig.construcao);
-        restringir(esb, { tipo: "paralelo", a: orig.id, b: nl.id });
-        if (!cotada) {
-          restringir(esb, { tipo: "distancia", a: nl.p1, b: orig.id, valor: Math.abs(d), texto: mult(soma(pts.get((orig as Geo<"linha">).p1)!, x.a), 0.5) });
-          cotada = true;
-        }
-        novas.push(nl.id);
-      } else {
-        const ic = (orig as Geo<"arco">).c;
-        // o arco novo segue o sentido anti-horário do original
-        const na = elos[i].invertido ? arco(esb, ic, b, a, orig.construcao) : arco(esb, ic, a, b, orig.construcao);
-        novas.push(na.id);
+    const pontas: { ini: string; fim: string }[] = [];
+    for (const lado of lados) {
+      let dd = lado;
+      if (fechada) {
+        const pol = elos.map((e) => pts.get(e.invertido ? extremidades(e.g)![1] : extremidades(e.g)![0])!);
+        if (areaAssinada(pol) > 0) dd = -lado; // anti-horário: a esquerda é o lado de dentro
       }
-    });
+      const desl = elos.map((e) => deslocarElo(e, pts, dd));
+      const n = desl.length;
+      const juntas: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const anterior = i === 0 ? (fechada ? desl[n - 1] : null) : desl[i - 1];
+        juntas.push(ponto(esb, anterior ? juntar(anterior, desl[i]) : desl[i].a));
+      }
+      const fimAberto = fechada ? juntas[0] : ponto(esb, desl[n - 1].b);
+      pontas.push({ ini: juntas[0], fim: fimAberto });
+      let cotada = !cotar;
+      desl.forEach((x, i) => {
+        const a = juntas[i], b = i + 1 < n ? juntas[i + 1] : fimAberto;
+        const orig = elos[i].g;
+        if (x.tipo === "linha") {
+          const nl = linha(esb, a, b, constr(orig));
+          restringir(esb, { tipo: "paralelo", a: orig.id, b: nl.id });
+          if (!cotada) {
+            restringir(esb, { tipo: "distancia", a: nl.p1, b: orig.id, valor: Math.abs(d), texto: mult(soma(pts.get((orig as Geo<"linha">).p1)!, x.a), 0.5) });
+            cotada = true;
+          }
+          novas.push(nl.id);
+        } else {
+          const ic = (orig as Geo<"arco">).c;
+          // o arco novo segue o sentido anti-horário do original
+          const na = elos[i].invertido ? arco(esb, ic, b, a, constr(orig)) : arco(esb, ic, a, b, constr(orig));
+          novas.push(na.id);
+        }
+      });
+    }
+
+    // tampas nas pontas de cadeias abertas
+    if (!fechada && opc.tampar && opc.tampar !== "nenhuma") {
+      const primeiro = elos[0], ultimo = elos[elos.length - 1];
+      const ex0 = extremidades(primeiro.g)!, ex1 = extremidades(ultimo.g)!;
+      const origIni = primeiro.invertido ? ex0[1] : ex0[0];
+      const origFim = ultimo.invertido ? ex1[0] : ex1[1];
+      const cfg = [
+        { dir: saidaDaCadeia(primeiro, pts, false), a: pontas[0].ini, b: opc.bidirecional ? pontas[1].ini : origIni },
+        { dir: saidaDaCadeia(ultimo, pts, true), a: pontas[0].fim, b: opc.bidirecional ? pontas[1].fim : origFim },
+      ];
+      const cons = opc.construcao ?? !!primeiro.g.construcao;
+      for (const k of cfg) {
+        if (opc.tampar === "linhas") {
+          novas.push(linha(esb, k.a, k.b, cons).id);
+          continue;
+        }
+        const pm = esb.pontos.find((p) => p.id === k.a)!, pn = esb.pontos.find((p) => p.id === k.b)!;
+        const meio = mult(soma(pm, pn), 0.5);
+        const passagem = soma(meio, mult(k.dir, dist(pm, pn) / 2));
+        const na = arcoTresPontos(esb, k.a, k.b, passagem, cons);
+        if (na) novas.push(na.id);
+      }
+    }
   }
+
+  if (opc.baseConstrucao) for (const g of geos) g.construcao = true;
   return novas;
 }
 

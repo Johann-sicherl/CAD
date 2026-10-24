@@ -275,6 +275,31 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   confere("rasgo em arco: área", regenerar([e4, extrusao(e4, 1)]).volume ?? 0, (Math.PI / 2) * (23 * 23 - 17 * 17) / 2 + Math.PI * 9);
 }
 
+// 14. Offset de entidades: bidirecional com tampas em arco (vira um rasgo) e um só lado com
+// tampas em linha (retângulo); "geometria base" vira construção
+{
+  const e = plano();
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 40, y: 0 }));
+  const novas = op.deslocar(e, [l.id], 3, { bidirecional: true, tampar: "arcos", baseConstrucao: true });
+  verdade("offset bidirecional: 2 linhas + 2 arcos", novas.length === 4);
+  verdade("geometria base vira construção", !!e.geos.find((g) => g.id === l.id)?.construcao);
+  verdade("offset bidirecional resolve", solver.resolver(e).conflitantes.length === 0);
+  confere("offset bidirecional com arcos: área do rasgo", regenerar([e, extrusao(e, 1)]).volume ?? 0, 40 * 6 + Math.PI * 9);
+
+  const e2 = plano();
+  const l2 = op.linha(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 40, y: 0 }));
+  op.deslocar(e2, [l2.id], 3, { tampar: "linhas", cotar: false });
+  verdade("offset sem cota", !e2.restricoes.some((r) => r.tipo === "distancia"));
+  verdade("offset com tampas em linha resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("offset com tampas em linha: 40 × 3", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, 40 * 3);
+
+  const e3 = plano();
+  const ci = op.circulo(e3, op.ponto(e3, { x: 0, y: 0 }), 10);
+  op.deslocar(e3, [ci.id], 2, { bidirecional: true, construcao: true });
+  verdade("círculo bidirecional: r 8 e 12 de construção",
+    e3.geos.filter((g) => g.tipo === "circulo" && g.construcao).map((g) => (g as { r: number }).r).sort().join() === "12,8");
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

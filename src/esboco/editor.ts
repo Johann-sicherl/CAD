@@ -8,7 +8,7 @@ import { ehCota, novoId } from "../model";
 import type { TipoEntidade, Viewport } from "../viewport";
 import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
-  angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
+  amostrar, angulo, centroTresPontos, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
   mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
@@ -130,6 +130,8 @@ export class EditorEsboco {
   tipoArco: TipoArco = "3pontos";
   tipoRasgo: TipoRasgo = "reto";
   tipoLinha: TipoLinha = "normal";
+  /** Último polígono criado: o painel edita centro, diâmetro, ângulo, lados e tipo dele. */
+  ultimoPoligono: { geos: string[]; circ: string; centro: string; vertice: string } | null = null;
   /** Caixa do painel a abrir ("padraoLinear"/"padraoCircular"), pedida pelo menu ▾ Padrão. */
   abrirTransformar: string | null = null;
   poligonoCircunscrito = false;
@@ -137,6 +139,10 @@ export class EditorEsboco {
   cotarFilete = true;
   distChanfro = 2;
   distOffset = 5;
+  /** Opções do offset (painel "Offset de entidades"). */
+  offset: Required<op.OpcoesOffset> & { inverter: boolean; cadeia: boolean } = {
+    cotar: true, inverter: false, cadeia: true, bidirecional: false, tampar: "nenhuma", baseConstrucao: false, construcao: false,
+  };
   /** Sem caneta detectada o dedo desenha; ao primeiro toque de caneta isso desliga. */
   dedoDesenha = true;
   /** Mostrar a opção "desenhar com o dedo" (só no perfil tablet, onde há caneta). */
@@ -602,8 +608,10 @@ export class EditorEsboco {
     }
     if (f === "offset") {
       const alvo = this.achar(enc.p, tol);
-      if (alvo?.tipo !== "geo") return;
-      this.selecao = new Set(this.cadeiaDe(alvo.id));
+      if (alvo?.tipo !== "geo" || alvo.id === EIXO_H || alvo.id === EIXO_V) return;
+      if (this.offset.cadeia) this.selecao = new Set(this.cadeiaDe(alvo.id));
+      else if (this.selecao.has(alvo.id)) this.selecao.delete(alvo.id);
+      else this.selecao.add(alvo.id);
       this.redesenhar();
       this.h.atualizarInterface();
       return;
@@ -753,8 +761,11 @@ export class EditorEsboco {
         break;
       case "poligono":
         if (c.length === 2) {
-          if (this.poligonoCircunscrito) op.poligonoCircunscrito(esb, this.pontoDo(c[0]), c[1].p, this.lados, cons);
-          else op.poligono(esb, this.pontoDo(c[0]), c[1].p, this.lados, cons);
+          const centro = this.pontoDo(c[0]);
+          const gs = this.poligonoCircunscrito
+            ? op.poligonoCircunscrito(esb, centro, c[1].p, this.lados, cons)
+            : op.poligono(esb, centro, c[1].p, this.lados, cons);
+          this.lembrarPoligono(gs, centro);
           pronto = true;
         }
         break;
@@ -801,6 +812,57 @@ export class EditorEsboco {
     const r = dist(c, this.tipoRasgo === "arco3" ? p[0] : p[1]);
     const w = p[3] ? Math.abs(dist(c, p[3]) - r) : null;
     return { c, r, a0, a1, w };
+  }
+
+  private lembrarPoligono(gs: GeoEsboco[], centro: string) {
+    const l0 = gs[1];
+    this.ultimoPoligono = l0?.tipo === "linha" ? { geos: gs.map((g) => g.id), circ: gs[0].id, centro, vertice: l0.p1 } : null;
+  }
+
+  /** Parâmetros do último polígono (null se ele não existe mais). */
+  parametrosPoligono(): { x: number; y: number; diametro: number; angulo: number } | null {
+    const u = this.ultimoPoligono;
+    if (!u || !u.geos.every((id) => this.esb.geos.some((g) => g.id === id))) return null;
+    const pts = mapaPontos(this.esb);
+    const c = pts.get(u.centro), v = pts.get(u.vertice);
+    const circ = this.esb.geos.find((g) => g.id === u.circ);
+    if (!c || !v || circ?.tipo !== "circulo") return null;
+    return { x: c.x, y: c.y, diametro: 2 * circ.r, angulo: (angulo(c, v) * 180) / Math.PI };
+  }
+
+  /** Painel do polígono: muda centro, diâmetro e ângulo do último polígono (o solver segue). */
+  editarPoligono(v: Partial<{ x: number; y: number; diametro: number; angulo: number }>) {
+    const atual = this.parametrosPoligono();
+    const u = this.ultimoPoligono;
+    if (!atual || !u) return;
+    const n = { ...atual, ...v };
+    if (!(n.diametro > 0)) return;
+    const circunscrito = this.esb.restricoes.some((r) => r.tipo === "tangente" && r.b === u.circ);
+    const lados = u.geos.length - 1;
+    const rv = (n.diametro / 2) / (circunscrito ? Math.cos(Math.PI / lados) : 1);
+    const c = { x: n.x, y: n.y };
+    this.h.solver.resolver(this.esb, {
+      pontos: [{ id: u.centro, ...c }, { id: u.vertice, ...polar(c, rv, (n.angulo * Math.PI) / 180) }],
+      raios: [{ id: u.circ, r: n.diametro / 2 }],
+    });
+    this.resolver(true);
+  }
+
+  /** Lados ou tipo mudaram no painel: refaz o último polígono no mesmo lugar. */
+  refazerPoligono() {
+    const atual = this.parametrosPoligono();
+    const u = this.ultimoPoligono;
+    if (!atual || !u) return;
+    op.excluir(this.esb, u.geos);
+    const centro = op.ponto(this.esb, { x: atual.x, y: atual.y });
+    const a = (atual.angulo * Math.PI) / 180;
+    const r = atual.diametro / 2;
+    const ref = this.poligonoCircunscrito ? polar({ x: atual.x, y: atual.y }, r, a - Math.PI / this.lados) : polar({ x: atual.x, y: atual.y }, r, a);
+    const gs = this.poligonoCircunscrito
+      ? op.poligonoCircunscrito(this.esb, centro, ref, this.lados, this.construcao)
+      : op.poligono(this.esb, centro, ref, this.lados, this.construcao);
+    this.lembrarPoligono(gs, centro);
+    this.resolver(true);
   }
 
   /** Termina a spline com os pontos tocados (se o último for o primeiro, ela fecha). */
@@ -851,12 +913,45 @@ export class EditorEsboco {
     return [...out];
   }
 
-  aplicarOffset(inverter = false) {
+  private opcoesOffset(): [number, op.OpcoesOffset] {
+    const o = this.offset;
+    return [o.inverter ? -this.distOffset : this.distOffset, { ...o, construcao: o.construcao || undefined }];
+  }
+
+  aplicarOffset() {
     const geos = this.geosSelecionadas();
     if (!geos.length || !this.distOffset) return;
-    const novas = op.deslocar(this.esb, geos, inverter ? -this.distOffset : this.distOffset);
+    const [d, opc] = this.opcoesOffset();
+    const novas = op.deslocar(this.esb, geos, d, opc);
     this.selecao = new Set(novas);
     this.resolver(true);
+  }
+
+  /** Mudou uma opção do offset: redesenha a pré-visualização. */
+  mudouOffset() {
+    this.redesenhar();
+  }
+
+  /** Contorno tracejado das cópias que o offset criaria com as opções atuais. */
+  private previaOffset(): { segmentos: P2[]; pontos: P2[] } | undefined {
+    const geos = this.geosSelecionadas();
+    if (!geos.length || !this.distOffset) return undefined;
+    const copia: FeatureEsboco = structuredClone(this.esb);
+    const [d, opc] = this.opcoesOffset();
+    let novas: string[];
+    try {
+      novas = op.deslocar(copia, geos, d, opc);
+    } catch {
+      return undefined;
+    }
+    const pts = mapaPontos(copia);
+    const segs: P2[] = [];
+    for (const g of copia.geos) {
+      if (!novas.includes(g.id)) continue;
+      const am = amostrar(g, pts);
+      for (let i = 0; i + 1 < am.length; i++) segs.push(am[i], am[i + 1]);
+    }
+    return { segmentos: segs, pontos: [] };
   }
 
   // ---------- cotas ----------
@@ -1447,7 +1542,7 @@ export class EditorEsboco {
       livres: this.livres,
       selecao: this.selecao,
       conflitantes: this.conflito,
-      previa: this.ferramentaUsaEncaixe() ? this.previa() : undefined,
+      previa: this.ferramentaUsaEncaixe() ? this.previa() : this.ferramenta === "offset" ? this.previaOffset() : undefined,
       marcador,
       mostrarEixos: true,
       cotaPrevia: this.cotaPrevia,
