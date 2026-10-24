@@ -189,9 +189,9 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
 
   const e4 = plano();
   const cc = op.circulo(e4, op.ponto(e4, { x: 20, y: 0 }), 2);
-  op.padraoCircularEsboco(e4, [cc.id], { x: 0, y: 0 }, 6, 360);
+  op.padraoCircularEsboco(e4, [cc.id], { centro: { x: 0, y: 0 }, n: 6, angulo: 360 });
   verdade("padrão circular de esboço: 6 círculos", e4.geos.filter((g) => g.tipo === "circulo").length === 6);
-  op.padraoLinearEsboco(e4, [cc.id], 3, 10, 90);
+  op.padraoLinearEsboco(e4, [cc.id], { n1: 3, esp1: 10, ang1: 90 });
   verdade("padrão linear de esboço: +2", e4.geos.filter((g) => g.tipo === "circulo").length === 8);
   op.transformar(e4, [cc.id], op.girar({ x: 0, y: 0 }, 90), false);
   const centro = e4.pontos.find((p) => p.id === (cc as { c: string }).c)!;
@@ -245,6 +245,181 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   const ci = op.circulo(e, op.ponto(e, { x: 100, y: 0 }), 10);
   const d = ajustarTextoCota({ id: "d", tipo: "diametro", a: ci.id, valor: 20 }, e, { x: 111, y: 0 }, 0.1);
   confere("diâmetro: 1 passo fora do círculo", d.x, 110 + passo);
+}
+
+// 13. Subfunções dos menus ▾: linha de ponto médio, paralelogramo, retângulo pelo centro por
+// 3 pontos e rasgo em arco (área conferida pela extrusão de 1 mm)
+{
+  const e = plano();
+  const m = op.ponto(e, { x: 5, y: 5 });
+  const l = op.linhaPontoMedio(e, m, { x: 15, y: 5 });
+  verdade("linha de ponto médio resolve", solver.resolver(e).conflitantes.length === 0);
+  const p1 = e.pontos.find((p) => p.id === l.p1)!;
+  confere("linha de ponto médio: ponta oposta em x = −5", p1.x, -5);
+
+  const e2 = plano();
+  op.paralelogramo(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 20, y: 0 }), { x: 25, y: 10 });
+  verdade("paralelogramo resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("paralelogramo: área base × altura", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, 20 * 10);
+
+  const e3 = plano();
+  op.retanguloCentro3Pontos(e3, op.ponto(e3, { x: 0, y: 0 }), { x: 0, y: 5 }, { x: 8, y: 5 });
+  verdade("retângulo pelo centro (3 pontos) resolve", solver.resolver(e3).conflitantes.length === 0);
+  confere("retângulo pelo centro (3 pontos): 16 × 10", regenerar([e3, extrusao(e3, 1)]).volume ?? 0, 16 * 10);
+
+  const e4 = plano();
+  const c = op.ponto(e4, { x: 0, y: 0 });
+  verdade("rasgo em arco criado", op.rasgoArco(e4, c, 20, 0, Math.PI / 2, 3).length === 4);
+  verdade("rasgo em arco resolve", solver.resolver(e4).conflitantes.length === 0);
+  // faixa anular de 90° (r 17..23) + duas meias-pontas de raio 3 (= um círculo)
+  confere("rasgo em arco: área", regenerar([e4, extrusao(e4, 1)]).volume ?? 0, (Math.PI / 2) * (23 * 23 - 17 * 17) / 2 + Math.PI * 9);
+}
+
+// 14. Offset de entidades: bidirecional com tampas em arco (vira um rasgo) e um só lado com
+// tampas em linha (retângulo); "geometria base" vira construção
+{
+  const e = plano();
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 40, y: 0 }));
+  const novas = op.deslocar(e, [l.id], 3, { bidirecional: true, tampar: "arcos", baseConstrucao: true });
+  verdade("offset bidirecional: 2 linhas + 2 arcos", novas.length === 4);
+  verdade("geometria base vira construção", !!e.geos.find((g) => g.id === l.id)?.construcao);
+  verdade("offset bidirecional resolve", solver.resolver(e).conflitantes.length === 0);
+  confere("offset bidirecional com arcos: área do rasgo", regenerar([e, extrusao(e, 1)]).volume ?? 0, 40 * 6 + Math.PI * 9);
+
+  const e2 = plano();
+  const l2 = op.linha(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 40, y: 0 }));
+  op.deslocar(e2, [l2.id], 3, { tampar: "linhas", cotar: false });
+  verdade("offset sem cota", !e2.restricoes.some((r) => r.tipo === "distancia"));
+  verdade("offset com tampas em linha resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("offset com tampas em linha: 40 × 3", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, 40 * 3);
+
+  const e3 = plano();
+  const ci = op.circulo(e3, op.ponto(e3, { x: 0, y: 0 }), 10);
+  op.deslocar(e3, [ci.id], 2, { bidirecional: true, construcao: true });
+  verdade("círculo bidirecional: r 8 e 12 de construção",
+    e3.geos.filter((g) => g.tipo === "circulo" && g.construcao).map((g) => (g as { r: number }).r).sort().join() === "12,8");
+}
+
+// 15. Aparar: canto (duas linhas viram um L), dentro/fora entre dois limites e manter o
+// trecho aparado como construção
+{
+  const e = plano();
+  const h = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 30, y: 0 }));
+  const v = op.linha(e, op.ponto(e, { x: 20, y: -10 }), op.ponto(e, { x: 20, y: 5 }));
+  verdade("canto entre duas linhas", op.canto(e, h.id, { x: 5, y: 0 }, v.id, { x: 20, y: 3 }));
+  const pts = new Map(e.pontos.map((p) => [p.id, p]));
+  const comprimento = (l: { p1: string; p2: string }) => Math.hypot(pts.get(l.p2)!.x - pts.get(l.p1)!.x, pts.get(l.p2)!.y - pts.get(l.p1)!.y);
+  confere("canto: horizontal até x = 20", comprimento(e.geos.find((g) => g.id === h.id) as never), 20);
+  confere("canto: vertical de y = 0 a 5", comprimento(e.geos.find((g) => g.id === v.id) as never), 5);
+  verdade("canto: ponto compartilhado", (e.geos.find((g) => g.id === h.id) as { p2: string }).p2 === (e.geos.find((g) => g.id === v.id) as { p1: string }).p1);
+
+  const linhas = (fora: boolean, construcao: boolean) => {
+    const e2 = plano();
+    const b1 = op.linha(e2, op.ponto(e2, { x: 10, y: -5 }), op.ponto(e2, { x: 10, y: 5 }));
+    const b2 = op.linha(e2, op.ponto(e2, { x: 30, y: -5 }), op.ponto(e2, { x: 30, y: 5 }));
+    const alvo = op.linha(e2, op.ponto(e2, { x: 0, y: 0 }), op.ponto(e2, { x: 40, y: 0 }));
+    const ok = op.apararEntre(e2, alvo.id, [b1.id, b2.id], !fora, construcao);
+    const m = new Map(e2.pontos.map((p) => [p.id, p]));
+    const soma = (c: boolean) => e2.geos.filter((g) => g.tipo === "linha" && !!g.construcao === c && g.id !== b1.id && g.id !== b2.id)
+      .reduce((t, g) => t + Math.hypot(m.get((g as { p2: string }).p2)!.x - m.get((g as { p1: string }).p1)!.x, m.get((g as { p2: string }).p2)!.y - m.get((g as { p1: string }).p1)!.y), 0);
+    return { ok, normal: soma(false), construcao: soma(true) };
+  };
+  const dentro = linhas(false, false);
+  verdade("aparar dentro", dentro.ok);
+  confere("aparar dentro: sobra 10 + 10", dentro.normal, 20);
+  const fora = linhas(true, true);
+  confere("aparar fora: sobra o trecho de 20 entre os limites", fora.normal, 20);
+  confere("aparar fora: pontas viram construção (10 + 10)", fora.construcao, 20);
+
+  const e3 = plano();
+  const l = op.linha(e3, op.ponto(e3, { x: 0, y: 0 }), op.ponto(e3, { x: 10, y: 0 }));
+  op.aparar(e3, l.id, { x: 5, y: 0 }, { construcao: true });
+  verdade("aparar sem cortes com construção: vira construção", !!e3.geos.find((g) => g.id === l.id)?.construcao);
+}
+
+// 16. Padrões de esboço: linear 3 × 2 pulando (2, 2) com cota de espaçamento; circular sem
+// espaçamento igual (passo de 30°) pulando a 3ª instância
+{
+  const e = plano();
+  const c = op.circulo(e, op.ponto(e, { x: 0, y: 0 }), 2);
+  const novas = op.padraoLinearEsboco(e, [c.id], { n1: 3, esp1: 10, ang1: 0, n2: 2, esp2: 15, ang2: 90, pular: [[2, 2]], cotar1: true, cotar2: true });
+  verdade("linear 3 × 2 menos 1 pulada = 4 cópias", novas.length === 4);
+  verdade("linear: cotas de espaçamento H e V", e.restricoes.some((r) => r.tipo === "distanciaH" && r.valor === 10) && e.restricoes.some((r) => r.tipo === "distanciaV" && r.valor === 15));
+  const centros = e.geos.filter((g) => g.tipo === "circulo").map((g) => e.pontos.find((p) => p.id === (g as { c: string }).c)!);
+  verdade("linear: (2, 2) ficou de fora", !centros.some((p) => Math.abs(p.x - 10) < 1e-9 && Math.abs(p.y - 15) < 1e-9));
+  verdade("linear resolve", solver.resolver(e).conflitantes.length === 0);
+
+  const e2 = plano();
+  const c2 = op.circulo(e2, op.ponto(e2, { x: 20, y: 0 }), 2);
+  const n2 = op.padraoCircularEsboco(e2, [c2.id], { centro: { x: 0, y: 0 }, n: 4, angulo: 30, igual: false, pular: [3], centroId: ORIGEM, cotarRaio: true });
+  verdade("circular: 4 instâncias menos a 3ª = 2 cópias", n2.length === 2);
+  const ult = e2.geos.find((g) => g.id === n2[1]) as { c: string };
+  const q = e2.pontos.find((p) => p.id === ult.c)!;
+  confere("circular: 4ª instância a 90°", (Math.atan2(q.y, q.x) * 180) / Math.PI, 90);
+  verdade("circular: cota do raio", e2.restricoes.some((r) => r.tipo === "distancia" && r.a === ORIGEM && Math.abs((r as { valor: number }).valor - 20) < 1e-9));
+}
+
+// 17. Elipse, elipse parcial e parábola: solver, cotas pelos eixos e área do perfil
+{
+  const e = plano();
+  const c = op.ponto(e, { x: 10, y: 5 });
+  const [el, eixoM, eixoN] = op.elipse(e, c, { x: 30, y: 5 }, 8);
+  verdade("elipse resolve", solver.resolver(e).conflitantes.length === 0);
+  confere("elipse: área π·a·b", regenerar([e, extrusao(e, 1)]).volume ?? 0, Math.PI * 20 * 8);
+  // centro e eixos cotados → totalmente definida
+  op.restringir(e, { tipo: "distanciaH", a: ORIGEM, b: c, valor: 10 });
+  op.restringir(e, { tipo: "distanciaV", a: ORIGEM, b: c, valor: 5 });
+  op.restringir(e, { tipo: "horizontal", a: eixoM.id });
+  op.restringir(e, { tipo: "distancia", a: eixoM.id, valor: 50 });
+  op.restringir(e, { tipo: "distancia", a: eixoN.id, valor: 20 });
+  const r = solver.resolver(e);
+  verdade("elipse cotada pelos eixos: totalmente definida", r.ok && r.definicao === "definido");
+  confere("elipse: diâmetro maior vira 50", regenerar([e, extrusao(e, 1)]).volume ?? 0, Math.PI * 25 * 10);
+  // ponto sobre a elipse
+  const q = op.ponto(e, { x: 10, y: 20 });
+  op.pontoSolto(e, q);
+  op.restringir(e, { tipo: "coincidente", a: q, b: el.id });
+  solver.resolver(e);
+  const qq = e.pontos.find((p) => p.id === q)!;
+  confere("ponto sobre a elipse", ((qq.x - 10) / 25) ** 2 + ((qq.y - 5) / 10) ** 2, 1);
+
+  // meia elipse fechada por uma linha (anti-horário de +a até −a: metade de cima)
+  const e2 = plano();
+  const c2 = op.ponto(e2, { x: 0, y: 0 });
+  const [ae] = op.arcoElipse(e2, c2, { x: 20, y: 0 }, 10, { x: 20, y: 0 }, { x: -20, y: 0 });
+  const a2 = ae as Extract<typeof ae, { tipo: "arcoElipse" }>;
+  op.linha(e2, a2.fim, a2.ini);
+  verdade("elipse parcial resolve", solver.resolver(e2).conflitantes.length === 0);
+  confere("meia elipse: área π·a·b/2", regenerar([e2, extrusao(e2, 1)]).volume ?? 0, (Math.PI * 20 * 10) / 2);
+  const e3 = plano();
+  const c3 = op.ponto(e3, { x: 0, y: 0 });
+  const [ae3] = op.arcoElipse(e3, c3, { x: 20, y: 0 }, 10, { x: 0, y: 10 }, { x: 0, y: -10 });
+  const a3 = ae3 as Extract<typeof ae3, { tipo: "arcoElipse" }>;
+  op.linha(e3, a3.fim, a3.ini);
+  confere("elipse parcial de 90° a 270° (lado esquerdo)", regenerar([e3, extrusao(e3, 1)]).volume ?? 0, (Math.PI * 20 * 10) / 2);
+  const e3b = plano();
+  const c3b = op.ponto(e3b, { x: 0, y: 0 });
+  // de t = −0,5 até t = −π/2 no sentido anti-horário (mais de meia volta), fechada pela corda
+  const P = (t: number) => ({ x: 20 * Math.cos(t), y: 10 * Math.sin(t) });
+  const [ae3b] = op.arcoElipse(e3b, c3b, { x: 20, y: 0 }, 10, P(-0.5), P(-Math.PI / 2));
+  const a3b = ae3b as Extract<typeof ae3b, { tipo: "arcoElipse" }>;
+  op.linha(e3b, a3b.fim, a3b.ini);
+  const [p0, p1] = [P(-0.5), P(-Math.PI / 2)];
+  // área = setor em parâmetro excêntrico (½·a·b·Δt) + parcela da corda (½·(x1·y0 − x0·y1))
+  confere("elipse parcial maior que meia volta", regenerar([e3b, extrusao(e3b, 1)]).volume ?? 0,
+    0.5 * 20 * 10 * (1.5 * Math.PI + 0.5) + 0.5 * (p1.x * p0.y - p0.x * p1.y));
+
+  // parábola foco (0,1), vértice (0,0), de x = −2 a 2, fechada pela corda y = 1: área 2/3·4·1
+  const e4 = plano();
+  const f = op.ponto(e4, { x: 0, y: 1 });
+  op.pontoSolto(e4, f, true);
+  const pb = op.parabola(e4, f, { x: 0, y: 0 }, { x: 2, y: 1 }, { x: -2, y: 1 });
+  op.linha(e4, pb.fim, pb.ini);
+  verdade("parábola resolve", solver.resolver(e4).conflitantes.length === 0);
+  confere("segmento de parábola: 2/3 · base · altura", regenerar([e4, extrusao(e4, 1)]).volume ?? 0, (2 / 3) * 4 * 1);
+  // espelhar e copiar elipse parcial mantém a forma (o solver não vira a elipse)
+  const novas = op.espelhar(e2, [ae.id], EIXO_V);
+  verdade("elipse parcial espelhada resolve", solver.resolver(e2).conflitantes.length === 0 && novas.length === 1);
 }
 
 if (falhas) {

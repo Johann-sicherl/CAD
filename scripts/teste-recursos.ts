@@ -296,6 +296,95 @@ const bloco = ext(base, 10);
   console.log(`${ok ? "ok  " : "FALHA"} migração: esboço vai para o Superior e a altura fica em Y`);
 }
 
+// ---------- varredura ----------
+{
+  const circ = (r: number, plano: "XY" | "XZ" | "YZ" = "XZ", cx = 0, cy = 0, desl = 0) => {
+    const e = novoEsboco(1, { tipo: "plano", plano, deslocamento: desl });
+    op.circulo(e, op.ponto(e, { x: cx, y: cy }), r);
+    return e;
+  };
+  const linhas = (pts: [number, number][], plano: "XY" | "XZ" | "YZ" = "XY") => {
+    const e = novoEsboco(2, { tipo: "plano", plano, deslocamento: 0 });
+    const ids = pts.map((p) => op.ponto(e, { x: p[0], y: p[1] }));
+    for (let i = 0; i + 1 < ids.length; i++) op.linha(e, ids[i], ids[i + 1]);
+    return e;
+  };
+  const sw = (o: object) => ({ ...(novaFeature("varredura", 1) as any), ...o });
+  const esb = (e: FeatureEsboco) => ({ tipo: "esboco", id: e.id });
+  const A = Math.PI * 25;
+  const p = circ(5), L = linhas([[0, 0], [0, 50], [40, 50]]);
+  confere("varredura: perfil de esboço em L (canto vivo)", regenerar([p, L, sw({ perfil: esb(p), trajetoria: [esb(L)] })]).volume, A * 90);
+  confere("varredura: perfil circular Ø10 em L", regenerar([L, sw({ tipoPerfil: "circular", diametro: 10, trajetoria: [esb(L)] })]).volume, A * 90);
+  const arco = novoEsboco(3, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.arco(arco, op.ponto(arco, { x: 30, y: 0 }), op.ponto(arco, { x: 30, y: 30 }), op.ponto(arco, { x: 0, y: 0 }));
+  confere("varredura: arco R30 (Pappus)", regenerar([p, arco, sw({ perfil: esb(p), trajetoria: [esb(arco)] })]).volume, A * (Math.PI / 2) * 30);
+  const reta = linhas([[0, 0], [0, 50]]);
+  confere("varredura: recurso fino 1 para dentro (tubo)", regenerar([p, reta, sw({ perfil: esb(p), trajetoria: [esb(reta)], fino: { ativo: true, tipo: "uma", t1: 1, t2: 1, inverter: true } })]).volume, Math.PI * (25 - 16) * 50);
+  confere("varredura: circular fino plano médio 2 (tubo)", regenerar([reta, sw({ tipoPerfil: "circular", diametro: 10, trajetoria: [esb(reta)], fino: { ativo: true, tipo: "medio", t1: 2, t2: 2, inverter: false } })]).volume, Math.PI * (36 - 16) * 50);
+  const guia = linhas([[5, 0], [10, 50]]);
+  confere("varredura: curva-guia (tronco de cone)", regenerar([p, reta, guia, sw({ perfil: esb(p), trajetoria: [esb(reta)], guias: [esb(guia)] })]).volume, (Math.PI / 3) * 50 * (25 + 50 + 100));
+  const tang = regenerar([p, reta, guia, sw({ perfil: esb(p), trajetoria: [esb(reta)], guias: [esb(guia)], tangenciaInicio: "trajetoria", tangenciaFim: "trajetoria" })]);
+  semErros("varredura: tangência início/fim", tang);
+  const guiaL = linhas([[5, 0], [5, 45], [40, 45]]);
+  const separadas = regenerar([p, L, guiaL, sw({ perfil: esb(p), trajetoria: [esb(L)], guias: [esb(guiaL)], mesclarFacesSuaves: false })]);
+  semErros("varredura: guia em L com faces separadas", separadas);
+  // corte: canal semicircular R2 no topo de um bloco 40×10×20 (Y para cima)
+  const b = retangulo(40, 20, "XZ");
+  const blocoY = ext(b, 10);
+  const canal = linhas([[-20, 10], [20, 10]]);
+  const pc = circ(2, "YZ", 0, 10, -20);
+  const corte = sw({ operacao: "cortar", perfil: esb(pc), trajetoria: [esb(canal)] });
+  confere("corte por varredura: canal R2", regenerar([b, blocoY, canal, pc, corte]).volume, 8000 - (Math.PI * 4 / 2) * 40);
+  // trajetória por aresta do modelo: quarto de cilindro R2 tirado da aresta superior frontal (z = 10)
+  const aresta = arestasRetas([b, blocoY], (a) => Math.abs(a.a[1] - 10) < 1e-6 && Math.abs(a.b[1] - 10) < 1e-6 && Math.abs(a.a[2] - 10) < 1e-6 && Math.abs(a.b[2] - 10) < 1e-6);
+  const pa = circ(2, "YZ", -10, 10, -20);
+  confere("corte por varredura: trajetória = aresta do modelo", regenerar([b, blocoY, pa, sw({ operacao: "cortar", perfil: esb(pa), trajetoria: aresta })]).volume, 8000 - (Math.PI * 4 / 4) * 40);
+}
+
+// ---------- loft ----------
+{
+  const quad = (l: number, y: number) => {
+    const e = novoEsboco(1, { tipo: "plano", plano: "XZ", deslocamento: y });
+    op.retangulo(e, op.ponto(e, { x: -l / 2, y: -l / 2 }), op.ponto(e, { x: l / 2, y: l / 2 }));
+    return e;
+  };
+  const circ = (r: number, y: number) => {
+    const e = novoEsboco(2, { tipo: "plano", plano: "XZ", deslocamento: y });
+    op.circulo(e, op.ponto(e, { x: 0, y: 0 }), r);
+    return e;
+  };
+  const lf = (o: object) => ({ ...(novaFeature("loft", 1) as any), ...o });
+  const E = (e: FeatureEsboco) => ({ tipo: "esboco", id: e.id });
+  const qa = quad(20, 0), qb = quad(10, 30);
+  confere("loft: tronco de pirâmide 20→10, h30", regenerar([qa, qb, lf({ perfis: [E(qa), E(qb)] })]).volume, (30 / 3) * (400 + 100 + 200));
+  const ca = circ(10, 0), cb = circ(5, 30);
+  confere("loft: tronco de cone", regenerar([ca, cb, lf({ perfis: [E(ca), E(cb)] })]).volume, (Math.PI / 3) * 30 * (100 + 50 + 25));
+  const cc = circ(8, 30);
+  semErros("loft: quadrado → círculo", regenerar([qa, cc, lf({ perfis: [E(qa), E(cc)] })]));
+  const norm = regenerar([qa, cc, lf({ perfis: [E(qa), E(cc)], restricaoInicio: { tipo: "normal", comprimento: 1, inverter: false }, restricaoFim: { tipo: "normal", comprimento: 1, inverter: false } })]);
+  semErros("loft: restrição normal ao perfil", norm);
+  semErros("loft: restrição vetor de direção", regenerar([qa, cc, lf({ perfis: [E(qa), E(cc)], restricaoInicio: { tipo: "vetor", ref: { tipo: "eixo", id: "Y" }, comprimento: 1, inverter: false } })]));
+  semErros("loft: recurso fino", regenerar([qa, cc, lf({ perfis: [E(qa), E(cc)], fino: { ativo: true, tipo: "uma", t1: 1, t2: 1, inverter: true } })]));
+  // cilindro R10 com guia que estufa até R18 no meio: volume maior que o cilindro
+  const c1 = circ(10, 0), c2 = circ(10, 30);
+  const g = novoEsboco(3, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  const g0 = op.ponto(g, { x: 10, y: 0 }), g1 = op.ponto(g, { x: 18, y: 15 }), g2 = op.ponto(g, { x: 10, y: 30 });
+  op.linha(g, g0, g1);
+  op.linha(g, g1, g2);
+  const vg = regenerar([c1, c2, g, lf({ perfis: [E(c1), E(c2)], guias: [E(g)], influenciaGuias: "proximaGuia" })]);
+  const okG = !vg.erros.length && (vg.volume ?? 0) > Math.PI * 100 * 30 * 1.05;
+  if (!okG) falhas++;
+  console.log(`${okG ? "ok  " : "FALHA"} loft: curva-guia estufa o perfil (${vg.volume?.toFixed(0)} > cilindro ${(Math.PI * 100 * 30).toFixed(0)})`);
+  const lc = novoEsboco(4, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.linha(lc, op.ponto(lc, { x: 0, y: 0 }), op.ponto(lc, { x: 0, y: 30 }));
+  confere("loft: linha de centro reta (cilindro)", regenerar([c1, c2, lc, lf({ perfis: [E(c1), E(c2)], linhaCentro: [E(lc)], secoesLinhaCentro: 10 })]).volume, Math.PI * 100 * 30);
+  const q3 = quad(14, 20), q4 = quad(20, 40);
+  semErros("loft: 3 perfis", regenerar([qa, q3, q4, lf({ perfis: [E(qa), E(q3), E(q4)] })]));
+  semErros("loft: fechar loft (anel)", regenerar([qa, q3, q4, lf({ perfis: [E(qa), E(q3), E(q4)], fecharLoft: false })]));
+  const corteL = lf({ operacao: "cortar", perfis: [E(circ(5, 0)), E(circ(5, 10))] });
+  void corteL;
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

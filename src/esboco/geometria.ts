@@ -63,6 +63,72 @@ export function centroTresPontos(a: P2, b: P2, c: P2): P2 | null {
   };
 }
 
+// ---------- elipse e parábola ----------
+
+/** Elipse no plano: centro, direção unitária do eixo maior e semieixos. */
+export interface Elipse2 {
+  c: P2;
+  u: P2;
+  a: number;
+  b: number;
+}
+
+/** Perpendicular anti-horária (90°) de um vetor. */
+export const rot90 = (v: P2): P2 => ({ x: -v.y, y: v.x });
+
+export function elipseDe(g: { c: string; m1: string; n1: string }, pts: MapaPontos): Elipse2 {
+  const c = pts.get(g.c)!, m = pts.get(g.m1)!, n = pts.get(g.n1)!;
+  const a = dist(c, m);
+  const u = a > 1e-12 ? mult(sub(m, c), 1 / a) : { x: 1, y: 0 };
+  return { c, u, a, b: dist(c, n) };
+}
+
+/** Ponto da elipse no parâmetro t (ângulo excêntrico, anti-horário a partir do eixo maior). */
+export function pontoElipse(e: Elipse2, t: number): P2 {
+  return soma(e.c, soma(mult(e.u, e.a * Math.cos(t)), mult(rot90(e.u), e.b * Math.sin(t))));
+}
+
+/** Parâmetro (ângulo excêntrico) do ponto da elipse mais próximo de `p` (aproximado pela direção). */
+export function paramElipse(e: Elipse2, p: P2): number {
+  const d = sub(p, e.c);
+  return Math.atan2(esc2(d, rot90(e.u)) / (e.b || 1e-12), esc2(d, e.u) / (e.a || 1e-12));
+}
+
+/** Parâmetros de início e fim de um arco de elipse anti-horário, com fim > início. */
+export function parametrosArcoElipse(e: Elipse2, ini: P2, fim: P2): [number, number] {
+  const t0 = paramElipse(e, ini);
+  let t1 = paramElipse(e, fim);
+  while (t1 <= t0 + TOL) t1 += DOIS_PI;
+  return [t0, t1];
+}
+
+/** Parábola no plano: vértice, direção unitária do eixo (para o foco) e distância focal. */
+export interface Parabola2 {
+  v: P2;
+  u: P2;
+  f: number;
+}
+
+export function parabolaDe(g: { v: string; f: string }, pts: MapaPontos): Parabola2 {
+  const v = pts.get(g.v)!, fo = pts.get(g.f)!;
+  const f = dist(v, fo);
+  return { v, u: f > 1e-12 ? mult(sub(fo, v), 1 / f) : { x: 0, y: 1 }, f: f || 1e-12 };
+}
+
+/** Ponto da parábola no parâmetro s (distância ao eixo, positiva à esquerda do eixo). */
+export function pontoParabola(pb: Parabola2, s: number): P2 {
+  return soma(pb.v, soma(mult(pb.u, (s * s) / (4 * pb.f)), mult(rot90(pb.u), s)));
+}
+
+export function paramParabola(pb: Parabola2, p: P2): number {
+  return esc2(sub(p, pb.v), rot90(pb.u));
+}
+
+/** Ponto de controle da Bézier quadrática que é exatamente o arco de parábola s0..s1. */
+export function controleParabola(pb: Parabola2, s0: number, s1: number): P2 {
+  return soma(pb.v, soma(mult(pb.u, (s0 * s1) / (4 * pb.f)), mult(rot90(pb.u), (s0 + s1) / 2)));
+}
+
 // ---------- acesso ao esboço ----------
 
 export type MapaPontos = Map<string, P2>;
@@ -85,6 +151,12 @@ export function pontosDaGeo(g: GeoEsboco): string[] {
       return g.pontos;
     case "ponto":
       return [g.p];
+    case "elipse":
+      return [g.c, g.m1, g.m2, g.n1, g.n2];
+    case "arcoElipse":
+      return [g.c, g.m1, g.m2, g.n1, g.n2, g.ini, g.fim];
+    case "parabola":
+      return [g.v, g.f, g.ini, g.fim];
   }
 }
 
@@ -97,7 +169,11 @@ export function extremidades(g: GeoEsboco): [string, string] | null {
       return [g.ini, g.fim];
     case "spline":
       return g.pontos.length >= 2 ? [g.pontos[0], g.pontos[g.pontos.length - 1]] : null;
+    case "arcoElipse":
+    case "parabola":
+      return [g.ini, g.fim];
     case "circulo":
+    case "elipse":
     case "ponto":
       return null;
   }
@@ -163,7 +239,34 @@ export function amostrar(g: GeoEsboco, pts: MapaPontos, passoAng = Math.PI / 48)
       });
       return out;
     }
+    case "elipse": {
+      const e = elipseDe(g, pts);
+      const n = Math.max(48, Math.ceil(DOIS_PI / passoAng));
+      return Array.from({ length: n + 1 }, (_, i) => pontoElipse(e, (i / n) * DOIS_PI));
+    }
+    case "arcoElipse": {
+      const e = elipseDe(g, pts);
+      const [t0, t1] = parametrosArcoElipse(e, pts.get(g.ini)!, pts.get(g.fim)!);
+      const n = Math.max(8, Math.ceil((t1 - t0) / passoAng));
+      return Array.from({ length: n + 1 }, (_, i) => pontoElipse(e, t0 + ((t1 - t0) * i) / n));
+    }
+    case "parabola": {
+      const pb = parabolaDe(g, pts);
+      const s0 = paramParabola(pb, pts.get(g.ini)!), s1 = paramParabola(pb, pts.get(g.fim)!);
+      const n = 40;
+      return Array.from({ length: n + 1 }, (_, i) => pontoParabola(pb, s0 + ((s1 - s0) * i) / n));
+    }
   }
+}
+
+/** Distância e ponto mais próximo numa polilinha. */
+function maisPertoNaPolilinha(pl: P2[], p: P2): { d: number; q: P2 } {
+  let d = Infinity, q = pl[0];
+  for (let i = 0; i + 1 < pl.length; i++) {
+    const r = distPontoSegmento(p, pl[i], pl[i + 1]);
+    if (r.d < d) { d = r.d; q = soma(pl[i], mult(sub(pl[i + 1], pl[i]), r.t)); }
+  }
+  return { d, q };
 }
 
 export function distPontoSegmento(p: P2, a: P2, b: P2): { d: number; t: number } {
@@ -187,12 +290,11 @@ export function distanciaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
       if (paramNoArco(angulo(c, p), a0, a1) !== null) return Math.abs(dist(c, p) - dist(c, ini));
       return Math.min(dist(p, ini), dist(p, fim));
     }
-    case "spline": {
-      const pl = amostrar(g, pts);
-      let d = Infinity;
-      for (let i = 0; i + 1 < pl.length; i++) d = Math.min(d, distPontoSegmento(p, pl[i], pl[i + 1]).d);
-      return d;
-    }
+    case "spline":
+    case "elipse":
+    case "arcoElipse":
+    case "parabola":
+      return maisPertoNaPolilinha(amostrar(g, pts, Math.PI / 180), p).d;
   }
 }
 
@@ -211,15 +313,11 @@ export function projetarNaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): P2 {
       const r = g.tipo === "circulo" ? g.r : dist(c, pts.get(g.ini)!);
       return polar(c, r, angulo(c, p));
     }
-    case "spline": {
-      const pl = amostrar(g, pts);
-      let melhor = pl[0], d = Infinity;
-      for (let i = 0; i + 1 < pl.length; i++) {
-        const r = distPontoSegmento(p, pl[i], pl[i + 1]);
-        if (r.d < d) { d = r.d; melhor = soma(pl[i], mult(sub(pl[i + 1], pl[i]), r.t)); }
-      }
-      return melhor;
-    }
+    case "spline":
+    case "elipse":
+    case "arcoElipse":
+    case "parabola":
+      return maisPertoNaPolilinha(amostrar(g, pts, Math.PI / 180), p).q;
   }
 }
 
@@ -241,9 +339,8 @@ function curvaDe(g: GeoEsboco, pts: MapaPontos): Curva | null {
       const [a0, a1] = angulosArco(c, pts.get(g.ini)!, pts.get(g.fim)!);
       return { tipo: "circ", c, r: dist(c, pts.get(g.ini)!), a0, a1 };
     }
-    case "spline":
-    case "ponto":
-      return null;
+    default:
+      return null; // splines, elipses e parábolas: sem interseção analítica (aparar apaga inteira)
   }
 }
 
@@ -297,6 +394,8 @@ export function intersecoes(g1: GeoEsboco, g2: GeoEsboco, pts: MapaPontos): P2[]
 export function parametroNaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
   if (g.tipo === "linha") return distPontoSegmento(p, pts.get(g.p1)!, pts.get(g.p2)!).t;
   if (g.tipo === "circulo" || g.tipo === "arco") return angulo(pts.get(g.c)!, p);
+  if (g.tipo === "elipse" || g.tipo === "arcoElipse") return paramElipse(elipseDe(g, pts), p);
+  if (g.tipo === "parabola") return paramParabola(parabolaDe(g, pts), p);
   return 0;
 }
 
@@ -305,10 +404,15 @@ export function parametroNaGeo(g: GeoEsboco, pts: MapaPontos, p: P2): number {
 export type Trecho =
   | { tipo: "linha"; a: P2; b: P2 }
   | { tipo: "arco"; a: P2; meio: P2; b: P2 }
-  | { tipo: "bezier"; a: P2; c1: P2; c2: P2; b: P2 };
+  | { tipo: "bezier"; a: P2; c1: P2; c2: P2; b: P2 }
+  /** Bézier quadrática (arco de parábola, exato). */
+  | { tipo: "quad"; a: P2; c1: P2; b: P2 }
+  /** Arco de elipse de a (parâmetro t0) a b (t1); t1 > t0 = anti-horário. */
+  | { tipo: "elipse"; a: P2; b: P2; e: Elipse2; t0: number; t1: number };
 
 export type Laco =
   | { tipo: "circulo"; c: P2; r: number; poligono: P2[] }
+  | { tipo: "elipse"; e: Elipse2; poligono: P2[] }
   | { tipo: "trechos"; trechos: Trecho[]; poligono: P2[] };
 
 export class ErroPerfil extends Error {}
@@ -325,13 +429,21 @@ function trechosDe(g: GeoEsboco, pts: MapaPontos, invertido: boolean): Trecho[] 
     t = [{ tipo: "arco", a: ini, meio: polar(c, dist(c, ini), (a0 + a1) / 2), b: fim }];
   } else if (g.tipo === "spline") {
     t = splineBeziers(g.pontos.map((id) => pts.get(id)!)).map(([a, c1, c2, b]) => ({ tipo: "bezier", a, c1, c2, b }));
+  } else if (g.tipo === "arcoElipse") {
+    const e = elipseDe(g, pts);
+    const [t0, t1] = parametrosArcoElipse(e, pts.get(g.ini)!, pts.get(g.fim)!);
+    t = [{ tipo: "elipse", a: pts.get(g.ini)!, b: pts.get(g.fim)!, e, t0, t1 }];
+  } else if (g.tipo === "parabola") {
+    const pb = parabolaDe(g, pts);
+    const a = pts.get(g.ini)!, b = pts.get(g.fim)!;
+    t = [{ tipo: "quad", a, c1: controleParabola(pb, paramParabola(pb, a), paramParabola(pb, b)), b }];
   } else {
     return [];
   }
   if (!invertido) return t;
-  return t.reverse().map((x) =>
-    x.tipo === "linha" ? { ...x, a: x.b, b: x.a }
-    : x.tipo === "arco" ? { ...x, a: x.b, b: x.a }
+  return t.reverse().map((x): Trecho =>
+    x.tipo === "linha" || x.tipo === "arco" || x.tipo === "quad" ? { ...x, a: x.b, b: x.a }
+    : x.tipo === "elipse" ? { ...x, a: x.b, b: x.a, t0: x.t1, t1: x.t0 }
     : { tipo: "bezier", a: x.b, c1: x.c2, c2: x.c1, b: x.a },
   );
 }
@@ -349,6 +461,14 @@ function poligonoDeTrechos(ts: Trecho[]): P2[] {
       const varr = norm(angulo(c, t.meio) - a0) < ccw ? ccw : ccw - DOIS_PI;
       const n = Math.max(4, Math.ceil(Math.abs(varr) / (Math.PI / 24)));
       for (let i = 0; i < n; i++) out.push(polar(c, r, a0 + (varr * i) / n));
+    } else if (t.tipo === "quad") {
+      for (let k = 0; k < 16; k++) {
+        const s = k / 16, u = 1 - s;
+        out.push(soma(soma(mult(t.a, u * u), mult(t.c1, 2 * u * s)), mult(t.b, s * s)));
+      }
+    } else if (t.tipo === "elipse") {
+      const n = Math.max(8, Math.ceil(Math.abs(t.t1 - t.t0) / (Math.PI / 24)));
+      for (let i = 0; i < n; i++) out.push(pontoElipse(t.e, t.t0 + ((t.t1 - t.t0) * i) / n));
     } else {
       for (let k = 0; k < 12; k++) out.push(pontoBezier([t.a, t.c1, t.c2, t.b], k / 12));
     }
@@ -386,6 +506,7 @@ export function encontrarLacos(esb: Pick<FeatureEsboco, "pontos" | "geos">): Lac
       const c = pts.get(g.c)!;
       lacos.push({ tipo: "circulo", c, r: g.r, poligono: amostrar(g, pts).slice(0, -1) });
     }
+    if (g.tipo === "elipse") lacos.push({ tipo: "elipse", e: elipseDe(g, pts), poligono: amostrar(g, pts).slice(0, -1) });
   }
 
   // nós por posição

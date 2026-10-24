@@ -87,6 +87,15 @@ export type GeoEsboco =
   | (GeoBase & { tipo: "arco"; c: string; ini: string; fim: string; r: number })
   /** Curva suave que passa pelos pontos (Catmull-Rom → Bézier cúbica). */
   | (GeoBase & { tipo: "spline"; pontos: string[] })
+  /**
+   * Elipse pelo centro e pelas pontas dos eixos: m1/m2 no eixo maior (m1 = lado positivo),
+   * n1/n2 no menor (n1 = 90° anti-horário do maior). As pontas ficam presas à curva no solver.
+   */
+  | (GeoBase & { tipo: "elipse"; c: string; m1: string; m2: string; n1: string; n2: string })
+  /** Elipse parcial: como a elipse, percorrida no sentido anti-horário de `ini` a `fim`. */
+  | (GeoBase & { tipo: "arcoElipse"; c: string; m1: string; m2: string; n1: string; n2: string; ini: string; fim: string })
+  /** Arco de parábola pelo vértice `v` e foco `f`, de `ini` a `fim` (parâmetro crescente). */
+  | (GeoBase & { tipo: "parabola"; v: string; f: string; ini: string; fim: string })
   /** Ponto solto (posição de furo, referência). */
   | (GeoBase & { tipo: "ponto"; p: string });
 
@@ -241,6 +250,60 @@ export interface FeatureInclinacao extends FeatureBase {
   inverter: boolean;
 }
 
+/**
+ * Varredura (ressalto ou corte): perfil levado ao longo de uma trajetória, opcionalmente
+ * escalado para seguir curvas-guia. Campos: docs/funcional/features.md §4.
+ */
+export interface FeatureVarredura extends FeatureBase {
+  tipo: "varredura";
+  operacao: "adicionar" | "cortar";
+  tipoPerfil: "esboco" | "circular";
+  /** Perfil de esboço: esboço fechado (ou aberto com recurso fino). */
+  perfil?: Referencia;
+  /** Perfil circular: diâmetro do círculo criado no início da trajetória, normal a ela. */
+  diametro: number;
+  /** Trajetória: um esboço (linhas/arcos/splines encadeados) ou arestas do modelo encadeadas. */
+  trajetoria: Referencia[];
+  /** Curvas-guia (esboços ou arestas), em ordem: o perfil escala para tocá-las. */
+  guias: Referencia[];
+  /** Com guias: uma face suave contínua (ligado) ou faces separadas por trecho da trajetória. */
+  mesclarFacesSuaves: boolean;
+  tangenciaInicio: "nenhuma" | "trajetoria";
+  tangenciaFim: "nenhuma" | "trajetoria";
+  fino?: RecursoFino;
+}
+
+/** Restrição de início/fim do loft (direção com que ele sai do perfil). */
+export interface RestricaoLoft {
+  tipo: "nenhuma" | "vetor" | "normal";
+  /** Vetor de direção: aresta reta, eixo, plano ou face plana (normal). */
+  ref?: Referencia;
+  /** Comprimento da tangente (fator; 1 = padrão). */
+  comprimento: number;
+  inverter: boolean;
+}
+
+/** Loft (ressalto ou corte): transição entre perfis. Campos: docs/funcional/features.md §5. */
+export interface FeatureLoft extends FeatureBase {
+  tipo: "loft";
+  operacao: "adicionar" | "cortar";
+  /** Esboços dos perfis, na ordem do loft. */
+  perfis: Referencia[];
+  restricaoInicio: RestricaoLoft;
+  restricaoFim: RestricaoLoft;
+  guias: Referencia[];
+  influenciaGuias: "proximaGuia" | "proximaArestaViva" | "proximaAresta" | "global";
+  /** Linha de centro (esboço ou arestas) e nº de seções ao longo dela. */
+  linhaCentro: Referencia[];
+  secoesLinhaCentro: number;
+  mesclarFacesTangentes: boolean;
+  fecharLoft: boolean;
+  /** Desligado: o modelo só se atualiza ao confirmar o comando. */
+  mostrarPrevia: boolean;
+  microtolerancia: boolean;
+  fino?: RecursoFino;
+}
+
 export interface FeatureNervura extends FeatureBase {
   tipo: "nervura";
   esboco?: string;
@@ -332,7 +395,7 @@ export interface FeatureEixoRef extends FeatureBase {
 
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
-  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro
+  | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef;
 
 export interface Variavel {
@@ -454,6 +517,21 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Casca${indice}`, espessura: 2, faces: [], paraFora: false };
     case "inclinacao":
       return { ...base, tipo, nome: `Inclinação${indice}`, angulo: 3, faces: [], inverter: false };
+    case "varredura":
+      return {
+        ...base, tipo, nome: `Varredura${indice}`, operacao: "adicionar", tipoPerfil: "esboco",
+        diametro: 10, trajetoria: [], guias: [], mesclarFacesSuaves: true,
+        tangenciaInicio: "nenhuma", tangenciaFim: "nenhuma", fino: FINO_PADRAO(),
+      };
+    case "loft": {
+      const rest = (): RestricaoLoft => ({ tipo: "nenhuma", comprimento: 1, inverter: false });
+      return {
+        ...base, tipo, nome: `Loft${indice}`, operacao: "adicionar", perfis: [],
+        restricaoInicio: rest(), restricaoFim: rest(), guias: [], influenciaGuias: "proximaGuia",
+        linhaCentro: [], secoesLinhaCentro: 20, mesclarFacesTangentes: true, fecharLoft: false,
+        mostrarPrevia: true, microtolerancia: false, fino: FINO_PADRAO(),
+      };
+    }
     case "nervura":
       return { ...base, tipo, nome: `Nervura${indice}`, espessura: 3, lado: "ambos", direcao: "normal", inverterMaterial: false };
     case "furo":
@@ -490,12 +568,32 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   inclinacao: "Inclinação",
   nervura: "Nervura",
   furo: "Furo",
+  varredura: "Varredura",
+  loft: "Loft",
   padraoLinear: "Padrão linear",
   padraoCircular: "Padrão circular",
   espelhar: "Espelhar",
   planoRef: "Plano",
   eixoRef: "Eixo",
 };
+
+/**
+ * Esboços consumidos pelo recurso (aparecem aninhados nele na árvore e podem ser excluídos
+ * junto como "absorvidos").
+ */
+export function esbocosAbsorvidos(f: Feature): string[] {
+  if (f.tipo === "loft") {
+    return [...f.perfis, ...f.guias, ...f.linhaCentro]
+      .flatMap((r) => (r.tipo === "esboco" ? [r.id] : []))
+      .filter((id, i, a) => a.indexOf(id) === i);
+  }
+  if (f.tipo === "varredura") {
+    return [f.perfil, ...f.trajetoria, ...f.guias]
+      .flatMap((r) => (r?.tipo === "esboco" ? [r.id] : []))
+      .filter((id, i, a) => a.indexOf(id) === i);
+  }
+  return "esboco" in f && f.esboco ? [f.esboco] : [];
+}
 
 /** Lê arquivos antigos e completa campos novos com valores padrão. */
 export function validarDocumento(dados: unknown): Documento {
@@ -523,6 +621,14 @@ export function validarDocumento(dados: unknown): Documento {
       f.fino ??= FINO_PADRAO();
     } else if (f.tipo === "filete" || f.tipo === "chanfro") {
       f.itens ??= [];
+    } else if (f.tipo === "loft") {
+      f.guias ??= [];
+      f.linhaCentro ??= [];
+      f.fino ??= FINO_PADRAO();
+    } else if (f.tipo === "varredura") {
+      f.trajetoria ??= [];
+      f.guias ??= [];
+      f.fino ??= FINO_PADRAO();
     }
   }
   d.versao = 3;

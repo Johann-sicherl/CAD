@@ -52,6 +52,22 @@ function campoNumero(rotulo: string, valor: number, unidade: string, mudar: (v: 
   return l;
 }
 
+/** Campo de seleção (como os campos rosa/azuis dos comandos): o ativo recebe o que for tocado. */
+function campoSelecao(rot: string, azul: boolean, ativo: boolean, vazio: string, chips: string[], ativar: () => void, limpar: () => void): HTMLElement[] {
+  const area = el("div", `pc-refs ${azul ? "azul" : "rosa"}${ativo ? " ativo" : ""}`);
+  area.onclick = ativar;
+  if (!chips.length) area.append(el("span", "pc-vazio", vazio));
+  for (const t of chips) area.append(el("span", "pc-chip", t));
+  if (chips.length) {
+    const x = el("button", "pc-chip-x", "×");
+    x.type = "button";
+    x.title = "Limpar";
+    x.onclick = (ev) => { ev.stopPropagation(); limpar(); };
+    area.append(x);
+  }
+  return [el("span", "campo-rotulo", rot), area];
+}
+
 export function renderizarPainelEsboco(
   painel: HTMLElement,
   ed: EditorEsboco,
@@ -93,29 +109,194 @@ export function renderizarPainelEsboco(
     l.append(s);
     painel.append(l);
   };
-  if (ed.ferramenta === "retangulo") tipo("Tipo", ed.tipoRetangulo, [["canto", "De canto"], ["centro", "Pelo centro"], ["3pontos", "3 pontos (inclinado)"]], (v) => (ed.tipoRetangulo = v as never));
+  if (ed.ferramenta === "linha") tipo("Tipo", ed.tipoLinha, [["normal", "Linha"], ["centro", "Linha de centro"], ["pontoMedio", "Linha de ponto médio"]], (v) => (ed.tipoLinha = v as never));
+  if (ed.ferramenta === "retangulo") tipo("Tipo", ed.tipoRetangulo, [["canto", "De canto"], ["centro", "Pelo centro"], ["3pontos", "De canto por 3 pontos"], ["centro3", "Pelo centro por 3 pontos"], ["paralelogramo", "Paralelogramo"]], (v) => (ed.tipoRetangulo = v as never));
   if (ed.ferramenta === "circulo") tipo("Tipo", ed.tipoCirculo, [["centro", "Pelo centro"], ["perimetro", "Perimetral (3 pontos)"]], (v) => (ed.tipoCirculo = v as never));
   if (ed.ferramenta === "arco") tipo("Tipo", ed.tipoArco, [["3pontos", "3 pontos"], ["centro", "Centro-pontas"], ["tangente", "Tangente"]], (v) => (ed.tipoArco = v as never));
-  if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto (pontas)"], ["centro", "Reto pelo centro"]], (v) => (ed.tipoRasgo = v as never));
+  if (ed.ferramenta === "rasgo") tipo("Tipo", ed.tipoRasgo, [["reto", "Reto"], ["centro", "Reto pelo centro"], ["arco3", "Em arco por 3 pontos"], ["arcoCentro", "Em arco pelo centro"]], (v) => (ed.tipoRasgo = v as never));
   if (ed.ferramenta === "poligono") {
-    painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => (ed.lados = Math.max(3, Math.min(64, Math.round(v))))));
-    tipo("Círculo de construção", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Inscrito (vértices no círculo)"], ["circ", "Circunscrito (lados tangentes)"]], (v) => (ed.poligonoCircunscrito = v === "circ"));
+    // parâmetros do polígono (antes de criar valem para o próximo; depois editam o último)
+    painel.append(el("h3", "prop-titulo", "Parâmetros"));
+    painel.append(campoNumero("Nº de lados", ed.lados, "", (v) => {
+      ed.lados = Math.max(3, Math.min(64, Math.round(v)));
+      ed.refazerPoligono();
+    }));
+    tipo("Círculo", ed.poligonoCircunscrito ? "circ" : "insc", [["insc", "Círculo inscrito"], ["circ", "Círculo circunscrito"]], (v) => {
+      ed.poligonoCircunscrito = v === "circ";
+      ed.refazerPoligono();
+    });
+    const pp = ed.parametrosPoligono();
+    if (pp) {
+      const f = (x: number) => Number(x.toFixed(4));
+      painel.append(
+        campoNumero("Centro X", f(pp.x), "mm", (v) => ed.editarPoligono({ x: v })),
+        campoNumero("Centro Y", f(pp.y), "mm", (v) => ed.editarPoligono({ y: v })),
+        campoNumero("Diâmetro do círculo", f(pp.diametro), "mm", (v) => ed.editarPoligono({ diametro: v })),
+        campoNumero("Ângulo", f(pp.angulo), "°", (v) => ed.editarPoligono({ angulo: v })),
+      );
+      painel.append(botao("Novo polígono", () => {
+        ed.ultimoPoligono = null;
+        ed.definirFerramenta("poligono");
+      }, "largo"));
+    }
   }
   if (ed.ferramenta === "fileteEsboco") {
     painel.append(campoNumero("Raio", ed.raioFilete, "mm", (v) => (ed.raioFilete = Math.abs(v))));
     painel.append(interruptor("Cotar cada filete", ed.cotarFilete, (v) => (ed.cotarFilete = v)));
   }
   if (ed.ferramenta === "chanfroEsboco") painel.append(campoNumero("Distância", ed.distChanfro, "mm", (v) => (ed.distChanfro = Math.abs(v))));
+  if (ed.ferramenta === "espelhar") {
+    const campoSel = (rot: string, c: "entidades" | "eixo", chips: string[], limpar: () => void) =>
+      painel.append(...campoSelecao(rot, c === "eixo", ed.espelho.campo === c, c === "eixo" ? "Toque a linha de espelho" : "Toque as entidades",
+        chips, () => ed.definirCampoEspelho(c), limpar));
+    const n = ed.geosSelecionadas().length;
+    campoSel("Entidades a espelhar", "entidades", n ? [`${n} entidade${n > 1 ? "s" : ""}`] : [], () => ed.limparSelecao());
+    painel.append(interruptor("Copiar", ed.espelho.copiar, (v) => (ed.espelho.copiar = v)));
+    const eixo = ed.nomeEixoEspelho;
+    campoSel("Espelhar em relação a", "eixo", eixo ? [eixo] : [], () => {
+      ed.espelho.eixo = null;
+      ed.definirCampoEspelho("eixo");
+    });
+    if (n && ed.espelho.eixo) painel.append(botao("Aplicar espelho", () => ed.aplicarEspelho(), "destaque largo"));
+  }
+  if (ed.ferramenta === "padraoLinearEsboco" || ed.ferramenta === "padraoCircularEsboco") {
+    const n = ed.geosSelecionadas().length;
+    const num = (rot: string, v: number, un: string, mudar: (x: number) => void) =>
+      campoNumero(rot, Number(v.toFixed(4)), un, (x) => { mudar(x); ed.mudouPadrao(); });
+    const marca = (rot: string, v: boolean, mudar: (x: boolean) => void) => interruptor(rot, v, (x) => { mudar(x); ed.mudouPadrao(); });
+    const inteiro = (x: number) => Math.max(1, Math.min(500, Math.round(x)));
+    if (ed.ferramenta === "padraoLinearEsboco") {
+      for (const k of ["dir1", "dir2"] as const) {
+        const d = ed.padraoLin[k];
+        painel.append(el("h3", "prop-titulo", k === "dir1" ? "Direção 1" : "Direção 2"));
+        const nome = ed.nomeRefPadrao(d.ref);
+        painel.append(...campoSelecao("Direção", true, ed.campoPadrao === k, k === "dir1" ? "Eixo X (toque para outra)" : "Eixo Y (toque para outra)",
+          nome ? [nome] : [], () => ed.definirCampoPadrao(k), () => { d.ref = null; d.ang = k === "dir1" ? 0 : 90; ed.definirCampoPadrao("entidades"); }));
+        painel.append(
+          marca("Inverter direção", d.inverter, (x) => (d.inverter = x)),
+          num("Espaçamento", d.esp, "mm", (x) => (d.esp = Math.abs(x))),
+          marca(k === "dir1" ? "Cotar espaçamento X" : "Cotar espaçamento Y", d.cotar, (x) => (d.cotar = x)),
+          num("Nº de instâncias", d.n, "", (x) => (d.n = inteiro(x))),
+          num("Ângulo", d.ang, "°", (x) => { d.ang = x; d.ref = null; }),
+        );
+      }
+    } else {
+      const c = ed.padraoCirc;
+      painel.append(el("h3", "prop-titulo", "Parâmetros"));
+      const nome = ed.nomeRefPadrao(c.centro);
+      painel.append(...campoSelecao("Centro", true, ed.campoPadrao === "centro", "Origem (toque para outro ponto)", nome ? [nome] : [],
+        () => ed.definirCampoPadrao("centro"), () => { Object.assign(c, { centro: null, cx: 0, cy: 0 }); ed.definirCampoPadrao("entidades"); }));
+      painel.append(
+        num("Centro X", c.cx, "mm", (x) => { c.cx = x; c.centro = null; }),
+        num("Centro Y", c.cy, "mm", (x) => { c.cy = x; c.centro = null; }),
+        marca("Inverter direção", c.inverter, (x) => (c.inverter = x)),
+        num(c.igual ? "Ângulo total" : "Ângulo entre instâncias", c.angulo, "°", (x) => (c.angulo = x)),
+        interruptor("Espaçamento igual", c.igual, (x) => { c.igual = x; if (!x && c.angulo === 360) c.angulo = 360 / c.n; if (x) c.angulo = 360; ed.mudouPadrao(); ed.definirCampoPadrao(ed.campoPadrao); }),
+        num("Nº de instâncias", c.n, "", (x) => (c.n = inteiro(x))),
+      );
+      const ck = interruptor("Cotar raio", c.cotarRaio, (x) => (c.cotarRaio = x));
+      if (!c.centro) {
+        ck.title = "Escolha um ponto do esboço como centro para cotar o raio";
+        (ck.querySelector("input") as HTMLInputElement).disabled = true;
+      }
+      painel.append(ck);
+      const ps = ed.posicaoSementeCircular;
+      if (ps) painel.append(el("p", "dica", `Raio ${ps.raio.toFixed(3)} mm · ângulo do arco ${ps.angulo.toFixed(2)}°`));
+    }
+    painel.append(el("h3", "prop-titulo", "Entidades a padronizar"));
+    painel.append(...campoSelecao("Entidades", false, ed.campoPadrao === "entidades", "Toque as entidades", n ? [`${n} entidade${n > 1 ? "s" : ""}`] : [],
+      () => ed.definirCampoPadrao("entidades"), () => ed.limparSelecao()));
+    const alvo = ed.ferramenta === "padraoLinearEsboco" ? ed.padraoLin : ed.padraoCirc;
+    const pular = el("label", "campo");
+    pular.append(el("span", "campo-rotulo", ed.ferramenta === "padraoLinearEsboco" ? "Instâncias a pular (ex.: 3, 2-2)" : "Instâncias a pular (ex.: 2, 4)"));
+    const ip = el("input");
+    ip.value = alvo.pular;
+    ip.onchange = () => { alvo.pular = ip.value; ed.mudouPadrao(); };
+    pular.append(ip);
+    painel.append(pular);
+    if (n) painel.append(botao("Aplicar padrão", () => ed.aplicarPadrao(), "destaque largo"));
+  }
+  if (ed.ferramenta === "exibirRelacoes") {
+    const f = el("label", "campo");
+    f.append(el("span", "campo-rotulo", "Filtro"));
+    const sf = el("select");
+    for (const [v, r] of [["todas", "Todas no esboço"], ["problemas", "Superdefinindo / redundantes"], ["externas", "Externas (peça)"],
+      ["fixas", "Fixas"], ["selecionadas", "Entidades selecionadas"]]) sf.add(new Option(r, v));
+    sf.value = ed.filtroRelacoes;
+    sf.onchange = () => {
+      ed.filtroRelacoes = sf.value as typeof ed.filtroRelacoes;
+      renderizarPainelEsboco(painel, ed, sair, renomear, abrirRelacoes);
+    };
+    f.append(sf);
+    painel.append(f);
+    const rels = ed.relacoesFiltradas();
+    painel.append(el("h3", "prop-titulo", `Relações (${rels.length})`));
+    if (!rels.length) painel.append(el("p", "dica", "Nenhuma relação neste filtro."));
+    const lista = el("ul", "lista-relacoes");
+    for (const r of rels) {
+      const li = itemRelacao(r, ed);
+      const estado = ed.estadoRelacao(r);
+      li.classList.toggle("ativa", ed.relacaoAtiva === r.id);
+      const info = li.firstElementChild as HTMLElement;
+      info.textContent = `${NOME_RELACAO[r.tipo] ?? r.tipo} · ${estado}`;
+      info.classList.add("rel-info");
+      info.onclick = () => ed.mostrarRelacao(r.id);
+      lista.append(li);
+    }
+    painel.append(lista);
+    if (rels.length) painel.append(botao("Excluir todas (do filtro)", () => ed.excluirRelacoes(rels.map((r) => r.id)), "perigo largo"));
+  }
+  if (ed.ferramenta === "aparar") {
+    painel.append(el("h3", "prop-titulo", "Opções"));
+    const modos: [string, string][] = [["potente", "Aparar potente (riscar)"], ["canto", "Canto"], ["dentro", "Aparar dentro"], ["fora", "Aparar fora"], ["proximo", "Aparar até o mais próximo"]];
+    const grupo = el("div", "opcoes-radio");
+    for (const [v, r] of modos) {
+      const l = el("label", "radio");
+      const i = el("input");
+      i.type = "radio";
+      i.name = "modo-aparar";
+      i.checked = ed.aparo.modo === v;
+      i.onchange = () => ed.definirModoAparar(v as typeof ed.aparo.modo);
+      l.append(i, el("span", "", r));
+      grupo.append(l);
+    }
+    painel.append(grupo);
+    painel.append(
+      interruptor("Manter entidades aparadas como construção", ed.aparo.construcao, (v) => (ed.aparo.construcao = v)),
+      interruptor("Ignorar aparar geometria de construção", ed.aparo.ignorarConstrucao, (v) => (ed.aparo.ignorarConstrucao = v)),
+    );
+  }
   if (ed.ferramenta === "offset") {
-    painel.append(campoNumero("Distância", ed.distOffset, "mm", (v) => (ed.distOffset = Math.abs(v))));
-    const linha = el("div", "prop-rodape");
-    linha.append(botao("Aplicar", () => ed.aplicarOffset(false), "destaque"), botao("Lado oposto", () => ed.aplicarOffset(true)));
-    painel.append(linha);
+    const o = ed.offset;
+    const opcao = (rot: string, k: "cotar" | "inverter" | "cadeia" | "bidirecional" | "baseConstrucao" | "construcao") =>
+      interruptor(rot, o[k], (v) => { o[k] = v; ed.mudouOffset(); });
+    painel.append(el("h3", "prop-titulo", "Parâmetros"));
+    painel.append(campoNumero("Distância", ed.distOffset, "mm", (v) => { ed.distOffset = Math.abs(v); ed.mudouOffset(); }));
+    painel.append(
+      opcao("Adicionar cotas", "cotar"),
+      opcao("Inverter", "inverter"),
+      opcao("Selecionar cadeia", "cadeia"),
+      opcao("Bidirecional", "bidirecional"),
+    );
+    const tampar = el("label", "campo");
+    tampar.append(el("span", "campo-rotulo", "Tampar extremidades"));
+    const st = el("select");
+    for (const [v, r] of [["nenhuma", "Não"], ["arcos", "Arcos"], ["linhas", "Linhas"]]) st.add(new Option(r, v));
+    st.value = o.tampar;
+    st.onchange = () => { o.tampar = st.value as typeof o.tampar; ed.mudouOffset(); };
+    tampar.append(st);
+    painel.append(tampar);
+    painel.append(el("h3", "prop-titulo", "Geometria de construção"));
+    painel.append(
+      opcao("Geometria base", "baseConstrucao"),
+      opcao("Geometria do offset", "construcao"),
+    );
+    painel.append(botao(ed.selecao.size ? "Aplicar offset" : "Toque uma entidade", () => ed.aplicarOffset(), "destaque largo"));
   }
   if (ed.ferramenta === "spline") {
     painel.append(botao("Concluir curva", () => ed.concluirSpline(), "largo"));
   }
-  if (!["selecionar", "aparar", "offset", "espelhar", "cota"].includes(ed.ferramenta)) {
+  if (!["selecionar", "aparar", "offset", "espelhar", "cota", "padraoLinearEsboco", "padraoCircularEsboco", "exibirRelacoes"].includes(ed.ferramenta)) {
     painel.append(interruptor("Geometria de construção", ed.construcao, (v) => (ed.construcao = v)));
   }
 
@@ -132,11 +313,11 @@ export function renderizarPainelEsboco(
     if (excluiveis.length) acoes.append(botao("Excluir", () => ed.excluirSelecao(), "perigo"));
     painel.append(acoes);
 
-    // transformar a seleção (mover, copiar, girar, padrões)
+    // transformar a seleção (mover, copiar, girar)
     if (ed.geosSelecionadas().length) {
       const det = el("details", "transformar");
-      det.append(el("summary", "", "Mover, copiar, girar, padrões"));
-      const v = { dx: 10, dy: 0, angulo: 90, n: 3, esp: 20, total: 360, angLin: 0 };
+      det.append(el("summary", "", "Mover, copiar, girar"));
+      const v = { dx: 10, dy: 0, angulo: 90 };
       const linha = (...bs: HTMLElement[]) => {
         const d = el("div", "prop-rodape");
         d.append(...bs);
@@ -146,11 +327,6 @@ export function renderizarPainelEsboco(
       linha(botao("Mover", () => ed.transformarSelecao("mover", v)), botao("Copiar", () => ed.transformarSelecao("copiar", v)));
       det.append(campoNumero("Ângulo (centro: ponto selecionado ou origem)", v.angulo, "°", (x) => (v.angulo = x)));
       linha(botao("Girar", () => ed.transformarSelecao("girar", v)), botao("Girar cópia", () => ed.transformarSelecao("girarCopia", v)));
-      det.append(campoNumero("Nº de instâncias", v.n, "", (x) => (v.n = x)), campoNumero("Espaçamento", v.esp, "mm", (x) => (v.esp = x)),
-        campoNumero("Direção (ângulo)", v.angLin, "°", (x) => (v.angLin = x)));
-      linha(botao("Padrão linear", () => ed.transformarSelecao("padraoLinear", { n: v.n, esp: v.esp, angulo: v.angLin })));
-      det.append(campoNumero("Ângulo total (circular)", v.total, "°", (x) => (v.total = x)));
-      linha(botao("Padrão circular", () => ed.transformarSelecao("padraoCircular", { n: v.n, angulo: v.total })));
       painel.append(det);
     }
 
@@ -165,7 +341,7 @@ export function renderizarPainelEsboco(
       painel.append(bloco);
     }
 
-    const rels = ed.relacoesDaSelecao();
+    const rels = ed.ferramenta === "exibirRelacoes" ? [] : ed.relacoesDaSelecao();
     if (rels.length) {
       const lista = el("ul", "lista-relacoes");
       for (const r of rels) lista.append(itemRelacao(r, ed));

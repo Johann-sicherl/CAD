@@ -5,6 +5,7 @@
 import {
   draw,
   drawCircle,
+  drawEllipse,
   drawPolysides,
   drawRoundedRectangle,
   drawRectangle,
@@ -18,13 +19,15 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao,
+  Condicao, Feature, FeatureEsboco, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, type Laco, type P2 } from "../esboco/geometria";
 import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referencial } from "../esboco/referencial";
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
+import { trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
+import { lofting } from "./loft";
 import {
   acharAresta, acharFace, arestasDosItens, assinaturaAresta, assinaturaFace, ErroReferencia,
   propagarTangente, topologia, type Topologia,
@@ -207,6 +210,10 @@ function desenharPerfil(p: Perfil): Drawing {
 
 function desenhoDoLaco(l: Laco): Drawing {
   if (l.tipo === "circulo") return drawCircle(l.r).translate(l.c.x, l.c.y);
+  if (l.tipo === "elipse") {
+    const { c, u, a, b } = l.e;
+    return drawEllipse(a, b).rotate((Math.atan2(u.y, u.x) * 180) / Math.PI, [0, 0]).translate(c.x, c.y);
+  }
   const ts = l.trechos;
   const ini = ts[0].a;
   const pen = draw([ini.x, ini.y]);
@@ -215,6 +222,13 @@ function desenhoDoLaco(l: Laco): Drawing {
     const b = i === ts.length - 1 ? ini : t.b;
     if (t.tipo === "linha") pen.lineTo([b.x, b.y]);
     else if (t.tipo === "arco") pen.threePointsArcTo([b.x, b.y], [t.meio.x, t.meio.y]);
+    else if (t.tipo === "quad") pen.quadraticBezierCurveTo([b.x, b.y], [t.c1.x, t.c1.y]);
+    else if (t.tipo === "elipse") {
+      const { u, a, b: rb } = t.e;
+      const varr = t.t1 - t.t0;
+      // como no arco elíptico do SVG: grande = mais de meia volta; sentido = anti-horário
+      pen.ellipseTo([b.x, b.y], a, rb, (Math.atan2(u.y, u.x) * 180) / Math.PI, Math.abs(varr) > Math.PI, varr > 0);
+    }
     else pen.cubicBezierCurveTo([b.x, b.y], [t.c1.x, t.c1.y], [t.c2.x, t.c2.y]);
   });
   return pen.close();
@@ -535,6 +549,75 @@ function revolucaoRapida(f: FeatureRevolucao): Shape3D {
   return esboco.revolve(r.y, { origin: [0, 0, 0], angle: Math.min(360, Math.max(1, f.angulo)) });
 }
 
+// ---------- varredura ----------
+
+/** Trechos de curva de uma lista de referências: esboços e/ou arestas do modelo. */
+function trechosDe(refs: Referencia[], ctx: Ctx, oque: string): Trecho[] {
+  const out: Trecho[] = [];
+  for (const r of refs) {
+    if (r.tipo === "esboco") {
+      const esb = esbocoDe(r.id, ctx);
+      out.push(...trechosDoEsboco(esb, referencial(esb.suporte, ctx.planos)));
+    } else if (r.tipo === "aresta") {
+      out.push(trechoDaAresta(acharAresta(exigirPeca(ctx, oque), r.ass)));
+    } else throw new Error(`${oque}: use esboços ou arestas.`);
+  }
+  return out;
+}
+
+function varredura(f: FeatureVarredura, ctx: Ctx): Shape3D {
+  let perfil: { D: Drawing; r: Referencial } | null = null;
+  if (f.tipoPerfil === "esboco") {
+    if (f.perfil?.tipo !== "esboco") throw new Error("Escolha o perfil: um esboço fechado.");
+    const esb = esbocoDe(f.perfil.id, ctx);
+    const r = referencial(esb.suporte, ctx.planos);
+    // perfil aberto só com recurso fino (vira faixa); fechado: as regiões do esboço
+    perfil = { D: f.fino?.ativo ? desenhoFino(esb, null, f.fino) : desenhoDoEsboco(esb), r };
+  }
+  const trajetoria = trechosDe(f.trajetoria, ctx, "A trajetória");
+  if (!trajetoria.length) throw new Error("Escolha a trajetória (esboço ou arestas).");
+  return varrer({
+    f,
+    perfil,
+    trajetoria,
+    guias: f.guias.map((g) => trechosDe([g], ctx, "A curva-guia")),
+    afinar: (D) => desenhoFino(null, D, f.fino!),
+    faces: facesDoDesenho,
+  });
+}
+
+// ---------- loft ----------
+
+function loftRecurso(f: FeatureLoft, ctx: Ctx) {
+  const perfis = f.perfis.map((ref) => {
+    if (ref.tipo !== "esboco") throw new Error("Perfis do loft: escolha esboços.");
+    const esb = esbocoDe(ref.id, ctx);
+    const r = referencial(esb.suporte, ctx.planos);
+    const D = f.fino?.ativo ? desenhoFino(esb, null, f.fino) : desenhoDoEsboco(esb);
+    return { faces: facesDoDesenho(D, r), normal: r.normal };
+  });
+  const vetor = (rest: FeatureLoft["restricaoInicio"]): Vec3 | null => {
+    if (rest.tipo !== "vetor" || !rest.ref) return null;
+    const ref = rest.ref;
+    if (ref.tipo === "aresta" || ref.tipo === "eixo") return eixoDeRef(ref, ctx).dir;
+    return planoDeRef(ref, ctx).normal;
+  };
+  return lofting({
+    f,
+    perfis,
+    guias: f.guias.map((g) => trechosDe([g], ctx, "A curva-guia")),
+    linhaCentro: f.linhaCentro.length ? trechosDe(f.linhaCentro, ctx, "A linha de centro") : null,
+    vetorInicio: vetor(f.restricaoInicio),
+    vetorFim: vetor(f.restricaoFim),
+  });
+}
+
+/** Desenho 2D no plano → faces (várias regiões → várias faces; furos ficam na face). */
+function facesDoDesenho(D: Drawing, r: Referencial): Face[] {
+  const s = noPlano(D, r) as unknown as { faces?: () => { faces: Face[] }; face(): Face };
+  return typeof s.faces === "function" ? s.faces().faces : [s.face()];
+}
+
 // ---------- nervura ----------
 
 function nervura(f: FeatureNervura, ctx: Ctx): Ferramenta[] {
@@ -726,6 +809,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return aplicar(ctx, f.id, extrusao(f, ctx));
     case "revolucao":
       return aplicar(ctx, f.id, revolucao(f, ctx));
+    case "varredura":
+      return aplicar(ctx, f.id, [{ tool: varredura(f, ctx), op: f.operacao }]);
+    case "loft":
+      return aplicar(ctx, f.id, [{ tool: loftRecurso(f, ctx), op: f.operacao }]);
     case "nervura":
       return aplicar(ctx, f.id, nervura(f, ctx));
     case "furo":

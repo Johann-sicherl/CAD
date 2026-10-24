@@ -3,6 +3,7 @@
 // esboço…). Referências a faces/arestas são por geometria e não criam dependência aqui.
 
 import type { Documento, Feature, FeatureEsboco } from "./model";
+import { esbocosAbsorvidos } from "./model";
 
 /** O recurso cita o id em algum campo (busca em profundidade, exceto o próprio id). */
 export function citaId(f: Feature, id: string): boolean {
@@ -41,11 +42,13 @@ export function filhosDe(features: Feature[], id: string): Feature[] {
 export function absorvidosDe(features: Feature[], excluidos: Set<string>): FeatureEsboco[] {
   const out: FeatureEsboco[] = [];
   for (const f of features) {
-    if (!excluidos.has(f.id) || !("esboco" in f) || !f.esboco) continue;
-    const e = features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
-    if (!e || excluidos.has(e.id) || out.includes(e)) continue;
-    const usadoPorOutro = features.some((x) => !excluidos.has(x.id) && citaId(x, e.id));
-    if (!usadoPorOutro) out.push(e);
+    if (!excluidos.has(f.id)) continue;
+    for (const id of esbocosAbsorvidos(f)) {
+      const e = features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco");
+      if (!e || excluidos.has(e.id) || out.includes(e)) continue;
+      const usadoPorOutro = features.some((x) => !excluidos.has(x.id) && citaId(x, e.id));
+      if (!usadoPorOutro) out.push(e);
+    }
   }
   return out;
 }
