@@ -145,6 +145,7 @@ export const ICONES = {
   aresta: svg(`<path d="M4 8l8-4 8 4-8 4zM4 8v8l8 4 8-4V8"/><path d="M12 12v8" stroke="${C}" stroke-width="2.6"/>`),
   vertice: svg(`<path d="M4 8l8-4 8 4-8 4zM4 8v8l8 4 8-4V8M12 12v8"/><circle cx="12" cy="12" r="2.4" fill="${C}" stroke="${C}"/>`),
   espelhoDinamico: svg(`<path d="M12 3v18" stroke-dasharray="2.5 2"/><path d="M9 7 4 12l5 5" /><path d="M15 7l5 5-5 5" stroke="${C}"/><path d="M17 4.5a2.5 2.5 0 1 1 0 .01" stroke="${C}"/>`),
+  configuracoes: svg(`<rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1" stroke="${C}"/><rect x="3" y="13" width="8" height="7" rx="1" stroke="${C}"/><rect x="13" y="13" width="8" height="7" rx="1"/>`),
   zoomArea: svg(`<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5 21 21"/><rect x="7" y="7.5" width="6" height="5" stroke="${C}" stroke-dasharray="2 1.5"/>`),
   configVista: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/><path d="M7 12.5c1.5-3 3-4.5 5-4.5s3.5 1.5 5 4.5" stroke="${C}"/>`),
   setaBaixo: svg(`<path d="M7 10l5 5 5-5"/>`),

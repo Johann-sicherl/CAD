@@ -929,3 +929,20 @@ textarea.texto-esboco { width: 100%; box-sizing: border-box; font: inherit; font
 body.disp-tablet .cota-modelo, body.disp-celular .cota-modelo { min-height: 40px; font-size: 16px; }
 .aviso-dinamico { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 8px 0; padding: 6px 8px 6px 10px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; font-size: 13px; }
 textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-monospace, monospace; padding: 8px; border: 1px solid var(--linha); border-radius: 8px; resize: vertical; }
+
+/* tabela de configurações */
+.janela.larga { width: min(720px, calc(100% - 24px)); left: auto; }
+.tabela-config-wrap { overflow-x: auto; margin: 6px 0 10px; }
+.tabela-config { border-collapse: collapse; font-size: 14px; min-width: 100%; }
+.tabela-config th, .tabela-config td { border: 1px solid var(--linha); padding: 4px 6px; text-align: center; white-space: nowrap; }
+.tabela-config th.ativa, .tabela-config td.ativa { background: var(--acento-suave); }
+.tabela-config .rotulo-param { text-align: left; }
+.tabela-config .rotulo-param span { margin-right: 4px; }
+.tabela-config input:not([type]) , .tabela-config input[inputmode] { width: 80px; min-height: 34px; text-align: right; border: 1px solid var(--linha); border-radius: 6px; padding: 0 6px; font: inherit; }
+.tabela-config input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--acento); }
+.tabela-config .nome-config { border: none; background: transparent; font-weight: 700; padding: 4px; min-height: 34px; }
+.tabela-config .btn-mini { border: none; background: transparent; color: var(--texto-2); min-width: 28px; min-height: 30px; padding: 0; }
+.tabela-config tr.secao td { text-align: left; font-weight: 700; background: var(--painel-2); }
+.tabela-config tr.linha-adicionar td { text-align: left; }
+.tabela-config select { min-height: 36px; max-width: 100%; }
+.tabela-config input.invalido { border-color: var(--erro); }

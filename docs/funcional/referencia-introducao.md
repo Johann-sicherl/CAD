@@ -18,7 +18,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 |---|---|---|
 | Árvore de histórico à esquerda (editar, suprimir, reordenar) | árvore com planos, origem, recursos, esboços aninhados | ✅ |
 | Painel de propriedades do comando (substitui a árvore) | painel de comando à esquerda com ✓/✕ | ✅ |
-| Gerenciador de configurações (variações da peça) | — | ❌ (ver §6) |
+| Gerenciador de configurações (variações da peça) | item na árvore + tabela de configurações | ✅ |
 | Menus com submenus e menu de contexto (botão direito) | ☰ + menu de contexto no viewport e na árvore | ✅ |
 | Barra de comandos por abas, conforme o documento | abas Features / Sketch / Sheet Metal / Avaliar | ✅ |
 | Barra de atalhos (tecla S) | barra de atalhos no cursor | ✅ |
@@ -65,7 +65,7 @@ Legenda: ✅ igual ao fluxo do guia · 🟡 parcial · ❌ falta · 🚫 fora do
 | Manopla | revolução com linha de centro, linhas, arco tangente e spline | ✅ |
 | Porta do armário | chanfro nas arestas | ✅ |
 | Moldura | extrusão plano médio, corte a 45° maior que a peça, espelhar o corte | ✅ |
-| Moldura curta/longa | **configurações** | ❌ |
+| Moldura curta/longa | **configurações** | ✅ |
 | Furação | furo assistido (rebaixo, escareado, rosca) | ✅ |
 | Recurso aplicado sem esboço (filete, chanfro, casca) | igual | ✅ |
 | Editar recurso, editar esboço | menu de contexto, árvore | ✅ |
@@ -112,7 +112,7 @@ Rápidas, no fluxo básico do guia — **entregues** (24/10/2026):
 Médias:
 5. **Filtro de seleção** global (arestas / faces / vértices / planos), útil no tablet.
 6. **Gestos de mouse/caneta**: botão direito (ou caneta) + arrastar → guia radial.
-7. **Configurações da peça**: variações de cotas e de supressão no mesmo arquivo.
+7. ✅ **Configurações da peça**: variações de cotas e de supressão no mesmo arquivo.
 
 Grandes:
 8. **Chapa metálica** (Fase 4): flange base, aba, bainha, planificação.

@@ -8,6 +8,8 @@ export type Plano = "XY" | "XZ" | "YZ";
 /** Y para cima (como nos CADs profissionais): Frontal = XY, Superior = XZ, Lateral = YZ. */
 export const NOME_PLANO: Record<Plano, string> = { XY: "Frontal", XZ: "Superior", YZ: "Lateral" };
 
+import type { Configuracao } from "./configuracoes";
+
 export type Vec3 = [number, number, number];
 
 export type Perfil =
@@ -483,6 +485,11 @@ export interface Documento {
   equacoes?: Record<string, string>;
   /** Barra de retrocesso: só as primeiras N features regeneram (ausente = todas). */
   retrocesso?: number;
+  /** Configurações da peça (variações no mesmo arquivo); ausente = só a "Padrão". */
+  configuracoes?: Configuracao[];
+  configAtiva?: string;
+  /** Parâmetros que mudam de uma configuração para outra (chaves de `configuracoes.ts`). */
+  parametrosConfigurados?: string[];
 }
 
 export interface Material {

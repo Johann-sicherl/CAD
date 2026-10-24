@@ -13,6 +13,10 @@ import { topologia } from "../src/kernel/topologia";
 import * as op from "../src/esboco/operacoes";
 import { ORIGEM } from "../src/esboco/geometria";
 import { absorvidosDe, excluirRecursos, filhosDe } from "../src/dependencias";
+import {
+  ativarConfiguracao, configurarParametro, definirSupressao, definirValorNaConfiguracao, excluirConfiguracao, listarParametros,
+  novaConfiguracao, prepararConfiguracoes,
+} from "../src/configuracoes";
 
 const require = createRequire(import.meta.url);
 setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
@@ -466,6 +470,46 @@ const bloco = ext(base, 10);
   const lx = linhasDe(rx, cx.id).flat();
   confere("esboço em esboço: y = 5", Math.max(...lx.map((p) => Math.abs(p[1] - 5))) + 5, 5);
   confere("esboço em esboço: |x| = √(100 − 25)", Math.abs(lx[0][0]), Math.sqrt(75));
+}
+
+// ---------- configurações da peça ----------
+{
+  const doc = documentoExemplo();
+  const vol = () => regenerar(doc.features.filter((f) => !f.suprimida)).volume ?? 0;
+  const base = doc.features.find((f) => f.nome === "Base") as FeatureExtrusao;
+  const furo = doc.features.find((f) => f.nome === "Furo central")!;
+  const v0 = vol();
+  const padrao = prepararConfiguracoes(doc);
+  verdade("configuração Padrão criada e ativa", doc.configAtiva === padrao.id && padrao.nome === "Padrão");
+  configurarParametro(doc, `${base.id}.profundidade`);
+  const longa = novaConfiguracao(doc, "Longa");
+  definirValorNaConfiguracao(doc, longa, `${base.id}.profundidade`, base.profundidade * 2);
+  definirSupressao(doc, longa, furo.id, true);
+  verdade("editar a configuração inativa não mexe na peça", vol() === v0);
+  ativarConfiguracao(doc, longa.id);
+  confere("ativar Longa: profundidade dobra", base.profundidade, (padrao.valores[`${base.id}.profundidade`] ?? 0) * 2);
+  verdade("ativar Longa: furo suprimido", !!furo.suprimida);
+  verdade("Longa tem mais volume", vol() > v0);
+  // mudar ao vivo na ativa e voltar: o valor fica guardado na Longa
+  base.profundidade = 33;
+  ativarConfiguracao(doc, padrao.id);
+  verdade("voltar à Padrão: valores e supressão originais", vol() === v0 && !furo.suprimida);
+  confere("valor ao vivo da Longa foi guardado", longa.valores[`${base.id}.profundidade`], 33);
+  // cota de esboço configurada (chave esboço#cota) e lista de parâmetros
+  const ps = listarParametros(doc);
+  verdade("lista de parâmetros inclui valores de recursos", ps.some((p) => p.chave === `${base.id}.profundidade` && p.rotulo === "D1@Base"));
+  const e = novoEsboco(9, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  const l = op.linha(e, op.ponto(e, { x: 0, y: 0 }), op.ponto(e, { x: 10, y: 0 }));
+  const cota = op.restringir(e, { tipo: "distancia", a: l.id, valor: 10 });
+  doc.features.push(e);
+  configurarParametro(doc, `${e.id}#${cota}`);
+  definirValorNaConfiguracao(doc, longa, `${e.id}#${cota}`, 25);
+  const alterados = ativarConfiguracao(doc, longa.id);
+  verdade("cota configurada: esboço marcado para resolver", alterados.includes(e.id));
+  confere("cota configurada: valor da Longa", (e.restricoes.find((r) => r.id === cota) as { valor: number }).valor, 25);
+  // excluir a ativa volta para a primeira
+  excluirConfiguracao(doc, longa.id);
+  verdade("excluir a ativa: volta para a Padrão", doc.configAtiva === padrao.id && doc.configuracoes!.length === 1 && !furo.suprimida);
 }
 
 if (falhas) {

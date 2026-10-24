@@ -21,7 +21,6 @@ import {
   type FeatureCurva,
   type FeatureExtrusao,
   type FeatureFuro,
-  type FeatureRevolucao,
   type Plano,
   type Referencia,
   type SuporteEsboco,
@@ -33,6 +32,11 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
+import {
+  ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
+  excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
+  valorNaConfiguracao,
+} from "./configuracoes";
 import type * as THREE from "three";
 import { SolverEsboco } from "./esboco/solver";
 import { construirCamada, descartarCamada } from "./esboco/visual";
@@ -1249,6 +1253,208 @@ function selecionarOutro(lista: ReturnType<Viewport["entidadesSobCursor"]>, x: n
   abrirPopover({ x, y }, itens);
 }
 
+// ---------- configurações da peça ----------
+
+function menuConfiguracoes(ancora: HTMLElement) {
+  prepararConfiguracoes(doc);
+  abrirPopover(ancora, [
+    ...doc.configuracoes!.map((c) => ({
+      rotulo: c.nome,
+      icone: "configuracoes" as NomeIcone,
+      marcado: c.id === doc.configAtiva,
+      acao: () => void trocarConfiguracao(c.id),
+    })),
+    { rotulo: "Nova configuração…", icone: "nova" as NomeIcone, acao: () => criarConfiguracao() },
+    { rotulo: "Tabela de configurações…", icone: "equacoes" as NomeIcone, acao: () => abrirTabelaConfiguracoes() },
+  ]);
+}
+
+/** Resolve os esboços cujas cotas mudaram e reconstrói. */
+async function aplicarMudancaDeConfiguracao(esbocos: string[]) {
+  if (esbocos.length) {
+    const s = await obterSolver();
+    for (const id of esbocos) {
+      const e = doc.features.find((f) => f.id === id);
+      if (e?.tipo === "esboco") s.resolver(e);
+    }
+  }
+  registrarPasso();
+  salvarAutosave();
+  renderizarTudo();
+  regenerar();
+}
+
+async function trocarConfiguracao(id: string) {
+  if (id === doc.configAtiva) return;
+  fecharCotasNoModelo();
+  const esbocos = ativarConfiguracao(doc, id);
+  await aplicarMudancaDeConfiguracao(esbocos);
+  avisar(`Configuração ativa: ${doc.configuracoes!.find((c) => c.id === id)!.nome}`);
+  if (!$("janela").hidden && $("janela-titulo").textContent === "Tabela de configurações") abrirTabelaConfiguracoes();
+}
+
+function criarConfiguracao() {
+  prepararConfiguracoes(doc);
+  const nome = prompt("Nome da nova configuração (ela começa igual à ativa):", `Configuração ${doc.configuracoes!.length + 1}`)?.trim();
+  if (!nome) return;
+  const c = novaConfiguracao(doc, nome);
+  void trocarConfiguracao(c.id).then(() => abrirTabelaConfiguracoes());
+}
+
+/**
+ * Tabela: colunas = configurações; linhas = parâmetros que variam (cotas e valores dos recursos)
+ * e recursos que podem ser suprimidos. Editar a coluna da configuração ativa muda a peça na hora.
+ */
+function abrirTabelaConfiguracoes() {
+  prepararConfiguracoes(doc);
+  capturarAtiva(doc);
+  limparConfiguracoes(doc);
+  const cs = doc.configuracoes!;
+  abrirJanela("Tabela de configurações", "");
+  $("janela").classList.add("larga");
+  const corpo = $("janela-corpo");
+  const el = <K extends keyof HTMLElementTagNameMap>(t: K, cls = "", txt?: string) => {
+    const e = document.createElement(t);
+    if (cls) e.className = cls;
+    if (txt !== undefined) e.textContent = txt;
+    return e;
+  };
+  const fmt = (v: number | undefined) => (v === undefined ? "" : String(Number(v.toFixed(4))));
+  const todos = listarParametros(doc);
+  const nomeDe = new Map(todos.map((p) => [p.chave, p]));
+  const recarregar = () => abrirTabelaConfiguracoes();
+
+  corpo.append(el("p", "dica", "Cada coluna é uma configuração. A ativa (★) é a que está na tela; mudar um valor nela atualiza a peça. Toque no nome de uma coluna para ativá-la."));
+  const wrap = el("div", "tabela-config-wrap");
+  const tab = el("table", "tabela-config");
+  const cab = el("tr");
+  cab.append(el("th", "", "Parâmetro"));
+  for (const c of cs) {
+    const th = el("th", c.id === doc.configAtiva ? "ativa" : "");
+    const nome = el("button", "nome-config", `${c.id === doc.configAtiva ? "★ " : ""}${c.nome}`);
+    nome.title = c.id === doc.configAtiva ? "Configuração ativa" : "Ativar esta configuração";
+    nome.onclick = () => void trocarConfiguracao(c.id);
+    th.append(nome);
+    const ren = el("button", "btn-mini", "✎");
+    ren.title = "Renomear";
+    ren.onclick = () => {
+      const n = prompt("Novo nome da configuração:", c.nome)?.trim();
+      if (!n) return;
+      c.nome = n;
+      registrarPasso();
+      salvarAutosave();
+      renderizarArvore();
+      recarregar();
+    };
+    th.append(ren);
+    if (cs.length > 1) {
+      const x = el("button", "btn-mini", "✕");
+      x.title = "Excluir configuração";
+      x.onclick = () => {
+        if (!confirm(`Excluir a configuração "${c.nome}"?`)) return;
+        void aplicarMudancaDeConfiguracao(excluirConfiguracao(doc, c.id)).then(recarregar);
+      };
+      th.append(x);
+    }
+    cab.append(th);
+  }
+  tab.append(cab);
+
+  // parâmetros que variam
+  for (const k of doc.parametrosConfigurados ?? []) {
+    const p = nomeDe.get(k);
+    if (!p) continue;
+    const tr = el("tr");
+    const td0 = el("td", "rotulo-param");
+    td0.append(el("span", "", `${p.rotulo}${p.unidade ? ` (${p.unidade})` : ""}`));
+    const x = el("button", "btn-mini", "✕");
+    x.title = "Parar de variar (o valor atual vale para todas)";
+    x.onclick = () => {
+      desconfigurarParametro(doc, k);
+      registrarPasso();
+      salvarAutosave();
+      recarregar();
+    };
+    td0.append(x);
+    tr.append(td0);
+    for (const c of cs) {
+      const td = el("td", c.id === doc.configAtiva ? "ativa" : "");
+      const inp = el("input");
+      inp.inputMode = "decimal";
+      inp.value = fmt(valorNaConfiguracao(doc, c, k));
+      inp.onchange = () => {
+        const v = avaliarExpressao(inp.value, resolverVariaveis(doc.variaveis).valores);
+        if (!Number.isFinite(v)) return inp.classList.add("invalido");
+        inp.classList.remove("invalido");
+        const e = definirValorNaConfiguracao(doc, c, k, k.endsWith("instancias") ? Math.max(1, Math.round(v)) : v);
+        if (c.id === doc.configAtiva) void aplicarMudancaDeConfiguracao(e ? [e] : []);
+        else {
+          registrarPasso();
+          salvarAutosave();
+        }
+      };
+      td.append(inp);
+      tr.append(td);
+    }
+    tab.append(tr);
+  }
+
+  // adicionar parâmetro
+  const livres = todos.filter((p) => !(doc.parametrosConfigurados ?? []).includes(p.chave));
+  if (livres.length) {
+    const tr = el("tr", "linha-adicionar");
+    const td = el("td");
+    td.colSpan = cs.length + 1;
+    const sel = el("select");
+    sel.add(new Option("+ Variar um parâmetro…", ""));
+    for (const p of livres) sel.add(new Option(`${p.rotulo} = ${fmt(p.valor)}${p.unidade ? ` ${p.unidade}` : ""}`, p.chave));
+    sel.onchange = () => {
+      if (!sel.value) return;
+      configurarParametro(doc, sel.value);
+      registrarPasso();
+      salvarAutosave();
+      recarregar();
+    };
+    td.append(sel);
+    tr.append(td);
+    tab.append(tr);
+  }
+
+  // supressão por configuração
+  const recursos = doc.features.filter((f) => f.tipo !== "esboco");
+  if (recursos.length) {
+    const sep = el("tr", "secao");
+    sep.append(Object.assign(el("td", "", "Suprimido em"), { colSpan: cs.length + 1 }));
+    tab.append(sep);
+    for (const f of recursos) {
+      const tr = el("tr");
+      tr.append(el("td", "rotulo-param", f.nome));
+      for (const c of cs) {
+        const td = el("td", c.id === doc.configAtiva ? "ativa" : "");
+        const cb = el("input");
+        cb.type = "checkbox";
+        cb.checked = c.suprimidos.includes(f.id);
+        cb.onchange = () => {
+          definirSupressao(doc, c, f.id, cb.checked);
+          if (c.id === doc.configAtiva) void aplicarMudancaDeConfiguracao([]);
+          else {
+            registrarPasso();
+            salvarAutosave();
+          }
+        };
+        td.append(cb);
+        tr.append(td);
+      }
+      tab.append(tr);
+    }
+  }
+  wrap.append(tab);
+  corpo.append(wrap);
+  const nova = el("button", "largo", "+ Nova configuração");
+  nova.onclick = () => criarConfiguracao();
+  corpo.append(nova);
+}
+
 // ---------- cotas do recurso sobre o modelo (duplo clique) ----------
 
 let recursoComCotas: string | null = null;
@@ -1264,22 +1470,8 @@ function recursoDaFace(indice: number): Feature | null {
   return achado;
 }
 
-/** Valores do próprio recurso mostrados no modelo: [caminho, rótulo, unidade, visível?]. */
-const PARAMETROS_NO_MODELO: Partial<Record<Feature["tipo"], [string, string, string, ((f: never) => boolean)?][]>> = {
-  extrusao: [
-    ["profundidade", "D1", "mm", (f: FeatureExtrusao) => !f.condicao || f.condicao.tipo === "cego" || f.condicao.tipo === "planoMedio"],
-    ["direcao2.condicao.dist", "D2", "mm", (f: FeatureExtrusao) => !!f.direcao2?.ativa && f.direcao2.condicao.tipo === "cego"],
-  ],
-  revolucao: [["angulo", "Ângulo", "°"], ["direcao2.angulo", "Ângulo 2", "°", (f: FeatureRevolucao) => !!f.direcao2?.ativa]],
-  filete: [["raio", "R", "mm"]],
-  chanfro: [["distancia", "D", "mm"]],
-  casca: [["espessura", "Espessura", "mm"]],
-  inclinacao: [["angulo", "Inclinação", "°"]],
-  nervura: [["espessura", "Espessura", "mm"]],
-  furo: [["condicao.profundidade", "Profundidade", "mm"]],
-  padraoLinear: [["dir1.espacamento", "Espaçamento", "mm"], ["dir1.instancias", "Instâncias", ""]],
-  padraoCircular: [["angulo", "Ângulo", "°"], ["instancias", "Instâncias", ""]],
-};
+/** Valores do próprio recurso mostrados no modelo: os mesmos que as configurações podem variar. */
+const PARAMETROS_NO_MODELO = PARAMETROS_RECURSO;
 
 function fecharCotasNoModelo() {
   recursoComCotas = null;
@@ -1481,6 +1673,19 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       if (!editor && !comando) escolherMaterial(mat);
     };
     lista.appendChild(mat);
+    // configuração ativa (só aparece o nome quando há mais de uma)
+    const cfg = document.createElement("li");
+    cfg.className = "item ref item-config";
+    const ativa = doc.configuracoes?.find((c) => c.id === doc.configAtiva);
+    const n = doc.configuracoes?.length ?? 0;
+    cfg.innerHTML = `<span class="item-ic">${ICONES.configuracoes}</span><span class="item-texto"><strong></strong><small></small></span>`;
+    cfg.querySelector("strong")!.textContent = `Configuração: ${ativa?.nome ?? "Padrão"}`;
+    cfg.querySelector("small")!.textContent = n > 1 ? `${n} configurações` : "toque para criar variações";
+    cfg.onclick = () => {
+      if (editor || comando) return avisar("Conclua o comando atual (✓) antes de trocar de configuração.");
+      menuConfiguracoes(cfg);
+    };
+    lista.appendChild(cfg);
   }
 
   for (const id of REFERENCIAS) {
@@ -2375,12 +2580,14 @@ function mostrarLegendaAnalise() {
 }
 
 function abrirJanela(titulo: string, html: string) {
+  $("janela").classList.remove("larga");
   $("janela-titulo").textContent = titulo;
   $("janela-corpo").innerHTML = html;
   $("janela").hidden = false;
 }
 function fecharJanela() {
   $("janela").hidden = true;
+  $("janela").classList.remove("larga");
 }
 $("janela-fechar").onclick = () => {
   fecharJanela();
@@ -2718,7 +2925,11 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     rotulo: "Salvar (.jlscad)",
     icone: "salvar",
     // octet-stream: o Android não troca a extensão .jlscad por .json
-    fazer: () => baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad"),
+    fazer: () => {
+      capturarAtiva(doc);
+      limparConfiguracoes(doc);
+      baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad");
+    },
   },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
@@ -3097,7 +3308,9 @@ function barraDeAtalhos() {
 
 // ---------- persistência local ----------
 function salvarAutosave() {
-  if (aberto) gravarJSON(CHAVE_AUTOSAVE, doc);
+  if (!aberto) return;
+  capturarAtiva(doc);
+  gravarJSON(CHAVE_AUTOSAVE, doc);
 }
 
 function carregarAutosave(): Documento | null {
