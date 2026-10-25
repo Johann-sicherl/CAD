@@ -212,7 +212,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento-suav
 .wj-selo { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--painel-2); border: 1px solid var(--linha); }
 
 /* ---------- perfis de dispositivo ---------- */
-body.disp-celular .wj-cmd span, body.disp-celular .wj-marca span { display: none; }
+body.disp-celular .wj-cmd svg + span, body.disp-celular .wj-marca span { display: none; }
 body.disp-celular .wj-cmd { min-width: 44px; }
 body.disp-tablet .wj-ic { width: 44px; height: 44px; }
 body.disp-tablet .wj-cmd-peq { min-height: 44px; min-width: 44px; }

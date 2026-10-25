@@ -46,7 +46,7 @@ const FACES: Face[] = [
     icone: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/><path d="M7 12l3-3 2 2 4-4" stroke="${C}"/>`),
   },
   {
-    id: "cronograma", nome: "WJCronProject", fase: "G6",
+    id: "cronograma", nome: "WJCronProject", url: "cronograma/",
     descricao: "Cronogramas com Gantt, caminho crítico, recursos, linhas de base e valor agregado.",
     icone: svg(`<path d="M4 4v16h16"/><path d="M7 7h6M10 11h7M8 15h5" stroke="${C}" stroke-width="2.4"/>`),
   },

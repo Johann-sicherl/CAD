@@ -9,6 +9,38 @@ Status de tudo: **G6** salvo indicação.
 
 ---
 
+## Estado da v1 (25/10/2026) — `cronograma/index.html`, `src/cronograma/`, motor `src/agenda/`
+
+✅ Motor de agendamento puro e testado (`scripts/teste-agenda.ts`):
+- CPM com passagem para frente e para trás, folga total e livre, caminho crítico;
+- vínculos TI/II/TT/IT com latência/antecipação em dias ou % (`5II+2d`, `7TT-25%`), também em
+  resumos; ciclo detectado e avisado;
+- restrições (as oito), data limite, tarefa inativa, marcos, resumos por nível de estrutura e EAP;
+- calendário com dias úteis, feriados nacionais do Brasil (Páscoa calculada: Sexta-feira Santa;
+  Carnaval e Corpus Christi opcionais) e folgas próprias;
+- recursos de trabalho, material e custo: trabalho, custo e superalocação por dia.
+
+✅ Aplicativo:
+- tabela editável como planilha (Enter/Tab/setas, digitar direto, linhas vazias no fim criam
+  tarefas), tabelas Entrada, Agenda (folgas, datas tardias, restrições) e Custo/linha de base;
+- Gantt com escala dia/semana/mês, fins de semana e feriados sombreados, hoje e data de status,
+  resumos, marcos, progresso, linha de base e caminho crítico em vermelho;
+- arrastar barra move (restrição "não iniciar antes de"), puxar a ponta muda a duração, arrastar
+  para outra linha vincula; recuar/recuar à esquerda, vincular/desvincular, recolher resumos;
+- informações da tarefa (geral, predecessoras, recursos, avançado, anotações) e do projeto
+  (início, data de status, calendário); filtros (críticas, marcos, atrasadas…);
+- planilha de recursos com superalocados em vermelho; quadro de cartões por situação (arrastar
+  muda o % concluído), bom para o celular;
+- linha de base, estatísticas e valor agregado (VP, VA, CR, IDP, IDC, EAT);
+- `.wjcron`, exportar CSV, exportar e abrir XML de projeto (MSPDI), imprimir, exemplo pronto,
+  salvamento automático, offline.
+
+🟡 Próximos: agendamento manual, durações decorridas, calendários por recurso, nivelamento,
+uso da tarefa/recurso por período, diagrama de rede, linha do tempo, tarefas recorrentes,
+campos personalizados com fórmulas, apontamento de horas, integração com ERP/PDM.
+
+---
+
 ## 0. Modelo
 
 - **Projeto**:

@@ -224,7 +224,8 @@ export function janela(titulo: string, corpo: string, botoes: { rotulo: string; 
     if (e.key === "Escape") fechar();
   });
   document.body.append(fundo);
-  (c.querySelector("input, select, textarea, button") as HTMLElement | null)?.focus();
+  // foco dentro da janela (Esc fecha); sem campos, vai para o último botão
+  (c.querySelector<HTMLElement>("input, select, textarea, button") ?? fundo.querySelector<HTMLElement>("footer button:last-child"))?.focus();
   return { corpo: c, fechar };
 }
 
