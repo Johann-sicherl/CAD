@@ -21,7 +21,8 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Canto automático entre abas vizinhas da mesma flange de aresta ou bainha: meia-esquadria pela bissetriz das paredes, com **distância de folga** (padrão 0,25 mm); as dobras também são aparadas. No planificado o corte é perpendicular à chapa pela face de dentro (dobrada, a peça não colide; o canto fica com fresta de até t) | ✅ |
 | Árvore: item **Chapa metálica** (parâmetros globais: bitola, espessura, raio, K; toque duplo edita) e **Padrão planificado** no fim (apagado com a peça dobrada; toque duplo planifica/dobra; Exportar DXF) | ✅ |
 | Aba, Corte na chapa e Flange base sem esboço: pedem a face/plano, abrem o esboço e voltam ao comando ao sair dele; OK bloqueado sem esboço (e flange de aresta/bainha sem arestas) | ✅ |
-| Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| **Dobra esboçada**: linha(s) de esboço numa face plana; lado fixo = o maior (ou inverter); posição: linha de centro, material interno, material externo, dobra externa; ângulo, inverter direção, raio próprio; o planificado não muda de tamanho | ✅ (só linhas retas; flanges já feitas precisam estar no lado fixo) |
+| Junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -77,7 +78,7 @@ Perfil: esboço aberto perpendicular à aresta
 - Posição: material interno · material externo · dobra externa · inverter
 - Folga de meia-esquadria · margem de dobra personalizada
 
-## 5. Dobra esboçada (Sketched Bend)
+## 5. Dobra esboçada (Sketched Bend) — ✅
 Linha de esboço numa face plana da chapa
 - **Face fixa**
 - **Posição da dobra**: Linha de centro da dobra · Material interno · Material externo · Dobra externa

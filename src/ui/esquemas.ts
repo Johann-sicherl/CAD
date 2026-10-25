@@ -4,7 +4,7 @@ import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
-  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -99,6 +99,8 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
     case "abaChapa":
     case "corteChapa":
       return abaChapa(f.tipo === "corteChapa", d) as Esquema<Feature>;
+    case "dobraEsboco":
+      return dobraEsboco(d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -209,6 +211,28 @@ function bainha(): Esquema<FeatureBainha> {
         { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 1, max: 359, vis: (f) => f.estilo === "enrolada" },
         { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.estilo === "enrolada" },
       ] },
+    ],
+  };
+}
+
+function dobraEsboco(d: DadosEsquema): Esquema<FeatureDobraEsboco> {
+  return {
+    titulo: "Dobra esboçada",
+    caixas: [
+      { titulo: "Parâmetros da dobra", campos: [
+        { t: "sel", rot: "Esboço (linha da dobra)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "check", rot: "Inverter lado fixo", cam: "inverterFixo" },
+        { t: "info", texto: (f) => (f.inverterFixo ? "O lado menor fica parado; o maior dobra." : "O lado maior fica parado; o menor dobra.") },
+        { t: "sel", rot: "Posição da dobra", cam: "posicao", opcoes: [
+          ["centro", "Linha de centro da dobra"], ["materialInterno", "Material interno"],
+          ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"],
+        ] },
+        { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 0.1, max: 180 },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Margem de dobra", campos: [{ t: "info", texto: () => "Fator K da chapa (item Chapa metálica). O planificado não muda de tamanho." }] },
     ],
   };
 }

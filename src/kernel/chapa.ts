@@ -214,6 +214,50 @@ export class ModeloChapa {
     return filha;
   }
 
+  /**
+   * Dobra esboçada: divide a parede pela faixa da dobra (de `a` até `a + BA` a partir da linha
+   * p0 + s·e, medido ao longo de `d`, que aponta para o lado que se move). O lado fixo fica com o
+   * que está antes da faixa; o resto vira a parede-filha, que no planificado volta exatamente
+   * ao lugar original (a chapa planificada não muda de tamanho).
+   */
+  dobrarPorLinha(o: {
+    pai: Parede; idDobra: string; idFilha: string; p0: P2; e: P2; d: P2; a: number;
+    theta: number; r: number; paraMaterial: boolean;
+  }): Parede {
+    const W = o.pai, { e, d } = o;
+    const ba = o.theta * (o.r + this.p.k * this.p.t);
+    const e0 = s2(o.p0, m2(d, o.a));
+    const e1 = s2(e0, m2(d, ba));
+    const coord = (q: P2) => ({ x: (q.x - e0.x) * e.x + (q.y - e0.y) * e.y, y: (q.x - e0.x) * d.x + (q.y - e0.y) * d.y });
+    // vão da dobra: onde os contornos cruzam o meio da faixa
+    let s0 = Infinity, s1 = -Infinity;
+    for (const c of W.contornos) {
+      for (let i = 0; i < c.length; i++) {
+        const p = coord(c[i]), q = coord(c[(i + 1) % c.length]);
+        const ym = ba / 2;
+        if ((p.y - ym) * (q.y - ym) > 0 || Math.abs(q.y - p.y) < 1e-12) continue;
+        const x = p.x + ((ym - p.y) / (q.y - p.y)) * (q.x - p.x);
+        s0 = Math.min(s0, x);
+        s1 = Math.max(s1, x);
+      }
+    }
+    if (!Number.isFinite(s0) || s1 - s0 < 1e-6) throw new Error("A linha da dobra precisa atravessar a parede da chapa.");
+    const esc2 = (u: P2, v: P2) => u.x * v.x + u.y * v.y;
+    // filha: o que passa da faixa, nas coordenadas dela (x ao longo de e, y a partir do fim da dobra)
+    const formaFilha = transformarDesenho(W.forma.cut(semiplano(d.x, d.y, -esc2(d, e1))), e.x, e.y, d.x, d.y, -esc2(e, e0), -esc2(d, e0) - ba);
+    const contFilha = W.contornos
+      .map((c) => recortarPoligono(c, (q) => esc2(d, q) - esc2(d, e1)))
+      .filter((c) => c.length >= 3)
+      .map((c) => c.map((q) => ({ x: coord(q).x, y: coord(q).y - ba })));
+    // mãe: só o que fica antes da faixa
+    W.forma = W.forma.cut(semiplano(-d.x, -d.y, esc2(d, e0)));
+    W.contornos = W.contornos.map((c) => recortarPoligono(c, (q) => esc2(d, e0) - esc2(d, q))).filter((c) => c.length >= 3);
+    return this.dobrar({
+      pai: W, idDobra: o.idDobra, idFilha: o.idFilha, e0, e, d, s0, s1, theta: o.theta, r: o.r,
+      paraMaterial: o.paraMaterial, forma: formaFilha, contornos: contFilha,
+    });
+  }
+
   /** Corta um pedaço da parede (recuo da dobra, alívio, corte na chapa). */
   recortar(id: string, D: Drawing) {
     const w = this.parede(id);
@@ -388,6 +432,21 @@ export class ModeloChapa {
     }
     return null;
   }
+}
+
+/** Recorta um polígono no semiplano f(q) ≥ 0 (Sutherland–Hodgman). */
+export function recortarPoligono(c: P2[], f: (q: P2) => number): P2[] {
+  const out: P2[] = [];
+  for (let i = 0; i < c.length; i++) {
+    const p = c[i], q = c[(i + 1) % c.length];
+    const fp = f(p), fq = f(q);
+    if (fp >= 0) out.push(p);
+    if ((fp >= 0) !== (fq >= 0)) {
+      const k = fp / (fp - fq);
+      out.push({ x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k });
+    }
+  }
+  return out;
 }
 
 /** Aplica os cortes de canto a um sólido. */

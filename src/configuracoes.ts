@@ -31,6 +31,8 @@ export const PARAMETROS_RECURSO: Partial<Record<Feature["tipo"], [string, string
   padraoLinear: [["dir1.espacamento", "Espaçamento", "mm"], ["dir1.instancias", "Instâncias", ""]],
   padraoCircular: [["angulo", "Ângulo", "°"], ["instancias", "Instâncias", ""]],
   planoRef: [["distancia", "Distância", "mm"]],
+  dobraEsboco: [["angulo", "Ângulo", "°"]],
+  flangeAresta: [["angulo", "Ângulo", "°"], ["comprimento", "Comprimento", "mm"]],
   curva: [["passo", "Passo", "mm"], ["revolucoes", "Revoluções", ""], ["altura", "Altura", "mm"]],
 };
 

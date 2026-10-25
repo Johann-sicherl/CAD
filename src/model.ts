@@ -518,11 +518,25 @@ export interface FeatureAbaChapa extends FeatureBase {
   esboco?: string;
 }
 
+/** Dobra esboçada: linha(s) de esboço numa face plana da chapa dobram a parede ali. */
+export interface FeatureDobraEsboco extends FeatureBase {
+  tipo: "dobraEsboco";
+  esboco?: string;
+  angulo: number;
+  /** Onde a dobra fica em relação à linha do esboço. */
+  posicao: "centro" | "materialInterno" | "materialExterno" | "dobraExterna";
+  inverter: boolean;
+  /** Lado que fica parado: padrão = o maior; marcado = o outro. */
+  inverterFixo: boolean;
+  raioProprio: boolean;
+  raio: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
-  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa;
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco;
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -715,6 +729,11 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Aba${indice}` };
     case "corteChapa":
       return { ...base, tipo, nome: `CorteChapa${indice}` };
+    case "dobraEsboco":
+      return {
+        ...base, tipo, nome: `DobraEsboçada${indice}`, angulo: 90, posicao: "centro", inverter: false, inverterFixo: false,
+        raioProprio: false, raio: 2,
+      };
     case "curva":
       return {
         ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
@@ -748,6 +767,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   bainha: "Bainha",
   abaChapa: "Aba",
   corteChapa: "Corte na chapa",
+  dobraEsboco: "Dobra esboçada",
 };
 
 /**

@@ -598,6 +598,34 @@ const bloco = ext(base, 10);
     verdade("bainhas vizinhas: planificado", exportarDxf("h").resumo.dobras === 2 && ch > 0);
   }
 
+  // dobra esboçada: linha em x = 60 na face de cima da placa, 90°, R2, K 0,44
+  {
+    const de = novoEsboco(10, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+    op.linha(de, op.ponto(de, { x: 60, y: -10 }), op.ponto(de, { x: 60, y: 60 }));
+    const dob = (o: object) => ({ ...(novaFeature("dobraEsboco", 1) as any), esboco: de.id, ...o });
+    const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+    const maxX = (r: ReturnType<typeof regenerar>) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[0], x.b[0]]));
+    const maxZ = (r: ReturnType<typeof regenerar>) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[2], x.b[2]]));
+    const rd = regenerar([placaE, base, de, dob({ posicao: "centro" })]);
+    semErros("dobra esboçada", rd);
+    // retas: 100 − BA de chapa plana; dobra: ¼ coroa R2–R4 × 50
+    confere("dobra esboçada: volume", rd.volume, 2 * 50 * (100 - ba) + 3 * Math.PI * 50);
+    const pd = exportarDxf("dob").resumo;
+    confere("dobra esboçada: planificado igual à placa (100)", pd.largura, 100);
+    verdade("dobra esboçada: 1 dobra no DXF", pd.dobras === 1);
+    // centrada: lado fixo (esquerdo, maior) vai até 60 − BA/2; face de fora da aba em +R+t
+    confere("dobra esboçada (centro): face de fora", maxX(rd), 60 - ba / 2 + 4);
+    confere("dobra esboçada (centro): altura da aba", maxZ(rd), 4 + (100 - 60 - ba / 2));
+    // material interno: a face de fora da aba fica na linha
+    confere("dobra esboçada (material interno): face de fora na linha", maxX(regenerar([placaE, base, de, dob({ posicao: "materialInterno" })])), 60);
+    // dobra externa: a dobra começa na linha
+    confere("dobra esboçada (dobra externa)", maxX(regenerar([placaE, base, de, dob({ posicao: "dobraExterna" })])), 64);
+    // inverter lado fixo: o lado direito fica e o esquerdo sobe
+    const ri = regenerar([placaE, base, de, dob({ posicao: "centro", inverterFixo: true })]);
+    semErros("dobra esboçada (lado fixo invertido)", ri);
+    confere("dobra esboçada (lado fixo invertido): altura", maxZ(ri), 4 + (60 - ba / 2));
+  }
+
   // corte na chapa: círculo Ø10 desenhado na face de cima da placa
   const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
   op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);
