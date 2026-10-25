@@ -212,6 +212,7 @@ export const ABAS: Aba[] = [
       { id: "flange-base", rotulo: "Flange base", icone: "flangeBase", dica: "Chapa a partir de um esboço: fechado vira placa, aberto vira perfil dobrado", grupo: 0 },
       { id: "aba-chapa", rotulo: "Aba", icone: "aba", dica: "Esboço fechado numa face da chapa vira aba com a mesma espessura", grupo: 0 },
       { id: "flange-aresta", rotulo: "Flange de aresta", icone: "flangeAresta", dica: "Dobra uma aba a partir de arestas da chapa", grupo: 0 },
+      { id: "meia-esquadria", rotulo: "Meia-esquadria", icone: "meiaEsquadria", dica: "Perfil aberto de esboço levado ao longo de arestas, com cantos em meia-esquadria", grupo: 0 },
       { id: "bainha", rotulo: "Bainha", icone: "bainha", dica: "Dobra a borda sobre ela mesma (fechada, aberta, enrolada)", grupo: 0 },
       { id: "dobra", rotulo: "Dobra esboçada", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha de esboço numa face", grupo: 0 },
       { id: "junta", rotulo: "Junta", icone: "junta", dica: "Degrau na chapa (duas dobras) a partir de uma linha de esboço", grupo: 0 },

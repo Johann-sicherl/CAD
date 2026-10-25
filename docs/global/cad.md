@@ -42,7 +42,7 @@ Aqui fica só o que o CAD precisa **expor ou receber** para fazer parte do ecoss
   Arquivo.
 
 ## 4. Pendências do CAD que entram na G1
-- Chapa: (canto automático, itens da árvore e dobra esboçada e junta ✅)
-  meia-esquadria, cantos, desdobrar/dobrar, converter em chapa.
+- Chapa: (canto automático, itens da árvore e dobra esboçada, junta e meia-esquadria ✅)
+  cantos, desdobrar/dobrar, converter em chapa.
 - Fase 5: propriedades de seção.
 - Fase 3: filete variável/de face, furo avançado.

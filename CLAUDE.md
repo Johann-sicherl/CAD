@@ -118,7 +118,7 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 
 Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
 com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
-próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada e junta ✅. Pendentes da Fase 4: meia-esquadria,
+próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada, junta e flange de meia-esquadria ✅. Pendentes da Fase 4:
 cantos, desdobrar/dobrar, converter em chapa. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra

@@ -548,11 +548,24 @@ export interface FeatureJunta extends FeatureBase {
   raio: number;
 }
 
+/** Flange de meia-esquadria: perfil aberto de esboço levado ao longo de arestas da chapa. */
+export interface FeatureMeiaEsquadria extends FeatureBase {
+  tipo: "meiaEsquadria";
+  esboco?: string;
+  arestas: Referencia[];
+  posicao: PosicaoFlange;
+  inverter: boolean;
+  raioProprio: boolean;
+  raio: number;
+  /** Distância de folga entre as abas nos cantos. */
+  folga: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
-  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta;
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria;
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -745,6 +758,11 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Aba${indice}` };
     case "corteChapa":
       return { ...base, tipo, nome: `CorteChapa${indice}` };
+    case "meiaEsquadria":
+      return {
+        ...base, tipo, nome: `FlangeMeiaEsquadria${indice}`, arestas: [], posicao: "materialInterno", inverter: false,
+        raioProprio: false, raio: 2, folga: 0.25,
+      };
     case "junta":
       return {
         ...base, tipo, nome: `Junta${indice}`, deslocamento: 10, medicao: "mesmoLado", angulo: 90, posicao: "centro",
@@ -790,6 +808,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   corteChapa: "Corte na chapa",
   dobraEsboco: "Dobra esboçada",
   junta: "Junta",
+  meiaEsquadria: "Flange de meia-esquadria",
 };
 
 /**

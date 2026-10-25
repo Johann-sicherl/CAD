@@ -163,6 +163,8 @@ let snapshotEsboco: string | null = null;
 let voltarParaFuro: string | null = null;
 /** Comando de chapa (aba, corte, flange base) esperando o esboço: abre ao sair dele. */
 let recursoAposEsboco: string | null = null;
+/** Arestas escolhidas antes de abrir o esboço do perfil (meia-esquadria): voltam ao comando. */
+let arestasAposEsboco: Referencia[] = [];
 let comando: ComandoAtivo | null = null;
 let avaliacao: FerramentaAvaliar | null = null;
 /** Esperando o usuário tocar um plano/face para começar um esboço ou furo. */
@@ -451,7 +453,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
-  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta",
+  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -596,6 +598,29 @@ function criarRecurso(id: string) {
     case "bainha":
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
       break;
+    case "meiaEsquadria": {
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
+      if (!perfil) {
+        const a0 = f.arestas[0];
+        if (!a0 || a0.tipo !== "aresta" || a0.ass.geom !== "linha") {
+          return avisar("Flange de meia-esquadria: selecione a aresta reta da chapa onde o perfil começa (Ctrl/Shift soma as outras) e toque o comando de novo.");
+        }
+        // como nos CADs profissionais: esboço num plano perpendicular à aresta, na ponta dela
+        const p = a0.ass.a, q = a0.ass.b;
+        const L = Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+        const n: Vec3 = [(q[0] - p[0]) / L, (q[1] - p[1]) / L, (q[2] - p[2]) / L];
+        recursoAposEsboco = id;
+        arestasAposEsboco = f.arestas;
+        definirSel(null);
+        limparSelPeca();
+        void suporteEscolhido({ tipo: "face", origem: p, normal: n, eixoX: eixoXParaNormal(n) }, null).then(() =>
+          avisar("Meia-esquadria: desenhe o perfil aberto (linhas) começando na origem do esboço, que está na ponta da aresta. Ao sair do esboço, o comando abre."));
+        return;
+      }
+      f.esboco = perfil.id;
+      break;
+    }
     case "padraoLinear":
     case "padraoCircular":
     case "espelhar":
@@ -813,6 +838,9 @@ function confirmarComando() {
   }
   if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
     return avisar(`${ROTULO_TIPO[f.tipo]}: toque nas arestas da chapa.`);
+  }
+  if (f.tipo === "meiaEsquadria" && (!f.esboco || !f.arestas.length)) {
+    return avisar("Flange de meia-esquadria: escolha o esboço do perfil e as arestas.");
   }
   fecharComando();
   registrarPasso();
@@ -1744,7 +1772,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
-  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta",
+  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -2402,6 +2430,8 @@ function sairEsboco() {
   if (recursoAposEsboco) {
     const cmd = recursoAposEsboco;
     recursoAposEsboco = null;
+    if (arestasAposEsboco.length) selPeca = arestasAposEsboco;
+    arestasAposEsboco = [];
     prefs.aba = "chapa";
     renderizarAbas();
     criarRecurso(cmd);
@@ -2418,6 +2448,7 @@ function descartarEsboco() {
   snapshotEsboco = null;
   voltarParaFuro = null;
   recursoAposEsboco = null;
+  arestasAposEsboco = [];
   instalarToqueCurto();
   doc = JSON.parse(s);
   mostrarPainel("arvore");

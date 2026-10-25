@@ -626,6 +626,43 @@ const bloco = ext(base, 10);
     confere("dobra esboçada (lado fixo invertido): altura", maxZ(ri), 4 + (60 - ba / 2));
   }
 
+  // flange de meia-esquadria: perfil desenhado na face da ponta (x = 0), começando na aresta de cima
+  {
+    const perfil = (pts: [number, number][]) => {
+      const e = novoEsboco(12, { tipo: "face", origem: [0, 0, 0], normal: [1, 0, 0], eixoX: [0, 1, 0] } as any); // x do esboço = Y, y = Z
+      const ps = pts.map(([x, y]) => op.ponto(e, { x, y }));
+      for (let k = 0; k + 1 < ps.length; k++) op.linha(e, ps[k], ps[k + 1]);
+      return e;
+    };
+    const ar = (fn: (a: { a: number[]; b: number[] }) => boolean) => r0.topologia!.arestas.find((x) => x.geom === "linha" && fn(x))!;
+    const cimaY50 = ar((x) => [x.a, x.b].every((p) => Math.abs(p[1] - 50) < 1e-6 && Math.abs(p[2] - 2) < 1e-6));
+    const cimaX100 = ar((x) => [x.a, x.b].every((p) => Math.abs(p[0] - 100) < 1e-6 && Math.abs(p[2] - 2) < 1e-6));
+    const me = (e: object, arestas: object[], o: object = {}) => ({ ...(novaFeature("meiaEsquadria", 1) as any), esboco: (e as any).id, arestas: arestas.map((ass) => ({ tipo: "aresta", ass })), ...o });
+    // perfil de 1 linha (sobe 20) = flange de aresta de 20 (externo virtual, material interno)
+    const p1 = perfil([[50, 2], [50, 22]]);
+    const rm1 = regenerar([placaE, base, p1, me(p1, [cimaY50])]);
+    semErros("meia-esquadria (1 linha)", rm1);
+    confere("meia-esquadria (1 linha) = flange de aresta", rm1.volume, 100 * 46 * 2 + (Math.PI / 4) * (16 - 4) * 100 + 100 * 16 * 2);
+    // perfil em L: sobe 20 e volta 10 para dentro (lábio); cantos medidos no canto vivo externo
+    const p2 = perfil([[50, 2], [50, 22], [40, 22]]);
+    const rm2 = regenerar([placaE, base, p2, me(p2, [cimaY50])]);
+    semErros("meia-esquadria (perfil em L)", rm2);
+    const quarto = (Math.PI / 4) * (16 - 4) * 100;
+    confere("meia-esquadria (perfil em L): volume", rm2.volume, 100 * 46 * 2 + quarto + (20 - 4 - 4) * 2 * 100 + quarto + (10 - 4) * 2 * 100);
+    verdade("meia-esquadria (perfil em L): 2 dobras", exportarDxf("me").resumo.dobras === 2);
+    // duas arestas que se encontram no canto (x = 100, y = 50): aparadas, sem sobrepor
+    const rm3 = regenerar([placaE, base, p2, me(p2, [cimaY50, cimaX100])]);
+    semErros("meia-esquadria em canto", rm3);
+    const pm3 = exportarDxf("me3").resumo;
+    verdade("meia-esquadria em canto: 4 dobras no planificado", pm3.dobras === 4);
+    // conta à mão: placa 96 × 46; cada elemento do perfil (¼ coroa, parede 12 × 2, lábio 6 × 2)
+    // tem comprimento L − δ − c (δ: centroide até a aresta; c = folga/√2 pelo plano a 45°)
+    const c = 0.25 / Math.SQRT2;
+    const yc = (4 * (64 - 8)) / (3 * Math.PI * 12);
+    const cad = (Lr: number) => 3 * Math.PI * 2 * (Lr - (4 - yc) - c) + 24 * (Lr - 1 - c) + 12 * (Lr - 7 - c);
+    confere("meia-esquadria em canto: volume", rm3.volume, 96 * 46 * 2 + cad(100) + cad(50));
+  }
+
   // junta: mesma linha (x = 60), degrau de 10 mm entre faces do mesmo lado, 90°, R2
   {
     const je = novoEsboco(11, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);

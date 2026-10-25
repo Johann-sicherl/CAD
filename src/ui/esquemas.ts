@@ -4,7 +4,7 @@ import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
-  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -103,6 +103,8 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return dobraEsboco(d) as Esquema<Feature>;
     case "junta":
       return junta(d) as Esquema<Feature>;
+    case "meiaEsquadria":
+      return meiaEsquadria(d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -265,6 +267,25 @@ function junta(d: DadosEsquema): Esquema<FeatureJunta> {
       ] },
       { titulo: "Posição da junta", campos: [{ t: "sel", rot: "Posição", cam: "posicao", opcoes: POSICOES_DOBRA }] },
       { titulo: "Ângulo da junta", campos: [{ t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 0.1, max: 179.9 }] },
+    ],
+  };
+}
+
+function meiaEsquadria(d: DadosEsquema): Esquema<FeatureMeiaEsquadria> {
+  return {
+    titulo: "Flange de meia-esquadria",
+    caixas: [
+      { titulo: "Parâmetros de meia-esquadria", campos: [
+        { t: "sel", rot: "Esboço (perfil aberto)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "refs", rot: "Ao longo das arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "A 1ª é a aresta onde o perfil começa; toque as outras em sequência" },
+        { t: "info", texto: () => "Perfil: só linhas, num plano perpendicular à 1ª aresta e começando nela; cada linha é medida até o canto vivo virtual externo." },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+        { t: "sel", rot: "Posição da flange", cam: "posicao", opcoes: POSICOES },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Distância de folga", cam: "folga", un: "mm", min: 0, passo: 0.05 },
+      ] },
+      { titulo: "Deslocamentos inicial/final", campos: [{ t: "info", texto: () => "Próxima versão (hoje a aba vai de ponta a ponta de cada aresta)." }] },
     ],
   };
 }

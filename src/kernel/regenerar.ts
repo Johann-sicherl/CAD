@@ -19,7 +19,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureDobraEsboco, FeatureJunta, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
@@ -680,15 +680,19 @@ function arestasDaChapa(m: ModeloChapa, refs: Referencia[], ctx: Ctx, oque: stri
 /** Dobra uma aba em cada aresta (flange de aresta e bainha). */
 function dobrarArestas(
   m: ModeloChapa, f: { id: string }, arestas: ReturnType<typeof arestasDaChapa>,
-  o: { theta: number; r: number; inverter: boolean; setback: number; compReto: number; desloc0: number; desloc1: number; folga?: number },
-) {
+  o: {
+    theta: number; r: number; inverter: boolean; setback: number; compReto: number; desloc0: number; desloc1: number; folga?: number;
+    /** Lado da dobra fixo (meia-esquadria: vem do perfil), em vez de pela face da aresta. */
+    paraMaterial?: boolean;
+  },
+): AbaFeita[] {
   const t = m.p.t;
   const feitas: AbaFeita[] = [];
   arestas.forEach((h, i) => {
     const s0 = h.ta * h.L + o.desloc0, s1 = h.tb * h.L - o.desloc1;
     if (s1 - s0 <= 1e-6) throw new Error("Os deslocamentos são maiores que a aresta.");
     // na face de cima, a aba sobe; na de referência, desce (Inverter troca)
-    const paraMaterial = h.noTopo !== o.inverter;
+    const paraMaterial = o.paraMaterial ?? (h.noTopo !== o.inverter);
     const noLocal = (a0: number, a1: number, b0: number, b1: number) =>
       transformarDesenho(retanguloDesenho(a0, a1, b0, b1), h.e.x, h.d.x, h.e.y, h.d.y, h.p.x, h.p.y);
     if (o.setback > 1e-9) {
@@ -706,6 +710,7 @@ function dobrarArestas(
     feitas.push({ h, filha, dobra: m.dobras[m.dobras.length - 1], s0, s1, comParede: !!forma });
   });
   if (o.folga !== undefined) cantosAutomaticos(m, feitas, Math.max(0, o.folga));
+  return feitas;
 }
 
 interface AbaFeita {
@@ -790,6 +795,119 @@ function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
     compReto: comprimentoReto(f.medicao, f.comprimento, theta, r, m.p.t), desloc0: f.deslocInicio, desloc1: f.deslocFim,
     folga: f.folga ?? 0.25,
   });
+}
+
+/**
+ * Flange de meia-esquadria: o perfil aberto (linhas) desenhado num plano perpendicular à 1ª
+ * aresta, começando nela, é levado ao longo de cada aresta escolhida. A 1ª linha vira a aba
+ * (como uma flange de aresta, medida até o canto vivo virtual externo); cada canto do perfil
+ * vira uma dobra com o raio da chapa e cada linha seguinte, uma parede (também medida até os
+ * cantos vivos virtuais externos). Arestas que se encontram num canto: todas as paredes e dobras
+ * das duas abas são aparadas pelo plano bissetor do canto, afastadas pela folga.
+ */
+function meiaEsquadria(f: FeatureMeiaEsquadria, ctx: Ctx) {
+  const m = exigirChapa(ctx, "A flange de meia-esquadria");
+  const t = m.p.t;
+  const r = f.raioProprio ? f.raio : m.p.r;
+  if (!(r > 0)) throw new Error("O raio de dobra deve ser maior que zero.");
+  const arestas = arestasDaChapa(m, f.arestas, ctx, "Flange de meia-esquadria");
+  // perfil: cadeia de linhas no espaço, começando na ponta mais perto da 1ª aresta
+  const esb = esbocoDe(f.esboco, ctx);
+  const rs = referencial(esb.suporte, ctx.planos);
+  if (esb.geos.some((g) => !g.construcao && !g.externa && g.tipo !== "linha" && g.tipo !== "ponto")) {
+    throw new Error("Flange de meia-esquadria: o perfil deve ter só linhas (arcos: próxima versão).");
+  }
+  const cadeia = cadeiaAberta(esb);
+  if (!cadeia || cadeia.length < 2) throw new Error("Flange de meia-esquadria: desenhe um perfil aberto (cadeia de linhas) começando na aresta.");
+  const h0 = arestas[0], W0 = h0.parede;
+  const A0 = local3(W0.q, h0.p), B0 = local3(W0.q, h0.q);
+  const eixo = normalizar(sub3(B0, A0));
+  if (Math.abs(esc3(rs.normal, eixo)) < 0.999) {
+    throw new Error("Flange de meia-esquadria: desenhe o perfil num plano perpendicular à 1ª aresta (ex.: na face da ponta da chapa).");
+  }
+  let pts = cadeia.map((p) => paraMundo(rs, p.x, p.y));
+  const distAresta = (P: Vec3) => {
+    const v = sub3(P, A0);
+    return Math.hypot(...sub3(v, mul3(eixo, esc3(v, eixo))));
+  };
+  if (distAresta(pts[pts.length - 1]) < distAresta(pts[0])) pts = pts.reverse();
+  if (distAresta(pts[0]) > Math.max(1, 2 * t)) throw new Error("Flange de meia-esquadria: o perfil precisa começar na aresta escolhida.");
+  const dirs = pts.slice(1).map((P, i) => sub3(P, pts[i]));
+  const L = dirs.map((v) => Math.hypot(...v));
+  if (L.some((x) => x < 1e-6)) throw new Error("Flange de meia-esquadria: o perfil tem linhas de comprimento zero.");
+  const s = dirs.map((v, i) => mul3(v, 1 / L[i]));
+  // 1ª aba: ângulo entre a direção de fora da aresta (no plano da chapa) e a 1ª linha
+  const d3 = soma3(mul3(W0.q.u, h0.d.x), mul3(W0.q.v, h0.d.y));
+  const cima = mul3(W0.q.n, W0.s);
+  const theta1 = Math.atan2(Math.abs(esc3(s[0], cima)), esc3(s[0], d3));
+  if (theta1 < 1e-3) throw new Error("Flange de meia-esquadria: a 1ª linha do perfil não pode seguir no plano da chapa.");
+  const sobe = esc3(s[0], cima) > 0;
+  const paraMaterial1 = sobe !== f.inverter;
+  // cantos do perfil: ângulo e recuo (medida até o canto vivo virtual externo)
+  const thetas = s.slice(1).map((v, i) => Math.acos(Math.max(-1, Math.min(1, esc3(s[i], v)))));
+  if (thetas.some((x) => x > grausRad(175))) throw new Error("Flange de meia-esquadria: canto do perfil fechado demais (acima de 175°).");
+  const tg = (x: number) => (x <= Math.PI / 2 + 1e-9 ? Math.tan(x / 2) : 1);
+  const ded = thetas.map((x) => (r + t) * tg(x));
+  const comp = L.map((x, i) => {
+    let c = i === 0 ? comprimentoReto("externoVirtual", x, theta1, r, t) : x;
+    if (i > 0) c -= ded[i - 1];
+    if (i < ded.length) c -= ded[i];
+    return c;
+  });
+  if (comp.some((c) => c <= 1e-6)) throw new Error("Flange de meia-esquadria: uma linha do perfil é curta demais para as dobras (raio + espessura).");
+  const feitas = dobrarArestas(m, f, arestas, {
+    theta: theta1, r, inverter: false, setback: recuo(f.posicao, theta1, r, t), compReto: comp[0], desloc0: 0, desloc1: 0,
+    paraMaterial: paraMaterial1,
+  });
+  // paredes seguintes; o lado de cada dobra sai do perfil na 1ª aresta e vale para as outras
+  const lados: boolean[] = [];
+  const cadeias = feitas.map((fe, j) => {
+    const paredes = [fe.filha], dobras = [fe.dobra];
+    let atual = fe.filha;
+    for (let k = 1; k < s.length; k++) {
+      if (j === 0) {
+        const b = sub3(s[k], mul3(s[k - 1], esc3(s[k], s[k - 1])));
+        lados[k] = esc3(b, mul3(atual.q.n, atual.s)) > 0;
+      }
+      const forma = retanguloDesenho(fe.s0, fe.s1, 0, comp[k]);
+      atual = m.dobrar({
+        pai: atual, idDobra: `${f.id}:d${j}_${k}`, idFilha: `${f.id}:${j}_${k}`, e0: { x: 0, y: comp[k - 1] }, e: { x: 1, y: 0 },
+        d: { x: 0, y: 1 }, s0: fe.s0, s1: fe.s1, theta: thetas[k - 1], r, paraMaterial: lados[k], forma,
+        contornos: [[{ x: fe.s0, y: 0 }, { x: fe.s1, y: 0 }, { x: fe.s1, y: comp[k] }, { x: fe.s0, y: comp[k] }]],
+      });
+      paredes.push(atual);
+      dobras.push(m.dobras[m.dobras.length - 1]);
+    }
+    return { fe, paredes, dobras };
+  });
+  // cantos entre arestas vizinhas da mesma parede: plano bissetor do canto (perpendicular à chapa)
+  const ponta = (fe: AbaFeita, x: number) => ({ x: fe.h.p.x + fe.h.e.x * x, y: fe.h.p.y + fe.h.e.y * x });
+  for (let i = 0; i < cadeias.length; i++) {
+    for (let j = i + 1; j < cadeias.length; j++) {
+      const A = cadeias[i], B = cadeias[j];
+      if (A.fe.h.parede !== B.fe.h.parede) continue;
+      let canto: V2 | null = null;
+      for (const p of [ponta(A.fe, A.fe.s0), ponta(A.fe, A.fe.s1)]) {
+        for (const q of [ponta(B.fe, B.fe.s0), ponta(B.fe, B.fe.s1)]) if (Math.hypot(p.x - q.x, p.y - q.y) < 1e-3) canto = p;
+      }
+      if (!canto) continue;
+      const sai = (fe: AbaFeita) => {
+        const outra = Math.hypot(ponta(fe, fe.s0).x - canto!.x, ponta(fe, fe.s0).y - canto!.y) < 1e-3 ? fe.s1 : fe.s0;
+        return unit2({ x: ponta(fe, outra).x - canto!.x, y: ponta(fe, outra).y - canto!.y });
+      };
+      const uA = sai(A.fe), uB = sai(B.fe);
+      const dl = unit2({ x: uA.x - uB.x, y: uA.y - uB.y });
+      const W = A.fe.h.parede;
+      const p0 = local3(W.q, canto, 0);
+      const n = sub3(local3(W.q, dl, 0), local3(W.q, { x: 0, y: 0 }, 0));
+      const g = Math.max(0, f.folga) / 2;
+      const cA = { p: soma3(p0, mul3(n, g)), m: n }, cB = { p: soma3(p0, mul3(n, -g)), m: mul3(n, -1) };
+      for (const [cad, c] of [[A, cA], [B, cB]] as const) {
+        for (const w of cad.paredes) (w.cortes ??= []).push(c);
+        for (const b of cad.dobras) (b.cortes ??= []).push(c);
+      }
+    }
+  }
 }
 
 function bainha(f: FeatureBainha, ctx: Ctx) {
@@ -1495,6 +1613,9 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return reconstruirChapa(ctx);
     case "junta":
       junta(f, ctx);
+      return reconstruirChapa(ctx);
+    case "meiaEsquadria":
+      meiaEsquadria(f, ctx);
       return reconstruirChapa(ctx);
     case "abaChapa":
     case "corteChapa":

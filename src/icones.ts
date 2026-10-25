@@ -110,6 +110,7 @@ export const ICONES = {
   dobra: svg(`<path d="M3 20h8a4 4 0 0 0 4-4V4"/><path d="M3 17h8a1 1 0 0 0 1-1V4" stroke="${C}"/><path d="M14 9h6" stroke-dasharray="2 2"/>`),
   chapa: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M3 15v1.5l9 4 9-4V15"/><circle cx="12" cy="7" r="2.6" stroke="${C}"/><path d="M12 2.6v1.8M12 9.6v1.8M7.6 7h1.8M14.6 7h1.8" stroke="${C}"/>`),
   junta: svg(`<path d="M3 17h7l3-6h8"/><path d="M3 14h6l3-6h9" stroke="${C}"/><path d="M17 15v4m-1.5-1.5L17 19l1.5-1.5"/>`),
+  meiaEsquadria: svg(`<path d="M4 20V8l4-4h12"/><path d="M7 20V9.5L9.5 7H20" stroke="${C}"/><path d="M4 8l3 1.5M8 4l1.5 3" stroke="${C}"/>`),
   aba: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M9 12.4V7l6-2.7v5.4" stroke="${C}"/>`),
   bainha: svg(`<path d="M3 19h12a4 4 0 0 0 0-8H8"/><path d="M3 16h12a1 1 0 0 0 0-2H8" stroke="${C}"/>`),
   corteChapa: svg(`<path d="M3 15l9 4 9-4-9-4z"/><ellipse cx="12" cy="15" rx="3.5" ry="1.6" stroke="${C}"/><path d="M12 4v7" stroke="${C}" stroke-dasharray="2 2"/>`),

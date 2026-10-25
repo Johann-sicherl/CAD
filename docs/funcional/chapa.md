@@ -23,7 +23,8 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Aba, Corte na chapa e Flange base sem esboço: pedem a face/plano, abrem o esboço e voltam ao comando ao sair dele; OK bloqueado sem esboço (e flange de aresta/bainha sem arestas) | ✅ |
 | **Dobra esboçada**: linha(s) de esboço numa face plana; lado fixo = o maior (ou inverter); posição: linha de centro, material interno, material externo, dobra externa; ângulo, inverter direção, raio próprio; o planificado não muda de tamanho | ✅ (só linhas retas; flanges já feitas precisam estar no lado fixo) |
 | **Junta**: degrau (dobra θ + trecho reto + dobra −θ) a partir de linha(s) de esboço numa face; deslocamento entre faces do mesmo lado / interno (vão) / total; posição da junta como na dobra esboçada; ângulo; raio próprio; lado fixo | ✅ (fixar comprimento projetado: F4) |
-| Flange de meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| **Flange de meia-esquadria**: perfil aberto (linhas) num plano perpendicular à 1ª aresta, começando nela; levado ao longo das arestas escolhidas; cada linha medida até o canto vivo virtual externo; raio próprio, posição da flange, inverter, distância de folga; cantos entre arestas vizinhas aparados pelo plano bissetor; com uma aresta selecionada e sem esboço, abre o esboço perpendicular na ponta da aresta | ✅ (perfil com arcos, deslocamentos inicial/final e aparar dobras laterais: F4) |
+| Cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -65,7 +66,7 @@ Perfil: esboço fechado (placa) ou aberto (perfil dobrado)
   **Deslocamento** (condição, distância)
 - Margem de dobra personalizada · Alívio personalizado (tipo, proporção)
 
-## 3. Flange de meia-esquadria (Miter Flange)
+## 3. Flange de meia-esquadria (Miter Flange) — ✅ (perfil só de linhas; deslocamentos: F4)
 Perfil: esboço aberto perpendicular à aresta
 - **Parâmetros**: ao longo das arestas (cadeia), raio, posição da flange (interno/externo/dobra
   externa), aparar dobras laterais, distância de folga
