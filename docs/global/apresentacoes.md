@@ -8,6 +8,27 @@ Status de tudo: **G4** salvo indicação.
 
 ---
 
+## Estado da v1 (25/10/2026) — `apresentacao/index.html`, `src/apresentacao/`
+
+✅ Editor de slides com miniaturas (arrastar reordena; menu com duplicar, ocultar, excluir):
+- layouts Título, Título e conteúdo, Duas colunas, Seção, Só título e Em branco, com espaços
+  reservados ("Clique duas vezes para adicionar…") que somem na apresentação se vazios;
+- caixas de texto ricas (tamanho, negrito/itálico/sublinhado, cor, marcadores, numeração,
+  alinhamento); formas retângulo, arredondado, elipse, triângulo, seta, estrela e linha
+  (preenchimento, contorno, texto dentro); imagens;
+- mover com encaixe no centro do slide, alças de redimensionar (Shift mantém a proporção),
+  setas do teclado, copiar/recortar/colar/duplicar, ordem (frente/trás), centralizar;
+- seis temas próprios, plano de fundo por slide, tamanho 16:9 ou 4:3;
+- transições por slide (aplicar a todos) e animações de entrada por objeto, em sequência;
+- apresentação em tela cheia (F5 / Shift+F5, setas, toque deslizando, B/W tela preta/branca),
+  modo do apresentador (cronômetro, próximo slide, anotações), anotações do orador;
+- imprimir/PDF um slide por página; arquivo `.wjapn`, salvamento automático, offline.
+
+🟡 Próximos: mestre de slides editável, tabelas e gráficos (`@wj/graficos`), vista 3D do WJCAD,
+grupos e rotação, linha do tempo de animações, folhetos, `.pptx`/`.odp`, exportar vídeo.
+
+---
+
 ## 0. Modelo
 
 - **Apresentação** → **mestre de slides** (1+) → **layouts** (Título, Título e conteúdo, Duas

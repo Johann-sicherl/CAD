@@ -199,6 +199,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento-suav
   flex-direction: column;
 }
 .wj-menu button { justify-content: flex-start; text-align: left; border: 0; min-height: 36px; display: flex; align-items: center; gap: 8px; }
+.wj-menu button svg { width: 18px; height: 18px; flex: none; }
+.wj-menu button span { white-space: nowrap; }
 .wj-menu hr { border: 0; border-top: 1px solid var(--linha); margin: 4px 0; width: 100%; }
 .wj-tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
 .wj-tabela th, .wj-tabela td { padding: 6px 8px; border-bottom: 1px solid var(--linha); text-align: left; }

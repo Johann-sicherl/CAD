@@ -41,7 +41,7 @@ const FACES: Face[] = [
     icone: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 14h6M9 17h4" stroke="${C}"/>`),
   },
   {
-    id: "apresentacoes", nome: "WJApion", fase: "G4",
+    id: "apresentacoes", nome: "WJApion", url: "apresentacao/",
     descricao: "Apresentações com temas, animações, modo apresentador e peças 3D do WJCAD.",
     icone: svg(`<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/><path d="M7 12l3-3 2 2 4-4" stroke="${C}"/>`),
   },
