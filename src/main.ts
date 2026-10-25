@@ -3513,8 +3513,13 @@ renderizarTudo();
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
-  // service worker terminou de guardar o app inteiro: avisa uma vez que já funciona sem internet
+  // service worker guardou o kernel pela primeira vez: avisa que já funciona sem internet
   navigator.serviceWorker.addEventListener("message", (e) => {
     if (e.data?.tipo === "offline-pronto") avisar("WJCAD pronto para usar sem internet neste aparelho.");
   });
+  // kernel carregado: pede ao service worker para guardá-lo (vem do cache HTTP, sem baixar de novo)
+  void kernel.pronto.then(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    reg.active?.postMessage({ tipo: "guardar" });
+  }).catch(() => {});
 }

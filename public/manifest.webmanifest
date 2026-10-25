@@ -1,7 +1,7 @@
 {
-  "name": "WJCAD — WJProMaster",
-  "short_name": "WJCAD",
-  "description": "CAD paramétrico para celular, tablet e computador",
+  "name": "WJProMaster",
+  "short_name": "WJProMaster",
+  "description": "Ecossistema WJProMaster: WJCAD e os próximos softwares de engenharia e gestão, no celular, tablet e computador",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,6 +9,9 @@
   "background_color": "#eef1f4",
   "theme_color": "#eef1f4",
   "icons": [
-    { "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "wjpromaster.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "WJCAD", "short_name": "WJCAD", "description": "CAD paramétrico", "url": "cad/", "icons": [{ "src": "icone.svg", "sizes": "any", "type": "image/svg+xml" }] }
   ]
 }

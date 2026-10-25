@@ -144,7 +144,7 @@ A ordem pode mudar por decisão do Johann (por exemplo, antecipar o WJPDM se o u
 
 ## 5. Itens comuns a todas as faces (especificação)
 
-### 5.1 Início (hub) — G0
+### 5.1 Início (hub) — G0 (🟡 adiantado: página inicial com uma caixa por software ✅, 25/10/2026)
 - Recentes de todas as faces (miniatura, face, local, data), fixados, busca global.
 - **Novo** → escolher a face e o modelo (em branco, modelos próprios, modelos da empresa).
 - **Abrir**: arquivo do aparelho, nuvem do WJProMaster (G5), importar formato aberto.

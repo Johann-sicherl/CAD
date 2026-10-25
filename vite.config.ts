@@ -1,25 +1,36 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const raiz = fileURLToPath(new URL(".", import.meta.url));
 import { defineConfig, type Plugin } from "vite";
 
 /**
- * Uso offline: lista todos os arquivos do build em precache.json (o service worker baixa tudo
- * na instalação, inclusive o solver do esboço) e carimba no sw.js uma versão que muda a cada
- * build, para o app instalado se atualizar sozinho.
+ * Uso offline: lista os arquivos do build em precache.json, separados em `pequenos` (o service
+ * worker guarda na instalação) e `grandes` (o kernel .wasm de ~23 MB: guardado só quando o
+ * WJCAD é aberto, aproveitando o download que a página já fez). Carimba no sw.js uma versão que
+ * muda a cada build, para o app instalado se atualizar sozinho.
  */
 function offline(): Plugin {
   let arquivos: string[] = [];
   let pasta = "dist";
+  const LIMITE = 2 * 1024 * 1024;
   return {
-    name: "jlscad-offline",
+    name: "wj-offline",
     apply: "build",
     configResolved(c) {
       pasta = c.build.outDir;
     },
     generateBundle(_, bundle) {
       arquivos = Object.keys(bundle).filter((f) => !f.endsWith(".map"));
-      this.emitFile({ type: "asset", fileName: "precache.json", source: JSON.stringify(arquivos) });
+      const tamanho = (f: string) => {
+        const x = bundle[f];
+        return x.type === "asset" ? (typeof x.source === "string" ? x.source.length : x.source.byteLength) : x.code.length;
+      };
+      const pequenos = arquivos.filter((f) => tamanho(f) <= LIMITE);
+      const grandes = arquivos.filter((f) => tamanho(f) > LIMITE);
+      this.emitFile({ type: "asset", fileName: "precache.json", source: JSON.stringify({ pequenos, grandes }) });
     },
     closeBundle() {
       const sw = resolve(pasta, "sw.js");
@@ -29,8 +40,9 @@ function offline(): Plugin {
   };
 }
 
-// base: "/" no Cloudflare Pages (site na raiz); o workflow do GitHub Pages passa BASE_PATH=/CAD/
-// (johann-sicherl.github.io/CAD/).
+// base: "/" no Cloudflare Pages (site na raiz); o workflow do GitHub Pages passa
+// BASE_PATH=/<nome do repositório>/ (johann-sicherl.github.io/WJProMaster/).
+// Duas páginas: index.html = início do WJProMaster (leve); cad/index.html = WJCAD.
 export default defineConfig(({ command, isPreview }) => ({
   base: command === "build" || isPreview ? process.env.BASE_PATH || "/" : "/",
   plugins: [offline()],
@@ -40,5 +52,9 @@ export default defineConfig(({ command, isPreview }) => ({
   // mesmos cabeçalhos do public/_headers (Cloudflare): isolamento de origem → SharedArrayBuffer,
   // necessário para o kernel com várias threads
   preview: { headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" } },
-  build: { target: "es2022", chunkSizeWarningLimit: 4000 },
+  build: {
+    target: "es2022",
+    chunkSizeWarningLimit: 4000,
+    rollupOptions: { input: { inicio: resolve(raiz, "index.html"), cad: resolve(raiz, "cad/index.html") } },
+  },
 }));

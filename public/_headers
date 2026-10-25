@@ -13,6 +13,10 @@
   Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
+/cad/
+  Cache-Control: no-cache
+/cad/index.html
+  Cache-Control: no-cache
 
 # arquivos com hash no nome nunca mudam
 /assets/*
