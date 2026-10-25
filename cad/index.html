@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <title>WJCAD — WJProMaster</title>
+  </head>
+  <body>
+    <!-- 1. barra superior: menu + ações rápidas + nome da peça -->
+    <header class="barra-topo">
+      <button id="btn-lateral" class="btn-ic" title="Árvore / painel do comando" data-requer-doc></button>
+      <a class="marca" href="../" title="Voltar ao WJProMaster"><img src="/icone.svg" alt="" class="logo" /> WJCAD</a>
+      <div class="menu-wrap">
+        <button id="btn-menu" class="btn-ic" aria-haspopup="true" aria-expanded="false" title="Menu"></button>
+        <div id="menu-arquivo" class="menu" role="menu" hidden>
+          <span class="menu-titulo">Arquivo</span>
+          <button data-acao="novo" role="menuitem"></button>
+          <button data-acao="abrir" role="menuitem"></button>
+          <button data-acao="salvar" role="menuitem" data-requer-doc></button>
+          <button data-acao="step" role="menuitem" data-requer-doc></button>
+          <button data-acao="stl" role="menuitem" data-requer-doc></button>
+          <button data-acao="fechar" role="menuitem" data-requer-doc></button>
+          <span class="menu-titulo" data-requer-doc>Ferramentas</span>
+          <button data-acao="equacoes" role="menuitem" data-requer-doc></button>
+          <button data-acao="material" role="menuitem" data-requer-doc></button>
+          <button data-acao="reconstruir" role="menuitem" data-requer-doc></button>
+          <button data-acao="dispositivo" role="menuitem"></button>
+          <span class="menu-titulo">Ajuda</span>
+          <button data-acao="atalhos" role="menuitem"></button>
+          <button data-acao="sobre" role="menuitem"></button>
+        </div>
+      </div>
+      <div class="rapidas">
+        <button data-acao="novo" class="btn-ic" title="Novo documento"></button>
+        <button data-acao="abrir" class="btn-ic" title="Abrir (.wjcad)"></button>
+        <button data-acao="salvar" class="btn-ic" title="Salvar (Ctrl+S)" data-requer-doc></button>
+        <span class="sep" data-requer-doc></span>
+        <button id="btn-desfazer" class="btn-ic" title="Desfazer (Ctrl+Z)" data-requer-doc></button>
+        <button id="btn-refazer" class="btn-ic" title="Refazer (Ctrl+Y)" data-requer-doc></button>
+        <button data-acao="reconstruir" class="btn-ic" title="Reconstruir (Ctrl+B)" data-requer-doc></button>
+        <span class="sep" data-requer-doc></span>
+        <button data-acao="equacoes" class="btn-ic" title="Equações e variáveis globais" data-requer-doc></button>
+      </div>
+      <input id="nome-doc" class="nome-doc" aria-label="Nome da peça" data-requer-doc />
+      <div class="exportar" data-requer-doc>
+        <button data-acao="step" class="destaque">STEP</button>
+        <button data-acao="stl">STL</button>
+      </div>
+    </header>
+
+    <!-- 2. linha de ícones da aba ativa · 3. abas -->
+    <nav class="comandos" data-requer-doc>
+      <div id="faixa-comandos" class="faixa-comandos" role="toolbar"></div>
+      <div id="abas" class="abas" role="tablist"></div>
+    </nav>
+
+    <main class="area">
+      <!-- painel esquerdo: árvore ou painel do comando ativo -->
+      <aside class="lateral" aria-label="Árvore do modelo" data-requer-doc>
+        <ol id="arvore" class="arvore"></ol>
+        <div id="painel-comando" class="painel-comando" hidden></div>
+      </aside>
+
+      <section class="viewport-wrap">
+        <div id="viewport" class="viewport"></div>
+        <div id="overlay-esboco" class="overlay-esboco"></div>
+        <div id="barra-vistas" class="barra-vistas" role="toolbar" aria-label="Vistas"></div>
+        <div id="canto-confirmacao" class="canto-confirmacao" hidden>
+          <button id="cc-ok" title="OK (Enter)">✓</button>
+          <button id="cc-cancelar" title="Cancelar (Esc)">✕</button>
+        </div>
+        <div id="arvore-flutuante" class="arvore-flutuante" hidden>
+          <button id="btn-arvore-flutuante" class="btn-ic" title="Mostrar árvore"></button>
+          <ol id="arvore-mini" class="arvore mini" hidden></ol>
+        </div>
+        <div id="barra-contexto" class="barra-contexto" hidden></div>
+        <div id="janela" class="janela" hidden>
+          <header><strong id="janela-titulo"></strong><button id="janela-fechar" class="btn-ic" title="Fechar">✕</button></header>
+          <div id="janela-corpo"></div>
+        </div>
+        <div id="carregando" class="carregando">Carregando o núcleo geométrico… Na primeira vez ele é baixado (~7 MB); depois abre direto do aparelho.</div>
+        <div id="aviso" class="aviso" role="status" hidden></div>
+      </section>
+      <!-- sem documento aberto: área de trabalho limpa -->
+      <section id="tela-inicial" class="tela-inicial" hidden>
+        <div class="tela-inicial-acoes">
+          <button id="ti-novo" class="destaque"></button>
+          <button id="ti-abrir"></button>
+        </div>
+        <div id="ti-recentes" class="tela-inicial-recentes"></div>
+        <button id="ti-dispositivo" class="ti-dispositivo"></button>
+      </section>
+    </main>
+
+    <!-- janela "Novo documento": escolha do ambiente -->
+    <div id="dialogo-novo" class="fundo-dialogo" hidden>
+      <div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="dn-titulo">
+        <header><strong id="dn-titulo">Novo documento</strong></header>
+        <div id="dn-ambientes" class="ambientes"></div>
+        <p class="dialogo-nota">Unidades: MMGS (milímetro, grama, segundo)</p>
+        <footer>
+          <button id="dn-cancelar">Cancelar</button>
+          <button id="dn-ok" class="destaque">OK</button>
+        </footer>
+      </div>
+    </div>
+
+    <footer class="status">
+      <span id="st-estado" class="st-estado">Editando peça</span>
+      <span id="st-kernel">Kernel: iniciando</span>
+      <span id="st-volume"></span>
+      <span id="st-tempo"></span>
+      <button id="st-filtro" class="st-filtro" hidden title="Filtro de seleção ligado: toque para desligar"></button>
+      <span id="st-material" class="st-dir" title="Material"></span>
+      <span title="Sistema de unidades">MMGS (mm, g, s)</span>
+    </footer>
+
+    <!-- sem filtro de tipo: o Android não conhece a extensão .wjcad e deixaria o arquivo cinza -->
+    <input type="file" id="arquivo" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

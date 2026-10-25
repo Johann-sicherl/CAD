@@ -1,4 +1,15 @@
-# JLSCAD — contexto para o Claude
+# WJProMaster — contexto para o Claude
+
+> **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
+> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlaniel**
+> (planilhas), **WJWord** (documentos), **WJApion** (apresentações), **WJCronProject**
+> (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
+> notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
+> face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
+> Até a fase G0 (monorepo), o código é só o WJCAD, descrito abaixo. As regras de inspiração sem
+> cópia valem para todas as faces: nomes registrados de terceiros ficam proibidos na UI;
+> importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
+> risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
@@ -27,7 +38,10 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
 - Visualização: Three.js (`src/viewport.ts`), **Y para cima** (Frontal = XY, Superior = XZ, Lateral = YZ;
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
-- Modelo: lista de features serializada em JSON (`.jlscad`; abre `.cadt` antigos), em `src/model.ts`
+- Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`
+- **Duas páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
+  `src/inicio/`, leve: sem Three.js nem kernel) e `cad/index.html` = **WJCAD** (`src/main.ts`). O logo do
+  WJCAD volta ao início. Em desenvolvimento: `/` é o início e `/cad/` é o WJCAD.
 - PWA (manifest + `public/sw.js`). Hospedagem principal: **Cloudflare Pages** (site na raiz, cabeçalhos
   COOP/COEP em `public/_headers` → `crossOriginIsolated`, requisito do kernel com várias threads).
   O GitHub Actions (`.github/workflows/deploy.yml`) roda check/teste/build e publica também no GitHub Pages.
@@ -46,7 +60,9 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
   (sem perspectiva/ponto de fuga).
 - **Início limpo:** o app abre sem documento (só Novo/Abrir e recentes); **Novo** abre a janela de
   escolha do ambiente (por enquanto só **Peça**).
-- **Nome:** **JLSCAD**; arquivo de projeto **`.jlscad`** (abre também `.cadt` do nome antigo).
+- **Nome:** **WJCAD** (face do WJProMaster; antes JLSCAD); arquivo de peça **`.wjcad`** (abre também
+  `.jlscad` e `.cadt` dos nomes antigos). Chaves internas (`jlscad:` no localStorage, cache `jlscad-`)
+  ficam como estão para não perder o autosave e as preferências de quem já usa.
 - **Perfil de dispositivo** escolhido na janela inicial (Celular / Tablet / Computador; trocar em
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
@@ -102,7 +118,7 @@ Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
 
 Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
 com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
-próprio em `src/kernel/chapa.ts`). Pendentes da Fase 4: dobra esboçada, junta, meia-esquadria,
+próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Pendentes da Fase 4: dobra esboçada, junta, meia-esquadria,
 cantos, desdobrar/dobrar, converter em chapa. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
@@ -113,7 +129,9 @@ a entidade mais parecida após regenerar; mudanças grandes na peça podem troca
 - Erros do OpenCascade chegam como `WebAssembly.Exception` sem texto: traduzir para mensagem útil
   e marcar a feature com erro na árvore, sem interromper a regeneração das demais.
 - Manter o kernel fora da thread da UI. Regenerações antigas são descartadas (`seq`).
-- `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/CAD/`.
+- `vite.config.ts`: `base` vem de `BASE_PATH` (padrão `/`, Cloudflare); o workflow do GitHub Pages usa `/<nome do repositório>/`.
 - Offline: o build gera `precache.json` (todos os arquivos) e carimba a versão do cache no `sw.js`
-  (plugin `offline` em `vite.config.ts`); o service worker baixa tudo na instalação. Não editar a
-  versão do cache à mão.
+  (plugin `offline` em `vite.config.ts`). O service worker guarda na instalação só as páginas e os
+  arquivos pequenos; o kernel `.wasm` (~23 MB, 7 MB comprimido) é guardado quando o WJCAD termina de
+  carregá-lo (mensagem `guardar`, reaproveitando o cache HTTP: nada é baixado duas vezes). Não editar
+  a versão do cache à mão.

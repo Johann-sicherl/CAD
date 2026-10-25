@@ -495,6 +495,8 @@ export interface FeatureFlangeAresta extends FeatureBase {
   raio: number;
   deslocInicio: number;
   deslocFim: number;
+  /** Distância de folga entre flanges vizinhas desta mesma flange (canto automático). */
+  folga?: number;
 }
 
 /** Bainha: dobra a borda sobre ela mesma. */
@@ -538,7 +540,7 @@ export interface Variavel {
 }
 
 export interface Documento {
-  formato: "jlscad";
+  formato: "wjcad";
   /** 3: Y para cima. Até a 2 o modelo era Z para cima (migrado ao abrir). */
   versao: 1 | 2 | 3;
   nome: string;
@@ -586,12 +588,12 @@ export function novoId(): string {
 }
 
 export function documentoVazio(): Documento {
-  return { formato: "jlscad", versao: 3, nome: "Peça1", features: [] };
+  return { formato: "wjcad", versao: 3, nome: "Peça1", features: [] };
 }
 
 export function documentoExemplo(): Documento {
   return {
-    formato: "jlscad",
+    formato: "wjcad",
     versao: 3,
     nome: "Peça exemplo",
     features: [
@@ -702,7 +704,7 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
     case "flangeAresta":
       return {
         ...base, tipo, nome: `FlangeAresta${indice}`, arestas: [], angulo: 90, comprimento: 20, medicao: "externoVirtual",
-        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0,
+        posicao: "materialInterno", inverter: false, raioProprio: false, raio: 2, deslocInicio: 0, deslocFim: 0, folga: 0.25,
       };
     case "bainha":
       return {
@@ -772,13 +774,14 @@ export function esbocosAbsorvidos(f: Feature): string[] {
 /** Lê arquivos antigos e completa campos novos com valores padrão. */
 export function validarDocumento(dados: unknown): Documento {
   const d = dados as Documento;
-  // "cad-tablet": arquivos .cadt do nome antigo do programa
-  if (!d || (d.formato !== "jlscad" && (d.formato as string) !== "cad-tablet") || !Array.isArray(d.features)) {
-    throw new Error("Arquivo não é um projeto JLSCAD válido.");
+  // nomes antigos do programa: "jlscad" (.jlscad) e "cad-tablet" (.cadt)
+  if (!d || !["wjcad", "jlscad", "cad-tablet"].includes(d.formato as string) || !Array.isArray(d.features)) {
+    throw new Error("Arquivo não é uma peça WJCAD válida.");
   }
-  d.formato = "jlscad";
+  d.formato = "wjcad";
   if ((d.versao ?? 1) < 3) migrarParaYParaCima(d);
   for (const f of d.features) {
+    if (f.tipo === "flangeAresta") f.folga ??= 0.25;
     if (f.tipo === "extrusao") {
       // versão 1: profundidade negativa = sentido oposto
       if (f.profundidade < 0) {

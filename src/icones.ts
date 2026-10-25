@@ -1,4 +1,4 @@
-// Ícones próprios do JLSCAD: SVG 24×24 desenhados à mão, traço em currentColor.
+// Ícones próprios do WJCAD (WJProMaster): SVG 24×24 desenhados à mão, traço em currentColor.
 // Formas genéricas (setas, sólidos, perfis); nenhum ícone de terceiros.
 
 const C = "#2f7fd0"; // cor de destaque usada em partes do ícone (o "novo" de cada comando)

@@ -559,6 +559,45 @@ const bloco = ext(base, 10);
   const hf = { ...(novaFeature("bainha", 1) as any), arestas: [{ tipo: "aresta", ass: a0 }], estilo: "fechada", comprimento: 10, posicao: "materialExterno" };
   semErros("bainha fechada", regenerar([placaE, base, hf]));
 
+  // canto automático: caixa aberta com flanges de 90° nas 4 arestas de cima (folga 0,25)
+  {
+    const cima = r0.topologia!.arestas.filter((a) => a.geom === "linha" && Math.abs(a.a[2] - 2) < 1e-6 && Math.abs(a.b[2] - 2) < 1e-6);
+    const cx = fa({ arestas: cima.map((ass) => ({ tipo: "aresta", ass })), angulo: 90, comprimento: 20, medicao: "externoVirtual", posicao: "materialInterno", folga: 0.25 });
+    const rcx = regenerar([placaE, base, cx]);
+    semErros("canto automático", rcx);
+    // conta à mão (t 2, R 2, recuo 4): placa 92 × 42; dobras = ¼ coroa R2–R4 (3π mm²) com
+    // comprimento L − 2δ − 2c (δ: recuo do centroide da coroa até a borda, c = folga/√2);
+    // paredes 16 × 2 com comprimento L − 2·1 − 2c (meia-esquadria pela linha média)
+    const c = 0.25 / Math.SQRT2;
+    const yc = (4 * (64 - 8)) / (3 * Math.PI * (16 - 4)); // centroide da ¼ coroa a partir do eixo
+    const delta = 4 - yc;
+    const esperado = 92 * 42 * 2 + 3 * Math.PI * (2 * (100 - 2 * delta - 2 * c) + 2 * (50 - 2 * delta - 2 * c))
+      + 32 * (2 * (98 - 2 * c) + 2 * (48 - 2 * c));
+    confere("canto automático: volume (meia-esquadria com folga)", rcx.volume, esperado);
+    // planificado: corte perpendicular pela face de dentro (sem colisão ao dobrar)
+    const pc = exportarDxf("caixa").resumo;
+    const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+    const dobraPlana = (L: number) => ba / (Math.PI / 2) * ((L - 8 - 2 * c) * (Math.PI / 2) + 4); // ∫ (L − 2(4 − 2 sen ψ) − 2c)
+    const areaEsp = 92 * 42 + 2 * (dobraPlana(100) + dobraPlana(50)) + 16 * (2 * (96 - 2 * c) + 2 * (46 - 2 * c));
+    confere("canto automático: área do planificado", pc.area, areaEsp);
+    verdade("canto automático: 4 dobras no planificado", pc.dobras === 4);
+    // folga 0: as abas encostam na meia-esquadria (volume = conta com c = 0, sem sobrepor)
+    const sem = regenerar([placaE, base, { ...cx, folga: 0 }]);
+    semErros("canto automático sem folga", sem);
+    confere("canto automático: folga 0", sem.volume, 92 * 42 * 2 + 3 * Math.PI * (300 - 8 * delta) + 32 * 292);
+    // bainhas em arestas vizinhas (paredes paralelas): canto pela bissetriz, sem sobrepor
+    const baixo = r0.topologia!.arestas.filter((a) => a.geom === "linha" && Math.abs(a.a[2]) < 1e-6 && Math.abs(a.b[2]) < 1e-6
+      && (Math.abs(a.a[1]) < 1e-6 && Math.abs(a.b[1]) < 1e-6 || Math.abs(a.a[0] - 100) < 1e-6 && Math.abs(a.b[0] - 100) < 1e-6));
+    const hb = { ...(novaFeature("bainha", 1) as any), arestas: baixo.map((ass) => ({ tipo: "aresta", ass })), estilo: "aberta", comprimento: 8, folga: 1, posicao: "materialExterno" };
+    const rh2 = regenerar([placaE, base, hb]);
+    semErros("bainhas vizinhas", rh2);
+    // cada bainha: dobra 180° R0,5 (½ coroa R0,5–R2,5) + parede 8 × 2, aparadas a 45° no canto
+    const ch = 0.25 / Math.SQRT2;
+    const semCanto = 10000 + (Math.PI / 2) * (6.25 - 0.25) * 150 + 8 * 2 * 150;
+    verdade("bainhas vizinhas: canto aparado", (rh2.volume ?? 0) < semCanto - 1 && (rh2.volume ?? 0) > semCanto - 2 * (8 + 3) * (8 + 3) * 2 - 1);
+    verdade("bainhas vizinhas: planificado", exportarDxf("h").resumo.dobras === 2 && ch > 0);
+  }
+
   // corte na chapa: círculo Ø10 desenhado na face de cima da placa
   const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
   op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);

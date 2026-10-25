@@ -162,6 +162,8 @@ function flangeAresta(): Esquema<FeatureFlangeAresta> {
         { t: "refs", rot: "Arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "Toque nas arestas retas compridas da chapa (face de cima ou de baixo)" },
         { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
         { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+        { t: "num", rot: "Distância de folga", cam: "folga", un: "mm", min: 0, passo: 0.05, vis: (f) => f.arestas.length > 1 },
+        { t: "info", texto: () => "Arestas que se encontram num canto: as abas são aparadas em meia-esquadria com essa folga.", vis: (f) => f.arestas.length > 1 },
       ] },
       { titulo: "Ângulo", campos: [{ t: "num", rot: "Ângulo da flange", cam: "angulo", un: "°", min: 0.1, max: 180 }] },
       { titulo: "Comprimento da flange", campos: [

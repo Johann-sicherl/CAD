@@ -147,7 +147,7 @@ export function dxfDoPlanificado(
   const areas = lacos.map((l) => Math.abs(areaPol(l.pol))).sort((a, b) => b - a);
   const area = areas.length ? areas[0] - areas.slice(1).reduce((s, a) => s + a, 0) : 0;
   return {
-    dxf: `999\n${nome} — planificado (JLSCAD)\n${out.join("\n")}\n`,
+    dxf: `999\n${nome} — planificado (WJCAD)\n${out.join("\n")}\n`,
     resumo: {
       largura: bb[1][0] - bb[0][0], altura: bb[1][1] - bb[0][1], comprimentoCorte: corte, area, dobras: nDobras,
       recortes: Math.max(0, lacos.length - 1), espessura: p.t, raio: p.r, fatorK: p.k,

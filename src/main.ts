@@ -3063,13 +3063,13 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
   abrir: { rotulo: "Abrir…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: {
-    rotulo: "Salvar (.jlscad)",
+    rotulo: "Salvar (.wjcad)",
     icone: "salvar",
-    // octet-stream: o Android não troca a extensão .jlscad por .json
+    // octet-stream: o Android não troca a extensão .wjcad por .json
     fazer: () => {
       capturarAtiva(doc);
       limparConfiguracoes(doc);
-      baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "jlscad");
+      baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "wjcad");
     },
   },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
@@ -3085,7 +3085,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
 
 /** Componentes de terceiros usados no app (com as licenças). */
 function mostrarSobre() {
-  abrirJanela("Sobre o JLSCAD", `<p>JLSCAD — CAD paramétrico para tablet, celular e computador. Funciona offline.</p>
+  abrirJanela("Sobre o WJCAD", `<p>WJCAD — CAD paramétrico do WJProMaster, para tablet, celular e computador. Funciona offline. Abre também arquivos .jlscad e .cadt das versões antigas.</p>
   ${tabela([
     ["OpenCascade (replicad-opencascadejs)", "Núcleo de sólidos — LGPL 2.1 com exceção"],
     ["replicad", "Ponte com o OpenCascade — MIT"],
@@ -3268,7 +3268,7 @@ function escolherDispositivo(obrigatorio: boolean) {
   let escolhido = prefs.dispositivo ?? provavel;
   fundo.innerHTML = `
     <div class="dialogo" role="dialog" aria-modal="true">
-      <header><strong>Onde você vai usar o JLSCAD?</strong></header>
+      <header><strong>Onde você vai usar o WJProMaster?</strong></header>
       <div class="ambientes dispositivos"></div>
       <p class="dialogo-nota">A interface se adapta só ao aparelho escolhido. Dá para trocar depois no menu (Ferramentas → Dispositivo).</p>
       <footer>${obrigatorio ? "" : `<button data-b="cancelar">Cancelar</button>`}<button data-b="ok" class="destaque">OK</button></footer>
@@ -3361,7 +3361,7 @@ $<HTMLInputElement>("arquivo").onchange = async (ev) => {
     try {
       dados = JSON.parse(await arq.text());
     } catch {
-      throw new Error("Arquivo não é um projeto JLSCAD válido (.jlscad).");
+      throw new Error("Arquivo não é uma peça WJCAD válida (.wjcad).");
     }
     const d = validarDocumento(dados);
     if (!aberto || !doc.features.length || confirm("Fechar a peça atual e abrir o arquivo?")) abrirDocumento(d);
@@ -3513,8 +3513,13 @@ renderizarTudo();
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
-  // service worker terminou de guardar o app inteiro: avisa uma vez que já funciona sem internet
+  // service worker guardou o kernel pela primeira vez: avisa que já funciona sem internet
   navigator.serviceWorker.addEventListener("message", (e) => {
-    if (e.data?.tipo === "offline-pronto") avisar("JLSCAD pronto para usar sem internet neste aparelho.");
+    if (e.data?.tipo === "offline-pronto") avisar("WJCAD pronto para usar sem internet neste aparelho.");
   });
+  // kernel carregado: pede ao service worker para guardá-lo (vem do cache HTTP, sem baixar de novo)
+  void kernel.pronto.then(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    reg.active?.postMessage({ tipo: "guardar" });
+  }).catch(() => {});
 }
