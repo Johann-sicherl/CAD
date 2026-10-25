@@ -22,7 +22,8 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Árvore: item **Chapa metálica** (parâmetros globais: bitola, espessura, raio, K; toque duplo edita) e **Padrão planificado** no fim (apagado com a peça dobrada; toque duplo planifica/dobra; Exportar DXF) | ✅ |
 | Aba, Corte na chapa e Flange base sem esboço: pedem a face/plano, abrem o esboço e voltam ao comando ao sair dele; OK bloqueado sem esboço (e flange de aresta/bainha sem arestas) | ✅ |
 | **Dobra esboçada**: linha(s) de esboço numa face plana; lado fixo = o maior (ou inverter); posição: linha de centro, material interno, material externo, dobra externa; ângulo, inverter direção, raio próprio; o planificado não muda de tamanho | ✅ (só linhas retas; flanges já feitas precisam estar no lado fixo) |
-| Junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| **Junta**: degrau (dobra θ + trecho reto + dobra −θ) a partir de linha(s) de esboço numa face; deslocamento entre faces do mesmo lado / interno (vão) / total; posição da junta como na dobra esboçada; ângulo; raio próprio; lado fixo | ✅ (fixar comprimento projetado: F4) |
+| Meia-esquadria, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -85,7 +86,7 @@ Linha de esboço numa face plana da chapa
 - **Ângulo**, inverter direção, raio
 - Margem de dobra personalizada
 
-## 6. Junta (Jog)
+## 6. Junta (Jog) — ✅ (salvo "fixar comprimento projetado")
 - Face fixa, usar raio padrão / raio
 - **Deslocamento da junta**: condição (Cego, Até o vértice…), distância,
   **posição da cota**: deslocamento externo · interno · total; **fixar comprimento projetado**

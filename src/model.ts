@@ -532,11 +532,27 @@ export interface FeatureDobraEsboco extends FeatureBase {
   raio: number;
 }
 
+/** Junta: degrau na chapa (duas dobras opostas) a partir de uma linha de esboço numa face. */
+export interface FeatureJunta extends FeatureBase {
+  tipo: "junta";
+  esboco?: string;
+  /** Altura do degrau, medida conforme `medicao`. */
+  deslocamento: number;
+  /** mesmoLado: entre faces do mesmo lado · interno: vão entre as faces · total: de fora a fora. */
+  medicao: "mesmoLado" | "interno" | "total";
+  angulo: number;
+  posicao: "centro" | "materialInterno" | "materialExterno" | "dobraExterna";
+  inverter: boolean;
+  inverterFixo: boolean;
+  raioProprio: boolean;
+  raio: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
-  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco;
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta;
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -729,6 +745,11 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Aba${indice}` };
     case "corteChapa":
       return { ...base, tipo, nome: `CorteChapa${indice}` };
+    case "junta":
+      return {
+        ...base, tipo, nome: `Junta${indice}`, deslocamento: 10, medicao: "mesmoLado", angulo: 90, posicao: "centro",
+        inverter: false, inverterFixo: false, raioProprio: false, raio: 2,
+      };
     case "dobraEsboco":
       return {
         ...base, tipo, nome: `DobraEsboçada${indice}`, angulo: 90, posicao: "centro", inverter: false, inverterFixo: false,
@@ -768,6 +789,7 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   abaChapa: "Aba",
   corteChapa: "Corte na chapa",
   dobraEsboco: "Dobra esboçada",
+  junta: "Junta",
 };
 
 /**

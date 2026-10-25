@@ -451,7 +451,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
-  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco",
+  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -569,14 +569,15 @@ function criarRecurso(id: string) {
     case "flangeBase":
     case "abaChapa":
     case "corteChapa":
-    case "dobraEsboco": {
+    case "dobraEsboco":
+    case "junta": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
       if (!perfil) {
         // sem esboço: pede o plano/face, abre o esboço e, ao sair dele, volta para este comando
         recursoAposEsboco = id;
         definirSel(null);
         void iniciarEsboco().then((abriu) => {
-          const oque = f.tipo === "dobraEsboco" ? "a linha da dobra" : "o contorno fechado";
+          const oque = f.tipo === "dobraEsboco" || f.tipo === "junta" ? "a linha da dobra" : "o contorno fechado";
           avisar(abriu
             ? `${ROTULO_TIPO[f.tipo]}: desenhe ${oque}. Ao sair do esboço, o comando abre com ele.`
             : `${ROTULO_TIPO[f.tipo]}: toque uma face plana da chapa (ou um plano) para desenhar ${oque}.`);
@@ -807,7 +808,7 @@ function confirmarComando() {
   if (!comando) return;
   const f = comando.f;
   // como nos CADs profissionais, o OK só vale com a seleção obrigatória feita
-  if ((f.tipo === "flangeBase" || f.tipo === "abaChapa" || f.tipo === "corteChapa" || f.tipo === "dobraEsboco") && !f.esboco) {
+  if ((f.tipo === "flangeBase" || f.tipo === "abaChapa" || f.tipo === "corteChapa" || f.tipo === "dobraEsboco" || f.tipo === "junta") && !f.esboco) {
     return avisar(`${ROTULO_TIPO[f.tipo]}: escolha o esboço (ou ✕ e desenhe um numa face da chapa).`);
   }
   if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
@@ -1743,7 +1744,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
-  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra",
+  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta",
 };
 
 function iconeFeature(f: Feature): NomeIcone {

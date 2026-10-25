@@ -4,7 +4,7 @@ import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
-  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -101,6 +101,8 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return abaChapa(f.tipo === "corteChapa", d) as Esquema<Feature>;
     case "dobraEsboco":
       return dobraEsboco(d) as Esquema<Feature>;
+    case "junta":
+      return junta(d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -233,6 +235,36 @@ function dobraEsboco(d: DadosEsquema): Esquema<FeatureDobraEsboco> {
         { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
       ] },
       { titulo: "Margem de dobra", campos: [{ t: "info", texto: () => "Fator K da chapa (item Chapa metálica). O planificado não muda de tamanho." }] },
+    ],
+  };
+}
+
+const POSICOES_DOBRA: [string, string][] = [
+  ["centro", "Linha de centro da dobra"], ["materialInterno", "Material interno"],
+  ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"],
+];
+
+function junta(d: DadosEsquema): Esquema<FeatureJunta> {
+  return {
+    titulo: "Junta",
+    caixas: [
+      { titulo: "Seleções", campos: [
+        { t: "sel", rot: "Esboço (linha da junta)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "check", rot: "Inverter lado fixo", cam: "inverterFixo" },
+        { t: "info", texto: (f) => (f.inverterFixo ? "O lado menor fica parado; o maior sobe o degrau." : "O lado maior fica parado; o menor sobe o degrau.") },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Deslocamento da junta", campos: [
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Deslocamento", cam: "deslocamento", un: "mm", min: 0.001 },
+        { t: "sel", rot: "Posição da cota", cam: "medicao", opcoes: [
+          ["mesmoLado", "Entre faces do mesmo lado"], ["interno", "Interno (vão entre as faces)"], ["total", "Total (de fora a fora)"],
+        ] },
+        { t: "info", texto: () => "Fixar comprimento projetado: próxima versão (hoje o planificado mantém o tamanho e o degrau encurta a peça)." },
+      ] },
+      { titulo: "Posição da junta", campos: [{ t: "sel", rot: "Posição", cam: "posicao", opcoes: POSICOES_DOBRA }] },
+      { titulo: "Ângulo da junta", campos: [{ t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 0.1, max: 179.9 }] },
     ],
   };
 }

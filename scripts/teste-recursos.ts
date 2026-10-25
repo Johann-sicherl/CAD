@@ -626,6 +626,28 @@ const bloco = ext(base, 10);
     confere("dobra esboçada (lado fixo invertido): altura", maxZ(ri), 4 + (60 - ba / 2));
   }
 
+  // junta: mesma linha (x = 60), degrau de 10 mm entre faces do mesmo lado, 90°, R2
+  {
+    const je = novoEsboco(11, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+    op.linha(je, op.ponto(je, { x: 60, y: -10 }), op.ponto(je, { x: 60, y: 60 }));
+    const jt = (o: object) => ({ ...(novaFeature("junta", 1) as any), esboco: je.id, ...o });
+    const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+    const ext = (r: ReturnType<typeof regenerar>, k: 0 | 2) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[k], x.b[k]]));
+    const rj = regenerar([placaE, base, je, jt({ deslocamento: 10 })]);
+    semErros("junta", rj);
+    // trecho reto L = Z − (2R + t) = 4; duas ¼ coroas R2–R4; chapa reta = 100 − 2·BA
+    confere("junta: volume", rj.volume, 2 * 50 * (100 - 2 * ba) + 2 * 3 * Math.PI * 50);
+    confere("junta: degrau (face de cima da parte deslocada)", ext(rj, 2), 10 + 2);
+    // fim da chapa: lado fixo até 60 − BA/2, avanço 2R + t, resto = 100 − 60 − BA/2 − L − BA
+    confere("junta: comprimento projetado", ext(rj, 0), 60 - ba / 2 + 6 + (40 - ba / 2 - 4 - ba));
+    const pj = exportarDxf("junta").resumo;
+    verdade("junta: planificado 100 × 50 com 2 dobras", Math.abs(pj.largura - 100) < 1e-4 && Math.abs(pj.area - 5000) < 1e-3 && pj.dobras === 2);
+    confere("junta: medida interna (vão 8 → mesmo degrau)", ext(regenerar([placaE, base, je, jt({ deslocamento: 8, medicao: "interno" })]), 2), 12);
+    confere("junta: medida total (12 → mesmo degrau)", ext(regenerar([placaE, base, je, jt({ deslocamento: 12, medicao: "total" })]), 2), 12);
+    const rp = regenerar([placaE, base, je, jt({ deslocamento: 4 })]);
+    verdade("junta: deslocamento pequeno demais avisa", rp.erros.some((x) => /pequeno demais/.test(x.mensagem)));
+  }
+
   // corte na chapa: círculo Ø10 desenhado na face de cima da placa
   const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
   op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);

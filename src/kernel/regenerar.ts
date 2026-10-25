@@ -19,7 +19,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureDobraEsboco, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureDobraEsboco, FeatureJunta, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
@@ -817,6 +817,62 @@ function bainha(f: FeatureBainha, ctx: Ctx) {
   });
 }
 
+/** Linhas (não de construção) do esboço da dobra, no espaço. */
+function linhasDoEsboco(esbId: string | undefined, ctx: Ctx, oque: string) {
+  const esb = esbocoDe(esbId, ctx);
+  const rs = referencial(esb.suporte, ctx.planos);
+  const pts = mapaPontos(esb);
+  const linhas = esb.geos.filter((g) => g.tipo === "linha" && !g.construcao && !g.externa);
+  if (!linhas.length) throw new Error(`${oque}: desenhe uma linha no esboço, atravessando a face onde a chapa deve dobrar.`);
+  return {
+    rs,
+    linhas: linhas.map((g) => {
+      const l = g as Extract<typeof g, { tipo: "linha" }>;
+      return { A: paraMundo(rs, pts.get(l.p1)!.x, pts.get(l.p1)!.y), B: paraMundo(rs, pts.get(l.p2)!.x, pts.get(l.p2)!.y) };
+    }),
+  };
+}
+
+/**
+ * Parede da chapa onde está a linha AB (numa face de cima ou de baixo), a linha em coordenadas
+ * locais (pa, e) e a normal no plano `d` que aponta para o lado que se move (o menor, ou o
+ * maior com `inverterFixo`). Confere que as dobras já feitas na parede ficam do lado fixo.
+ */
+function linhaNaChapa(m: ModeloChapa, rs: Referencial, A: Vec3, B: Vec3, inverterFixo: boolean, oque: string) {
+  const t = m.p.t;
+  for (const w of m.paredes) {
+    if (Math.abs(Math.abs(esc3(rs.normal, w.q.n)) - 1) > 1e-6) continue;
+    const z = esc3(sub3(A, w.q.o), w.q.n);
+    if (Math.abs(z) > 1e-4 && Math.abs(z - w.s * t) > 1e-4) continue;
+    const loc = (P: Vec3): V2 => ({ x: esc3(sub3(P, w.q.o), w.q.u), y: esc3(sub3(P, w.q.o), w.q.v) });
+    const pa = loc(A), pb = loc(B);
+    const meio = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+    if (!w.contornos.some((c) => pontoNoPoligono(meio, c))) continue;
+    const e = unit2({ x: pb.x - pa.x, y: pb.y - pa.y });
+    let d = { x: -e.y, y: e.x };
+    // lado que se move: o menor (pela área dos contornos), salvo "inverter lado fixo"
+    const lado = (sg: number) => w.contornos.reduce((s, c) => {
+      const parte = recortarPoligono(c, (q) => sg * ((q.x - pa.x) * d.x + (q.y - pa.y) * d.y));
+      return s + (parte.length >= 3 ? Math.abs(areaContorno(parte)) : 0);
+    }, 0);
+    if ((lado(1) > lado(-1)) !== inverterFixo) d = { x: -d.x, y: -d.y };
+    for (const b of m.dobras) {
+      if (b.pai !== w.id) continue;
+      const mb = { x: b.e0.x + (b.e.x * (b.s0 + b.s1)) / 2, y: b.e0.y + (b.e.y * (b.s0 + b.s1)) / 2 };
+      if ((mb.x - pa.x) * d.x + (mb.y - pa.y) * d.y > 1e-6) {
+        throw new Error(`${oque}: há flanges no lado que vai dobrar. Faça este recurso antes delas na árvore (ou inverta o lado fixo).`);
+      }
+    }
+    return { w, pa, e, d, noTopo: Math.abs(z - w.s * t) <= 1e-4 };
+  }
+  throw new Error(`${oque}: a linha precisa estar numa face plana da chapa (de cima ou de baixo de uma parede).`);
+}
+
+/** Onde começa a faixa da dobra em relação à linha do esboço (ao longo de d). */
+function inicioDaDobra(posicao: FeatureDobraEsboco["posicao"], theta: number, r: number, t: number, ba: number) {
+  return posicao === "centro" ? -ba / 2 : posicao === "dobraExterna" ? 0 : -recuo(posicao, theta, r, t);
+}
+
 /**
  * Dobra esboçada: cada linha do esboço (numa face plana da chapa) dobra a parede ali. O lado
  * maior fica parado (ou o outro, com "inverter lado fixo"); a posição diz onde fica a faixa da
@@ -825,54 +881,55 @@ function bainha(f: FeatureBainha, ctx: Ctx) {
 function dobraEsboco(f: FeatureDobraEsboco, ctx: Ctx) {
   const m = exigirChapa(ctx, "A dobra esboçada");
   if (!(f.angulo > 0 && f.angulo <= 180)) throw new Error("O ângulo da dobra fica entre 0° e 180°.");
-  const esb = esbocoDe(f.esboco, ctx);
-  const rs = referencial(esb.suporte, ctx.planos);
-  const pts = mapaPontos(esb);
-  const linhas = esb.geos.filter((g) => g.tipo === "linha" && !g.construcao && !g.externa);
-  if (!linhas.length) throw new Error("Desenhe uma linha no esboço, atravessando a face onde a chapa deve dobrar.");
+  const { rs, linhas } = linhasDoEsboco(f.esboco, ctx, "Dobra esboçada");
   const t = m.p.t, theta = grausRad(f.angulo);
   const r = f.raioProprio ? f.raio : m.p.r;
   if (!(r > 0)) throw new Error("O raio de dobra deve ser maior que zero.");
-  const ba = theta * (r + m.p.k * t);
-  const a = f.posicao === "centro" ? -ba / 2 : f.posicao === "dobraExterna" ? 0 : -recuo(f.posicao, theta, r, t);
-  linhas.forEach((g, i) => {
-    if (g.tipo !== "linha") return;
-    const A = paraMundo(rs, pts.get(g.p1)!.x, pts.get(g.p1)!.y), B = paraMundo(rs, pts.get(g.p2)!.x, pts.get(g.p2)!.y);
-    // parede que contém a linha (no plano de cima ou de baixo dela)
-    let achou: { w: Parede; pa: V2; pb: V2; noTopo: boolean } | null = null;
-    for (const w of m.paredes) {
-      if (Math.abs(Math.abs(esc3(rs.normal, w.q.n)) - 1) > 1e-6) continue;
-      const z = esc3(sub3(A, w.q.o), w.q.n);
-      if (Math.abs(z) > 1e-4 && Math.abs(z - w.s * t) > 1e-4) continue;
-      const loc = (P: Vec3): V2 => ({ x: esc3(sub3(P, w.q.o), w.q.u), y: esc3(sub3(P, w.q.o), w.q.v) });
-      const pa = loc(A), pb = loc(B);
-      const meio = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
-      if (!w.contornos.some((c) => pontoNoPoligono(meio, c))) continue;
-      achou = { w, pa, pb, noTopo: Math.abs(z - w.s * t) <= 1e-4 };
-      break;
-    }
-    if (!achou) throw new Error("A linha da dobra precisa estar numa face plana da chapa (de cima ou de baixo de uma parede).");
-    const { w, pa, pb } = achou;
-    const e = unit2({ x: pb.x - pa.x, y: pb.y - pa.y });
-    let d = { x: -e.y, y: e.x };
-    // lado que se move: o menor (pela área dos contornos), salvo "inverter lado fixo"
-    const lado = (sg: number) => w.contornos.reduce((s, c) => {
-      const parte = recortarPoligono(c, (q) => sg * ((q.x - pa.x) * d.x + (q.y - pa.y) * d.y));
-      return s + (parte.length >= 3 ? Math.abs(areaContorno(parte)) : 0);
-    }, 0);
-    if ((lado(1) > lado(-1)) !== f.inverterFixo) d = { x: -d.x, y: -d.y };
-    // dobras já feitas nesta parede precisam ficar do lado fixo
-    for (const b of m.dobras) {
-      if (b.pai !== w.id) continue;
-      const meio = { x: b.e0.x + b.e.x * (b.s0 + b.s1) / 2, y: b.e0.y + b.e.y * (b.s0 + b.s1) / 2 };
-      if ((meio.x - pa.x) * d.x + (meio.y - pa.y) * d.y > 1e-6) {
-        throw new Error("Há flanges no lado que vai dobrar: faça a dobra esboçada antes delas na árvore (ou inverta o lado fixo).");
-      }
-    }
+  const a = inicioDaDobra(f.posicao, theta, r, t, theta * (r + m.p.k * t));
+  linhas.forEach(({ A, B }, i) => {
+    const l = linhaNaChapa(m, rs, A, B, f.inverterFixo, "Dobra esboçada");
     m.dobrarPorLinha({
-      pai: w, idDobra: `${f.id}:d${i}`, idFilha: `${f.id}:${i}`, p0: pa, e, d, a, theta, r,
-      paraMaterial: achou.noTopo !== f.inverter,
+      pai: l.w, idDobra: `${f.id}:d${i}`, idFilha: `${f.id}:${i}`, p0: l.pa, e: l.e, d: l.d, a, theta, r,
+      paraMaterial: l.noTopo !== f.inverter,
     });
+  });
+}
+
+/**
+ * Junta: em cada linha, uma dobra de ângulo θ e, depois de um trecho reto, outra de −θ que
+ * devolve a chapa paralela à original, deslocada da altura pedida. Altura entre faces do
+ * mesmo lado: Z = (2R + t)(1 − cos θ) + L·sen θ, de onde sai o trecho reto L.
+ */
+function junta(f: FeatureJunta, ctx: Ctx) {
+  const m = exigirChapa(ctx, "A junta");
+  if (!(f.angulo > 0 && f.angulo < 180)) throw new Error("O ângulo da junta fica entre 0° e 180° (sem incluir).");
+  const { rs, linhas } = linhasDoEsboco(f.esboco, ctx, "Junta");
+  const t = m.p.t, theta = grausRad(f.angulo);
+  const r = f.raioProprio ? f.raio : m.p.r;
+  if (!(r > 0)) throw new Error("O raio de dobra deve ser maior que zero.");
+  const Z = f.medicao === "interno" ? f.deslocamento + t : f.medicao === "total" ? f.deslocamento - t : f.deslocamento;
+  const L = (Z - (2 * r + t) * (1 - Math.cos(theta))) / Math.sin(theta);
+  if (!(L >= -1e-9)) {
+    const min = (2 * r + t) * (1 - Math.cos(theta)) + (f.medicao === "interno" ? -t : f.medicao === "total" ? t : 0);
+    throw new Error(`Junta: deslocamento pequeno demais para o raio e a espessura (mínimo ${Number(min.toFixed(2))} mm).`);
+  }
+  const a = inicioDaDobra(f.posicao, theta, r, t, theta * (r + m.p.k * t));
+  linhas.forEach(({ A, B }, i) => {
+    const l = linhaNaChapa(m, rs, A, B, f.inverterFixo, "Junta");
+    const subida = m.dobrarPorLinha({
+      pai: l.w, idDobra: `${f.id}:d${i}a`, idFilha: `${f.id}:${i}a`, p0: l.pa, e: l.e, d: l.d, a, theta, r,
+      paraMaterial: l.noTopo !== f.inverter,
+    });
+    // segunda dobra: depois do trecho reto, volta para a direção original (para o lado de d)
+    const d3 = soma3(mul3(l.w.q.u, l.d.x), mul3(l.w.q.v, l.d.y));
+    try {
+      m.dobrarPorLinha({
+        pai: subida, idDobra: `${f.id}:d${i}b`, idFilha: `${f.id}:${i}b`, p0: { x: 0, y: Math.max(0, L) }, e: { x: 1, y: 0 }, d: { x: 0, y: 1 },
+        a: 0, theta, r, paraMaterial: esc3(subida.q.n, d3) * subida.s > 0,
+      });
+    } catch {
+      throw new Error("Junta: o lado que se move é curto demais para as duas dobras (diminua o deslocamento ou mude a linha).");
+    }
   });
 }
 
@@ -1435,6 +1492,9 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return reconstruirChapa(ctx);
     case "dobraEsboco":
       dobraEsboco(f, ctx);
+      return reconstruirChapa(ctx);
+    case "junta":
+      junta(f, ctx);
       return reconstruirChapa(ctx);
     case "abaChapa":
     case "corteChapa":

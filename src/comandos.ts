@@ -214,6 +214,7 @@ export const ABAS: Aba[] = [
       { id: "flange-aresta", rotulo: "Flange de aresta", icone: "flangeAresta", dica: "Dobra uma aba a partir de arestas da chapa", grupo: 0 },
       { id: "bainha", rotulo: "Bainha", icone: "bainha", dica: "Dobra a borda sobre ela mesma (fechada, aberta, enrolada)", grupo: 0 },
       { id: "dobra", rotulo: "Dobra esboçada", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha de esboço numa face", grupo: 0 },
+      { id: "junta", rotulo: "Junta", icone: "junta", dica: "Degrau na chapa (duas dobras) a partir de uma linha de esboço", grupo: 0 },
       { id: "corte-chapa", rotulo: "Corte na chapa", icone: "corteChapa", dica: "Corta através da chapa (normal à chapa) a partir de um esboço numa face", grupo: 1 },
       { id: "alivio", rotulo: "Alívios de canto", icone: "alivio", dica: "Alívios de canto e fechar canto", grupo: 1, emBreve: true },
       { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, raio de dobra e fator K", grupo: 1 },
