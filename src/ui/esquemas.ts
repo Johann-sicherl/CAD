@@ -108,20 +108,9 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
 
 const POSICOES: [string, string][] = [["materialInterno", "Material interno"], ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"]];
 
-function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
-  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
-  return {
-    titulo: "Flange base",
-    caixas: [
-      { titulo: "Perfil", campos: [
-        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
-        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
-      ] },
-      { titulo: "Direção 1", vis: aberto, campos: [
-        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
-        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
-        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
-      ] },
+/** Parâmetros globais da chapa (bitola, espessura, raio, fator K, alívio): guardados na flange base. */
+function caixasChapa(): Caixa<FeatureFlangeBase>[] {
+  return [
       { titulo: "Bitolas de chapa", campos: [
         { t: "sel", rot: "Tabela", cam: "tabela",
           opcoes: [["", "Personalizado"], ...TABELA_CHAPA.map((l): [string, string] => [`${l.material}|${l.espessura}`, `${l.material} — ${l.espessura} mm (R${l.raio}, K ${l.k})`])],
@@ -150,6 +139,29 @@ function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
         { t: "num", rot: "Fator K", cam: "fatorK", min: 0, max: 1, passo: 0.01 },
       ] },
       { titulo: "Alívio automático", campos: [{ t: "info", texto: () => "Retangular, largura = espessura, nas pontas de flanges parciais." }] },
+  ];
+}
+
+/** Painel do item "Chapa metálica" da árvore: só os parâmetros globais da chapa. */
+export function esquemaParametrosChapa(): Esquema<Feature> {
+  return { titulo: "Chapa metálica", caixas: caixasChapa() } as unknown as Esquema<Feature>;
+}
+
+function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
+  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
+  return {
+    titulo: "Flange base",
+    caixas: [
+      { titulo: "Perfil", campos: [
+        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
+      ] },
+      { titulo: "Direção 1", vis: aberto, campos: [
+        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
+        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
+        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
+      ] },
+      ...caixasChapa(),
     ],
   };
 }

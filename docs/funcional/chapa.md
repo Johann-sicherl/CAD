@@ -19,7 +19,8 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Planificar (liga/desliga, linhas de dobra em laranja) | ✅ |
 | Exportar DXF R12 (camadas CONTORNO, DOBRA_CIMA, DOBRA_BAIXO, NOTAS) + lista de corte | ✅ |
 | Canto automático entre abas vizinhas da mesma flange de aresta ou bainha: meia-esquadria pela bissetriz das paredes, com **distância de folga** (padrão 0,25 mm); as dobras também são aparadas. No planificado o corte é perpendicular à chapa pela face de dentro (dobrada, a peça não colide; o canto fica com fresta de até t) | ✅ |
-| Árvore: item "Chapa metálica" (parâmetros globais) e "Padrão planificado"; bloquear OK de Aba/Corte sem esboço | F4 |
+| Árvore: item **Chapa metálica** (parâmetros globais: bitola, espessura, raio, K; toque duplo edita) e **Padrão planificado** no fim (apagado com a peça dobrada; toque duplo planifica/dobra; Exportar DXF) | ✅ |
+| Aba, Corte na chapa e Flange base sem esboço: pedem a face/plano, abrem o esboço e voltam ao comando ao sair dele; OK bloqueado sem esboço (e flange de aresta/bainha sem arestas) | ✅ |
 | Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 

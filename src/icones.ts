@@ -108,6 +108,7 @@ export const ICONES = {
   flangeBase: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M3 15v1.5l9 4 9-4V15" stroke="${C}"/>`),
   flangeAresta: svg(`<path d="M3 17l9 4 9-4-9-4z"/><path d="M12 13V5l9-4v12" stroke="${C}"/><path d="M12 13a2 2 0 0 0 0 0"/>`),
   dobra: svg(`<path d="M3 20h8a4 4 0 0 0 4-4V4"/><path d="M3 17h8a1 1 0 0 0 1-1V4" stroke="${C}"/><path d="M14 9h6" stroke-dasharray="2 2"/>`),
+  chapa: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M3 15v1.5l9 4 9-4V15"/><circle cx="12" cy="7" r="2.6" stroke="${C}"/><path d="M12 2.6v1.8M12 9.6v1.8M7.6 7h1.8M14.6 7h1.8" stroke="${C}"/>`),
   aba: svg(`<path d="M3 15l9 4 9-4-9-4z"/><path d="M9 12.4V7l6-2.7v5.4" stroke="${C}"/>`),
   bainha: svg(`<path d="M3 19h12a4 4 0 0 0 0-8H8"/><path d="M3 16h12a1 1 0 0 0 0-2H8" stroke="${C}"/>`),
   corteChapa: svg(`<path d="M3 15l9 4 9-4-9-4z"/><ellipse cx="12" cy="15" rx="3.5" ry="1.6" stroke="${C}"/><path d="M12 4v7" stroke="${C}" stroke-dasharray="2 2"/>`),
