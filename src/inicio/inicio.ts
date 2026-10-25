@@ -36,7 +36,7 @@ const FACES: Face[] = [
     icone: svg(`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/><path d="M12.5 17l2-5 2 3 2-4" stroke="${C}"/>`),
   },
   {
-    id: "documentos", nome: "WJWord", fase: "G3",
+    id: "documentos", nome: "WJWord", url: "documento/",
     descricao: "Documentos com estilos, sumário, campos ligados aos projetos e controle de alterações.",
     icone: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 14h6M9 17h4" stroke="${C}"/>`),
   },

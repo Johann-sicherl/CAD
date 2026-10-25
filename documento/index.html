@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJWord — WJProMaster</title>
+  </head>
+  <body>
+    <main class="dc-principal">
+      <aside id="dc-navegacao" class="dc-navegacao" hidden>
+        <header>Navegação</header>
+        <ol id="dc-titulos"></ol>
+      </aside>
+      <div id="dc-rolagem" class="dc-rolagem">
+        <div id="dc-papel" class="dc-papel">
+          <div id="dc-texto" class="dc-texto" contenteditable="true" spellcheck="true" lang="pt-BR"></div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/documento/main.ts"></script>
+  </body>
+</html>
