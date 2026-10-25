@@ -4,6 +4,32 @@ Inspiração funcional: planilha eletrônica profissional de mercado. Nomes, íc
 Arquivo nativo `.wjpl`. Importa/exporta `.xlsx` (OOXML), `.ods`, `.csv`/`.tsv`, PDF (exporta).
 Status de tudo: **G2** salvo indicação.
 
+## Estado da v1 (25/10/2026) — `planilha/index.html`, `src/planilha/`, motor em `src/formulas/`
+
+✅ **Motor de fórmulas** (`src/formulas/`, testado em `scripts/teste-formulas.ts`):
+- sintaxe brasileira (`;`, vírgula decimal), referências A1/$A$1/folha/'folha com espaço', A:A e 1:3;
+- nomes definidos, referência circular → `#CICLO!`, erros que se propagam;
+- ~150 funções (matemática, estatística, lógica, procura incl. PROCX, texto, data e hora com
+  dias úteis, informação, financeiras VPL/VF/VP/PGTO/TIR, CONVERTER de unidades de engenharia);
+- cálculo sob demanda com memória; deslocar referências ao copiar; ajustar ao inserir/excluir.
+
+✅ **Planilha**:
+- grade em Canvas (só o visível; 1.048.576 × 16.384), zoom, painéis congelados, linhas de grade;
+- edição na célula e na barra de fórmulas, autocompletar de funções com dica de sintaxe, modo
+  apontar (clicar/setas inserem referências), F4 alterna $, parênteses fechados sozinhos;
+- seleção com mouse, Shift, cabeçalhos, Ctrl+setas; Tab/Enter como nas planilhas de mercado;
+- copiar/recortar/colar (fórmulas e formatos internos; TSV de fora), alça de preenchimento
+  (séries numéricas, datas, "Item 1", fórmulas), Ctrl+D/Ctrl+R;
+- formatação: fonte, tamanho, cores, bordas, alinhamento, quebrar texto, formatos de número
+  (geral, número, moeda R$, %, data, hora, científico, texto), casas decimais, milhar;
+- inserir/excluir linhas e colunas, largura/altura arrastando (duplo clique ajusta), classificar,
+  remover duplicatas, AutoSoma, inserir função, gerenciador de nomes, caixa de nome, localizar;
+- várias planilhas (renomear atualiza fórmulas, duplicar, mover, excluir), desfazer/refazer;
+- arquivos `.wjpl`, importar/exportar CSV, salvamento automático, offline, celular/tablet/computador.
+
+🟡 Próximos: gráficos, tabela dinâmica, formatação condicional, validação de dados, filtros,
+mesclar células, matrizes dinâmicas, `.xlsx`, colaboração (G5).
+
 Formato de cada comando: **Nosso nome** → caixas do painel → campos e opções (como no CAD).
 
 ---

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJPlaniel — WJProMaster</title>
+  </head>
+  <body>
+    <main class="pl-principal">
+      <div class="pl-barra-formula">
+        <input id="pl-nome" class="pl-nome" aria-label="Caixa de nome" spellcheck="false" />
+        <button id="pl-fx" class="pl-fx" title="Inserir função">fx</button>
+        <input id="pl-formula" class="pl-formula" aria-label="Barra de fórmulas" spellcheck="false" autocapitalize="off" />
+      </div>
+      <div id="pl-grade" class="pl-grade"></div>
+      <div id="pl-folhas" class="pl-folhas"></div>
+    </main>
+    <script type="module" src="/src/planilha/main.ts"></script>
+  </body>
+</html>

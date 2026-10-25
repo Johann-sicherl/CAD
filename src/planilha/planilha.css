@@ -1,0 +1,46 @@
+/* WJPlaniel: barra de fórmulas, grade (Canvas + rolagem transparente por cima), abas das folhas. */
+.pl-principal { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--painel); }
+.pl-barra-formula { display: flex; gap: 6px; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--linha); background: var(--painel); }
+.pl-nome { width: 110px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.pl-fx { flex: none; min-height: 32px; padding: 0 10px; font-style: italic; font-weight: 600; color: var(--texto-2); }
+.pl-formula { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.pl-grade { position: relative; min-height: 0; overflow: hidden; }
+.pl-area { position: relative; }
+.pl-canvas { position: absolute; inset: 0; display: block; }
+.pl-rolagem { position: absolute; inset: 0; overflow: auto; touch-action: pan-x pan-y; }
+.pl-espaco { width: 1px; height: 1px; }
+.pl-editor {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: 2px 4px;
+  border: 2px solid var(--acento);
+  border-radius: 0;
+  background: #fff;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  line-height: 1.3;
+  box-shadow: 0 2px 8px rgba(30, 45, 60, 0.2);
+  outline: none;
+}
+.pl-teclado { position: absolute; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
+.pl-sugestoes {
+  position: absolute; z-index: 4; min-width: 240px; max-width: 360px; padding: 4px;
+  background: #fff; border: 1px solid var(--linha); border-radius: 8px; box-shadow: var(--sombra);
+}
+.pl-sugestoes div { display: flex; flex-direction: column; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.pl-sugestoes div.sel, .pl-sugestoes div:hover { background: var(--acento-suave); }
+.pl-sugestoes small { color: var(--texto-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-dica { position: absolute; z-index: 4; padding: 4px 8px; background: #fffbe6; border: 1px solid #e8d99a; border-radius: 6px; font-size: 13px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.pl-folhas { display: flex; align-items: stretch; gap: 2px; padding: 0 8px; border-top: 1px solid var(--linha); background: var(--painel-2); overflow-x: auto; min-height: 34px; }
+.pl-folha { min-height: 32px; border: 0; border-radius: 0 0 6px 6px; padding: 0 14px; background: transparent; color: var(--texto-2); white-space: nowrap; }
+.pl-folha.ativa { background: #fff; color: var(--acento); font-weight: 600; box-shadow: inset 0 3px 0 var(--acento); }
+.pl-folha-mais { min-width: 34px; padding: 0; border: 0; background: transparent; font-size: 18px; color: var(--texto-2); }
+.pl-funcoes { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.pl-lista-funcoes { max-height: 280px; overflow: auto; border: 1px solid var(--linha); border-radius: 8px; }
+.pl-lista-funcoes div { padding: 6px 10px; cursor: pointer; }
+.pl-lista-funcoes div.sel { background: var(--acento-suave); }
+.pl-lista-funcoes small { display: block; color: var(--texto-2); }
+body.disp-celular .pl-nome { width: 70px; }
+body.disp-celular .pl-fx { display: none; }

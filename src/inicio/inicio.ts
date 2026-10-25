@@ -31,7 +31,7 @@ const FACES: Face[] = [
     icone: svg(`<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5l3 1.7v3.4L12 17.3l-3-1.7v-3.4z" stroke="${C}"/>`),
   },
   {
-    id: "planilha", nome: "WJPlaniel", fase: "G2",
+    id: "planilha", nome: "WJPlaniel", url: "planilha/",
     descricao: "Planilhas com fórmulas avançadas, tabelas dinâmicas, gráficos e otimizador.",
     icone: svg(`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/><path d="M12.5 17l2-5 2 3 2-4" stroke="${C}"/>`),
   },
