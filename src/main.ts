@@ -3624,6 +3624,12 @@ $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("
 aplicarDispositivo();
 atualizarAreaDeTrabalho();
 if (!prefs.dispositivo) escolherDispositivo(true);
+// vindo do WJPDM ("Abrir no app"): abre direto o documento que o cofre deixou no salvamento automático
+if (location.hash === "#abrir-autosave") {
+  history.replaceState(null, "", location.pathname + location.search);
+  const doCofre = carregarAutosave();
+  if (doCofre) abrirDocumento(doCofre);
+}
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();

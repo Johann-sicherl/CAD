@@ -26,7 +26,7 @@ const FACES: Face[] = [
     icone: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" stroke="${C}"/>`),
   },
   {
-    id: "pdm", nome: "WJPDM", fase: "G5",
+    id: "pdm", nome: "WJPDM", url: "pdm/",
     descricao: "Diretório do WJCAD: cofre, versões e revisões, aprovações, itens e lista de materiais.",
     icone: svg(`<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5l3 1.7v3.4L12 17.3l-3-1.7v-3.4z" stroke="${C}"/>`),
   },

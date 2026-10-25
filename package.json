@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "check": "tsc",
-    "teste": "tsx scripts/teste-kernel.ts && tsx scripts/teste-esboco.ts && tsx scripts/teste-recursos.ts && tsx scripts/teste-formulas.ts && tsx scripts/teste-agenda.ts"
+    "teste": "tsx scripts/teste-kernel.ts && tsx scripts/teste-esboco.ts && tsx scripts/teste-recursos.ts && tsx scripts/teste-formulas.ts && tsx scripts/teste-agenda.ts && tsx scripts/teste-pdm.ts"
   },
   "license": "UNLICENSED",
   "dependencies": {

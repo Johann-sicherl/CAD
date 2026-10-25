@@ -10,6 +10,36 @@ Status de tudo: **G5** salvo indicação.
 
 ---
 
+## Estado da v1 (25/10/2026) — `pdm/index.html`, `src/pdm/` (cofre local)
+
+✅ Cofre **neste aparelho** (IndexedDB; funciona sem internet), regras puras testadas em
+`scripts/teste-pdm.ts`:
+- árvore de pastas, migalhas, pesquisa por nome/código/descrição/material, arrastar arquivos do
+  aparelho para a lista, lixeira (restaurar/destruir);
+- arquivos com **versões** (cada check-in) e **revisões** (A, B… na liberação; Z → AA);
+- **check-out/check-in** com trava por usuário, comentário, "manter check-out", check-in de um
+  arquivo do aparelho **ou do documento aberto no WJCAD/WJPlaniel/WJWord/WJApion/WJCronProject**;
+  desfazer check-out (com liberação de administrador);
+- **fluxo**: Em trabalho → Em revisão → Liberado (sobe a revisão) → Nova revisão; rejeitar,
+  obsoleto, reativar; condições (sem check-out, código e descrição preenchidos); liberado não se
+  edita nem se exclui;
+- **cartão de dados** (código, descrição, material, projetista, projeto, acabamento, observação,
+  item), editável só com check-out;
+- visualizar imagens, PDF, texto/CSV/DXF e resumo dos documentos do WJProMaster; **abrir no app**;
+- versões (obter qualquer versão, restaurar como versão nova) e histórico de eventos;
+- **itens** com numeração por máscara (`12-####`), criar item a partir do cartão, **lista de
+  materiais** editável, explodida em todos os níveis (com detecção de ciclo), onde é usado,
+  arquivos do item, exportar a lista em CSV;
+- usuário e nome do cofre; cópia de segurança completa (`.wjpdm`) e restauração; armazenamento
+  persistente.
+
+🟡 Próximos (G5): cofre no servidor compartilhado pela equipe (travas em tempo real), permissões
+por grupo, editor de fluxos e de cartões, aprovação com vários aprovadores, referências entre
+arquivos (montagens), propriedades lidas da peça do WJCAD (massa, planificado), copiar com
+referências, integração com o WJERP.
+
+---
+
 ## 0. Conceitos
 
 - **Cofre**: repositório da empresa no servidor (um ou mais por empresa: Engenharia, Ferramentaria…).
