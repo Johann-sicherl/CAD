@@ -6,7 +6,8 @@
 > (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
-> Até a fase G0 (monorepo), o código é só o WJCAD, descrito abaixo. As regras de inspiração sem
+> Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
+> versões locais das outras faces (seção "Outras faces"). As regras de inspiração sem
 > cópia valem para todas as faces: nomes registrados de terceiros ficam proibidos na UI;
 > importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
 > risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
@@ -39,9 +40,11 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
 - Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`
-- **Duas páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
-  `src/inicio/`, leve: sem Three.js nem kernel) e `cad/index.html` = **WJCAD** (`src/main.ts`). O logo do
-  WJCAD volta ao início. Em desenvolvimento: `/` é o início e `/cad/` é o WJCAD.
+- **Várias páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
+  `src/inicio/`, leve: sem Three.js nem kernel), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
+  por face (seção "Outras faces"). O logo de cada app volta ao início. Em desenvolvimento: `/` é o início,
+  `/cad/` é o WJCAD. Página nova: entrada em `vite.config.ts` (`rollupOptions.input`), em `PAGINAS` do
+  `public/sw.js` e caixa em `src/inicio/inicio.ts`.
 - PWA (manifest + `public/sw.js`). Hospedagem principal: **Cloudflare Pages** (site na raiz, cabeçalhos
   COOP/COEP em `public/_headers` → `crossOriginIsolated`, requisito do kernel com várias threads).
   O GitHub Actions (`.github/workflows/deploy.yml`) roda check/teste/build e publica também no GitHub Pages.
@@ -53,6 +56,25 @@ Nova dependência só com justificativa, de projeto conhecido, e revisando o `pn
 
 Comandos: `pnpm dev` · `pnpm check` (tsc) · `pnpm teste` (kernel em Node) · `pnpm build`.
 Antes de cada commit: `pnpm check && pnpm teste && pnpm build` devem passar.
+
+## Outras faces (v1 locais, 25/10/2026)
+
+Casca comum em `src/comum/` (`casca.ts`: barra superior, faixa de comandos por abas, status,
+janelas, menus, desfazer por fotografias, autosave; `icones.ts`; `armazem.ts` = IndexedDB).
+Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `docs/global/<face>.md`.
+
+| Face | Página | Código | Motor testado | Arquivo / dados |
+|---|---|---|---|---|
+| WJPlaniel | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
+| WJWord | `documento/` | `src/documento/` | — | `.wjdoc`, autosave `wjdoc:documento` |
+| WJApion | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
+| WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
+| WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
+| WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
+
+Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
+com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e
+listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G5/G7).
 
 ## Decisões de produto (definidas pelo Johann)
 

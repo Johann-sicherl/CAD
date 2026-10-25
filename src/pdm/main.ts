@@ -5,7 +5,7 @@
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline } from "../comum/casca";
 import { IC } from "../comum/icones";
-import { Armazem, deBase64, paraBase64 } from "./armazem";
+import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
   aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, ESTADOS, explodirBOM, extensao, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
   transicoesDe, type Arquivo, type Item, type Pasta, type TipoItem, type Versao,

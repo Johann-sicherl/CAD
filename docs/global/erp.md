@@ -12,6 +12,31 @@ cliente PWA nos três aparelhos.
 
 ---
 
+## Estado da v1 (25/10/2026) — `erp/index.html`, `src/erp/` (dados neste aparelho)
+
+✅ Gestão local (IndexedDB, offline), telas geradas por metadados (lista → ficha), regras puras
+testadas em `scripts/teste-erp.ts`:
+- cadastros: clientes e fornecedores (CPF/CNPJ com dígitos verificadores), itens com estrutura,
+  armazéns, condições de pagamento; **importar itens e listas de materiais do WJPDM**;
+- estoque: entradas, saídas, transferências e ajustes que nunca deixam saldo negativo, **custo
+  médio móvel**, saldos por armazém, mínimo, ficha do item (kardex);
+- compras: pedido com aprovação, **recebimento parcial** → entrada no estoque + contas a pagar
+  pelas parcelas da condição;
+- vendas: pedido com **análise de crédito** (limite e títulos vencidos), faturamento/expedição
+  parcial limitado ao saldo → saída + contas a receber;
+- produção: OP prevista → firme → apontamento que **consome os componentes da estrutura** e dá
+  entrada no produto com o custo dos componentes;
+- **MRP**: demanda dos pedidos e das OPs + estoque mínimo, explosão da estrutura por níveis,
+  saldo/compras/OPs em aberto, lote mínimo e prazo → gera OPs e pedidos de compra;
+- financeiro: títulos a pagar/receber com baixas parciais, vencidos, **fluxo de caixa** de 12 semanas;
+- painel de indicadores; exportar listas em CSV; cópia de segurança (`.wjerp`); dados de exemplo.
+
+🟡 Próximos (G7/G8): servidor multiempresa com usuários, permissões e alçadas; roteiros e centros
+de trabalho; capacidade finita com o motor do WJCronProject; cotações; inventário; CRM e propostas;
+conciliação bancária; nota fiscal e contabilidade (G8).
+
+---
+
 ## 0. Arquitetura e conceitos comuns
 
 - **Servidor**:

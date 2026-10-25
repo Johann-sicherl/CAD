@@ -51,7 +51,7 @@ const FACES: Face[] = [
     icone: svg(`<path d="M4 4v16h16"/><path d="M7 7h6M10 11h7M8 15h5" stroke="${C}" stroke-width="2.4"/>`),
   },
   {
-    id: "erp", nome: "WJERP", fase: "G7",
+    id: "erp", nome: "WJERP", url: "erp/",
     descricao: "Gestão integrada ao WJPDM e ao WJCAD: compras, estoque, PCP/MRP, vendas e financeiro.",
     icone: svg(`<path d="M4 20V10l4-3v13M8 20V7l5 3v10M13 20v-7l7-3v10"/><path d="M3 20h18" stroke="${C}"/>`),
   },
