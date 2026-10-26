@@ -209,13 +209,19 @@ function regenerar(atraso = 0) {
     }
     if (estadoKernel === "pronto") estadoKernel = "regenerando";
     atualizarStatus();
-    kernel.regenerar(ativas(), planificado);
+    kernel.regenerar(ativas(), planificado, previaAtiva() ? comando!.f.id : undefined);
   }, atraso);
+}
+
+/** Prévia ligada: há um comando aberto e o recurso não pediu para escondê-la. */
+function previaAtiva() {
+  return !!comando && (comando.f as { mostrarPrevia?: boolean }).mostrarPrevia !== false;
 }
 
 function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   estadoKernel = "pronto";
   viewport.mostrarMalha(r.malha, r.topologia);
+  viewport.mostrarPrevia(previaAtiva() ? r.previaRemovido : null);
   if (primeiraRegeneracao && r.malha) {
     viewport.enquadrar(false);
     primeiraRegeneracao = false;
@@ -454,6 +460,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
+  "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -597,6 +604,9 @@ function criarRecurso(id: string) {
     case "flangeAresta":
     case "bainha":
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      break;
+    case "quebrarCanto":
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta" || r.tipo === "vertice");
       break;
     case "meiaEsquadria": {
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
@@ -839,6 +849,9 @@ function confirmarComando() {
   if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
     return avisar(`${ROTULO_TIPO[f.tipo]}: toque nas arestas da chapa.`);
   }
+  if (f.tipo === "quebrarCanto" && !f.arestas.length) {
+    return avisar("Quebrar canto: toque nas arestas da espessura (ou nos vértices) dos cantos da chapa.");
+  }
   if (f.tipo === "meiaEsquadria" && (!f.esboco || !f.arestas.length)) {
     return avisar("Flange de meia-esquadria: escolha o esboço do perfil e as arestas.");
   }
@@ -863,6 +876,7 @@ function cancelarComando() {
 
 function fecharComando() {
   comando = null;
+  viewport.mostrarPrevia(null);
   viewport.mostrarAlcas([]);
   mostrarPainel(editor ? "esboco" : "arvore");
   atualizarDestaques();
@@ -979,7 +993,7 @@ function refsDestacadas(): Referencia[] {
 function atualizarDestaques(realce: Referencia | null = null) {
   const refs = refsDestacadas();
   const ents = refs.map(entidadeDeRef).filter((e): e is Entidade => !!e);
-  viewport.destacarEntidades(ents, realce ? entidadeDeRef(realce) : null, facesDosSelecionados());
+  viewport.destacarEntidades(ents, realce ? entidadeDeRef(realce) : null, facesDosSelecionados(), facesDaPrevia());
   // planos de referência usados pelo comando aparecem destacados
   const planoUsado = refs.find((r): r is Extract<Referencia, { tipo: "plano" }> => r.tipo === "plano");
   const principal = planoUsado && ["XY", "XZ", "YZ"].includes(planoUsado.id) ? (planoUsado.id as Plano) : null;
@@ -988,6 +1002,12 @@ function atualizarDestaques(realce: Referencia | null = null) {
 }
 
 /** Faces dos recursos selecionados na árvore (fora de comandos): mostram onde eles estão. */
+/** Faces criadas pelo recurso em edição (prévia em âmbar, antes do OK). */
+function facesDaPrevia(): Entidade[] {
+  if (!previaAtiva()) return [];
+  return (facesPorRecurso[comando!.f.id] ?? []).map((indice) => ({ tipo: "face" as const, indice }));
+}
+
 function facesDosSelecionados(): Entidade[] {
   if (comando || editor) return [];
   const ids = new Set(selArvore().filter((s) => s.tipo === "feature").map((s) => s.id));
@@ -1212,7 +1232,7 @@ viewport.canvas().addEventListener("pointermove", (e) => {
     quadroRealce = 0;
     const filtro = filtrar(comando?.campo ? filtroEntidades(comando.campo.aceita) : comando ? new Set<TipoEntidade>() : TODAS);
     const ent = viewport.picarEntidade(e.clientX, e.clientY, filtro, 9);
-    viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados());
+    viewport.destacarEntidades(refsDestacadas().map(entidadeDeRef).filter((x): x is Entidade => !!x), ent, facesDosSelecionados(), facesDaPrevia());
     const refB = !ent && (!comando || comando.campo?.aceita.some((a) => a === "plano" || a === "eixo" || a === "curva")) ? viewport.picarReferencia(e.clientX, e.clientY, 9) : null;
     const ref = refB && refPermitida(refB.tipo) ? refB : null;
     viewport.canvas().style.cursor = ent || ref ? "pointer" : "";
@@ -1619,6 +1639,7 @@ function fecharCotasNoModelo() {
 
 function mostrarCotasNoModelo(f: Feature) {
   fecharCotasNoModelo();
+  if (editor) return; // editando um esboço, as cotas aparecem no próprio editor
   recursoComCotas = f.id;
   const valores = () => resolverVariaveis(doc.variaveis).valores;
   const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
@@ -1773,6 +1794,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
   flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
+  fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -2361,6 +2383,9 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
     return avisar((e as Error).message);
   }
   limparEsbocos();
+  // as cotas no modelo trazem uma cópia fixa do esboço: sem tirar, o que for aparado/apagado
+  // continuaria aparecendo por baixo do esboço em edição
+  fecharCotasNoModelo();
   esconderBarraContexto();
   limparSelPeca();
   definirSel({ tipo: "feature", id: esb.id });
@@ -2378,6 +2403,10 @@ async function editarEsboco(esb: FeatureEsboco, ferramenta?: Ferramenta) {
     avisar,
   };
   editor = new EditorEsboco(host, esb);
+  // a seleção acima redesenha os esboços da peça (ainda sem editor): tira essas cópias fixas,
+  // senão o que for aparado/apagado continua aparecendo por baixo do esboço em edição
+  limparEsbocos();
+  fecharCotasNoModelo();
   aplicarDispositivo();
   renderizarPainelEdicaoEsboco();
   if (ferramenta) editor.definirFerramenta(ferramenta);

@@ -189,8 +189,10 @@ Parâmetros: X/Y.
   geometria de construção fixa, em roxo, projetada no plano; "Alternar construção" a torna perfil.
 - ✅ Encaixe das ferramentas de desenho em **vértice do modelo** e **sobre aresta do modelo**.
 - ✅ Ao abrir o esboço, as referências acompanham a peça atual (entidade mais parecida).
-- Pendente: faces inteiras/esboços de uma vez · Selecionar cadeia · Loops internos ·
-  círculos inclinados (projetam como elipse)
+- ✅ **Face inteira**: com Converter, tocar uma face da peça converte todas as arestas dela
+  (contorno externo e furos) de uma vez, projetadas no plano do esboço (as perpendiculares ao plano
+  ficam de fora).
+- Pendente: esboços de uma vez · Selecionar cadeia · círculos inclinados (projetam como elipse)
 
 ### Interseção de curvas — ⏸
 ### Segmento (dividir em N partes com pontos) — ⏸
@@ -200,9 +202,12 @@ Parâmetros: X/Y.
   Aparar dentro ✅ · Aparar fora ✅ (dois limites, depois as entidades; linhas e arcos) ·
   **Aparar até o mais próximo** ✅
 - **Manter entidades aparadas como construção** ✅ · Ignorar aparar geometria de construção ✅
+- **Prévia**: ao passar o cursor/caneta, o trecho que vai sair fica em vermelho (potente e mais
+  próximo) ✅; o corte aparece na hora, inclusive enquanto se risca ✅
 - Pendente: canto entre linha e arco; aparar potente estendendo ao arrastar pela ponta
 
 ### Estender entidades — ✅
+- Prévia tracejada da ponta até onde a linha vai encontrar outra entidade ✅
 ### Dividir entidades (ponto de divisão) — F3
 
 ### Mover / Copiar / Girar / Dimensionar / Esticar — ✅ mover, copiar, girar; demais pendentes

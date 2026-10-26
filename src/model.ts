@@ -561,11 +561,38 @@ export interface FeatureMeiaEsquadria extends FeatureBase {
   folga: number;
 }
 
+/** Fechar canto: trata os cantos entre abas vizinhas (do mesmo recurso ou de recursos diferentes). */
+export interface FeatureFecharCanto extends FeatureBase {
+  tipo: "fecharCanto";
+  /** Meia-esquadria · sobreposto (a 1ª aba cobre a ponta da 2ª) · subposto (o contrário). */
+  tipoCanto: "meiaEsquadria" | "sobreposto" | "subposto";
+  folga: number;
+}
+
+/** Alívio de canto (2 dobras) em todos os cantos entre abas vizinhas. */
+export interface FeatureAlivioCanto extends FeatureBase {
+  tipo: "alivioCanto";
+  tipoAlivio: "retangular" | "circular" | "rasgado";
+  /** Lado (retangular) ou diâmetro (circular), mm; 0 = automático (maior BA + 2t). */
+  tamanho: number;
+}
+
+/** Quebrar canto: chanfro ou filete em cantos do contorno das paredes. */
+export interface FeatureQuebrarCanto extends FeatureBase {
+  tipo: "quebrarCanto";
+  /** Arestas da espessura (ou vértices) dos cantos. */
+  arestas: Referencia[];
+  tipoQuebra: "chanfro" | "filete";
+  /** Distância do chanfro ou raio do filete. */
+  distancia: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
-  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria;
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
+  | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto;
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -773,6 +800,12 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
         ...base, tipo, nome: `DobraEsboçada${indice}`, angulo: 90, posicao: "centro", inverter: false, inverterFixo: false,
         raioProprio: false, raio: 2,
       };
+    case "fecharCanto":
+      return { ...base, tipo, nome: `FecharCanto${indice}`, tipoCanto: "meiaEsquadria", folga: 0.25 };
+    case "alivioCanto":
+      return { ...base, tipo, nome: `AlívioDeCanto${indice}`, tipoAlivio: "retangular", tamanho: 0 };
+    case "quebrarCanto":
+      return { ...base, tipo, nome: `QuebrarCanto${indice}`, arestas: [], tipoQuebra: "chanfro", distancia: 5 };
     case "curva":
       return {
         ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
@@ -809,6 +842,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   dobraEsboco: "Dobra esboçada",
   junta: "Junta",
   meiaEsquadria: "Flange de meia-esquadria",
+  fecharCanto: "Fechar canto",
+  alivioCanto: "Alívio de canto",
+  quebrarCanto: "Quebrar canto",
 };
 
 /**

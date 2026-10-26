@@ -87,6 +87,11 @@ function entidadesDoCaminho(d: string): { ents: Entidade[]; pol: P2[] }[] {
   return laços;
 }
 
+/** Laços de um desenho 2D: entidades (retas e arcos) e polígono amostrado de cada um. */
+export function lacosDoDesenho(D: Drawing): { ents: Entidade[]; pol: P2[] }[] {
+  return (D.toSVGPaths().flat() as string[]).flatMap(entidadesDoCaminho);
+}
+
 const comprimentoEnt = (e: Entidade) => {
   if (e.tipo === "linha") return Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
   let v = e.a1 - e.a0;

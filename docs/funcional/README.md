@@ -23,6 +23,12 @@ Arquivos:
 
 ## Estado da implementação (22/10/2026)
 
+- **Prévia antes do OK** ✅ (26/10/2026): com o painel de qualquer recurso aberto, a peça é
+  recalculada ao vivo; as faces que o recurso cria ficam em **âmbar** e o material que ele tira
+  (cortes, furos, filetes, casca, corte na chapa, alívios…) aparece como sólido **vermelho
+  translúcido**. No esboço, o Aparar mostra em vermelho o trecho que vai sair e o Estender mostra
+  o prolongamento tracejado, antes do toque.
+
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
   equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,
@@ -33,9 +39,9 @@ Arquivos:
 - **Avaliar** ✅ medir, massa, vista de seção, verificar, inclinação, espessura, zebra, curvatura,
   desempenho. Pendente: propriedades de seção.
 - **Sheet Metal** 🟡 Fase 4 (núcleo): flange base (placa ou perfil aberto), aba, flange de aresta,
-  bainha (fechada, aberta, enrolada), corte na chapa, dobra esboçada, junta, flange de meia-esquadria, canto automático, tabela material/espessura/K, planificar,
-  DXF com lista de corte. Pendentes: cantos, desdobrar/dobrar,
-  converter em chapa, conformação. Detalhe em [chapa.md](chapa.md).
+  bainha (fechada, aberta, enrolada), corte na chapa, dobra esboçada, junta, flange de meia-esquadria, canto automático,
+  fechar canto, alívio de canto, quebrar canto, tabela material/espessura/K, planificar,
+  DXF com lista de corte. Pendentes: desdobrar/dobrar, converter em chapa, rasgar, conformação. Detalhe em [chapa.md](chapa.md).
 - **Barra de vistas** (topo do viewport) ✅ recolhida numa setinha; aberta mostra: ampliar para caber,
   zoom por área (arrastar retângulo; Esc cancela), vista de seção, orientação ▾ (vistas padrão e
   normal a), ocultar/mostrar itens ▾ (ocultar todos os tipos; planos, eixos, origem, esboços) e

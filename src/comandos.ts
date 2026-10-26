@@ -217,7 +217,14 @@ export const ABAS: Aba[] = [
       { id: "dobra", rotulo: "Dobra esboçada", icone: "dobra", dica: "Dobra a chapa ao longo de uma linha de esboço numa face", grupo: 0 },
       { id: "junta", rotulo: "Junta", icone: "junta", dica: "Degrau na chapa (duas dobras) a partir de uma linha de esboço", grupo: 0 },
       { id: "corte-chapa", rotulo: "Corte na chapa", icone: "corteChapa", dica: "Corta através da chapa (normal à chapa) a partir de um esboço numa face", grupo: 1 },
-      { id: "alivio", rotulo: "Alívios de canto", icone: "alivio", dica: "Alívios de canto e fechar canto", grupo: 1, emBreve: true },
+      {
+        id: "grupo-cantos", rotulo: "Cantos", icone: "fecharCanto", dica: "Fechar canto, alívio de canto e quebrar canto", grupo: 1,
+        itens: [
+          { id: "fechar-canto", rotulo: "Fechar canto", icone: "fecharCanto", dica: "Cantos entre abas vizinhas: meia-esquadria, sobreposto ou subposto, com folga", grupo: 1 },
+          { id: "alivio-canto", rotulo: "Alívio de canto", icone: "alivioCanto", dica: "Recorte retangular, circular ou rasgado nos cantos de 2 dobras", grupo: 1 },
+          { id: "quebrar-canto", rotulo: "Quebrar canto", icone: "quebrarCanto", dica: "Chanfro ou filete nos cantos das paredes (toque a aresta da espessura)", grupo: 1 },
+        ],
+      },
       { id: "material", rotulo: "Material / K", icone: "material", dica: "Tabela de material, espessura, raio de dobra e fator K", grupo: 1 },
       { id: "planificar", rotulo: "Planificar", icone: "planificar", dica: "Liga/desliga a vista da chapa planificada", grupo: 2 },
       { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Planificado em DXF (R12, mm) e lista de corte", grupo: 2 },

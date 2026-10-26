@@ -1,4 +1,4 @@
-# WJApion — apresentações com propriedades avançadas (G4)
+# WJApresentation — apresentações com propriedades avançadas (G4)
 
 Inspiração funcional: software de apresentações profissional de mercado. Nomes, ícones e telas são nossos.
 Arquivo nativo `.wjapn`. Importa/exporta `.pptx` (OOXML) e `.odp`. Exporta PDF (com ou sem notas,

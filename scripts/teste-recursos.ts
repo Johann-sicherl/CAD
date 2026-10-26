@@ -626,6 +626,81 @@ const bloco = ext(base, 10);
     confere("dobra esboçada (lado fixo invertido): altura", maxZ(ri), 4 + (60 - ba / 2));
   }
 
+  // cantos (§9): fechar canto, alívio de canto e quebrar canto
+  {
+    const linhaEm = (fn: (p: number[]) => boolean) => r0.topologia!.arestas.find((x) => x.geom === "linha" && fn(x.a) && fn(x.b))!;
+    const cY50 = linhaEm((p) => Math.abs(p[1] - 50) < 1e-6 && Math.abs(p[2] - 2) < 1e-6);
+    const cX100 = linhaEm((p) => Math.abs(p[0] - 100) < 1e-6 && Math.abs(p[2] - 2) < 1e-6);
+    const fl = (arestas: object[], o: object = {}) => fa({ arestas: arestas.map((ass) => ({ tipo: "aresta", ass })), angulo: 90, comprimento: 20, medicao: "externoVirtual", posicao: "materialInterno", ...o });
+    const fc = (o: object) => ({ ...(novaFeature("fecharCanto", 1) as any), ...o });
+    const al = (o: object) => ({ ...(novaFeature("alivioCanto", 1) as any), ...o });
+    // referência: as duas abas no mesmo recurso (canto automático, folga 0,25)
+    const junto = regenerar([placaE, base, fl([cY50, cX100])]);
+    semErros("cantos: abas no mesmo recurso", junto);
+    const areaJunto = exportarDxf("j").resumo.area;
+    // fechar canto (meia-esquadria) sobre o canto automático não muda nada
+    const refeito = regenerar([placaE, base, fl([cY50, cX100]), fc({ tipoCanto: "meiaEsquadria", folga: 0.25 })]);
+    semErros("fechar canto sobre canto automático", refeito);
+    confere("fechar canto sobre canto automático: mesmo volume", refeito.volume, junto.volume!);
+    // abas em recursos diferentes: a 2ª nasce na aresta encurtada (fresta no canto); o fechar
+    // canto estende as duas e apara em meia-esquadria — igual ao recurso único
+    const separadas = [placaE, base, fl([cY50]), fl([cX100])];
+    const semFechar = regenerar(separadas);
+    semErros("cantos: abas em recursos separados", semFechar);
+    verdade("abas separadas: fresta no canto (volume menor)", semFechar.volume! < junto.volume! - 1);
+    const fechado = regenerar([...separadas, fc({ tipoCanto: "meiaEsquadria", folga: 0.25 })]);
+    semErros("fechar canto (recursos separados)", fechado);
+    confere("fechar canto (separadas) = recurso único: volume", fechado.volume, junto.volume!);
+    confere("fechar canto (separadas) = recurso único: planificado", exportarDxf("f").resumo.area, areaJunto);
+    // sobreposto/subposto sem folga: o quadrado t × t do canto fica todo numa das abas (mesmo volume)
+    const mz = regenerar([...separadas, fc({ tipoCanto: "meiaEsquadria", folga: 0 })]).volume!;
+    const so0 = regenerar([...separadas, fc({ tipoCanto: "sobreposto", folga: 0 })]);
+    semErros("fechar canto sobreposto", so0);
+    confere("sobreposto (folga 0) = meia-esquadria (folga 0)", so0.volume, mz);
+    confere("subposto (folga 0) = meia-esquadria (folga 0)", regenerar([...separadas, fc({ tipoCanto: "subposto", folga: 0 })]).volume, mz);
+    // folga 0,5 no sobreposto: a aba coberta encurta 0,5 (parede 16 × 2) e as dobras ficam como na meia-esquadria
+    const mg = regenerar([...separadas, fc({ tipoCanto: "meiaEsquadria", folga: 0.5 })]).volume!;
+    const so5 = regenerar([...separadas, fc({ tipoCanto: "sobreposto", folga: 0.5 })]).volume!;
+    const c5 = 0.25 / Math.SQRT2; // recuo de cada parede pelo plano a 45° com folga 0,5
+    confere("sobreposto (folga 0,5): parede coberta − 0,5 × 2 × 16", so5 - (mg - mz), mz - 16 + 2 * c5 * 32);
+    // alívios: retangular, circular e rasgado no canto do recurso único
+    // área da forma de cada alívio (automático: lado/diâmetro = BA + 2t); o recorte não passa dela
+    const lado = ba + 4;
+    const formas: [string, number][] = [["retangular", lado * lado], ["circular", (Math.PI * lado * lado) / 4], ["rasgado", ba * ba]];
+    for (const [tipoAlivio, areaForma] of formas) {
+      const ra = regenerar([placaE, base, fl([cY50, cX100]), al({ tipoAlivio })]);
+      semErros(`alívio ${tipoAlivio}`, ra);
+      const pa = exportarDxf("a").resumo;
+      const dA = areaJunto - pa.area, dV = junto.volume! - ra.volume!;
+      verdade(`alívio ${tipoAlivio}: planificado perde ${dA.toFixed(2)} mm² (0 < ΔA ≤ ${areaForma.toFixed(2)})`, dA > 0.5 && dA <= areaForma + 1e-6);
+      // no 3D o canto em meia-esquadria é a 45° (no plano, perpendicular pela face de dentro): ΔV ≥ ΔA·t
+      verdade(`alívio ${tipoAlivio}: 3D perde ${dV.toFixed(2)} mm³ (ΔA·t ≤ ΔV ≤ forma·t·1,05)`, dV >= 2 * dA - 0.2 && dV <= areaForma * 2 * 1.05);
+      verdade(`alívio ${tipoAlivio}: 2 dobras no DXF`, pa.dobras === 2);
+    }
+    // retangular automático (BA + 2t, centrado nas linhas de centro): entra t na placa → tira 2 × 2 da placa
+    const ret = regenerar([placaE, base, fl([cY50, cX100]), al({ tipoAlivio: "retangular" })]);
+    const quinaPlaca = ret.topologia!.arestas.some((x) => x.geom === "linha" && [x.a, x.b].every((p) => Math.abs(p[0] - 94) < 1e-4 && Math.abs(p[1] - 44) < 1e-4));
+    verdade("alívio retangular: quina da placa recuada para (94, 44)", quinaPlaca);
+    // quebrar canto: chanfro 5 e filete R5 no canto (0, 0) da placa; filete R2 no canto interno de uma aba
+    const qc = (ass: object[], o: object) => ({ ...(novaFeature("quebrarCanto", 1) as any), arestas: ass.map((a) => ({ tipo: "aresta", ass: a })), ...o });
+    const quina = r0.topologia!.arestas.find((x) => x.geom === "linha" && [x.a, x.b].every((p) => Math.abs(p[0]) < 1e-6 && Math.abs(p[1]) < 1e-6))!;
+    const ch = regenerar([placaE, base, qc([quina], { tipoQuebra: "chanfro", distancia: 5 })]);
+    semErros("quebrar canto (chanfro)", ch);
+    confere("quebrar canto: chanfro 5", ch.volume, 10000 - 12.5 * 2);
+    confere("quebrar canto: chanfro no planificado", exportarDxf("q").resumo.area, 5000 - 12.5);
+    const fi = regenerar([placaE, base, qc([quina], { tipoQuebra: "filete", distancia: 5 })]);
+    semErros("quebrar canto (filete)", fi);
+    confere("quebrar canto: filete R5", fi.volume, 10000 - 25 * (1 - Math.PI / 4) * 2);
+    const ae2 = novoEsboco(13, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+    op.retangulo(ae2, op.ponto(ae2, { x: 40, y: 50 }), op.ponto(ae2, { x: 60, y: 60 }));
+    const comAba = [placaE, base, ae2, { ...(novaFeature("abaChapa", 1) as any), esboco: ae2.id }];
+    const rAba = regenerar(comAba);
+    const interno = rAba.topologia!.arestas.find((x) => x.geom === "linha" && [x.a, x.b].every((p) => Math.abs(p[0] - 40) < 1e-6 && Math.abs(p[1] - 50) < 1e-6))!;
+    const fc2 = regenerar([...comAba, qc([interno], { tipoQuebra: "filete", distancia: 2 })]);
+    semErros("quebrar canto interno (filete)", fc2);
+    confere("quebrar canto interno: filete R2 completa material", fc2.volume, 10400 + 4 * (1 - Math.PI / 4) * 2);
+  }
+
   // flange de meia-esquadria: perfil desenhado na face da ponta (x = 0), começando na aresta de cima
   {
     const perfil = (pts: [number, number][]) => {

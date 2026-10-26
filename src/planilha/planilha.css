@@ -1,4 +1,4 @@
-/* WJPlaniel: barra de fórmulas, grade (Canvas + rolagem transparente por cima), abas das folhas. */
+/* WJPlan: barra de fórmulas, grade (Canvas + rolagem transparente por cima), abas das folhas. */
 .pl-principal { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--painel); }
 .pl-barra-formula { display: flex; gap: 6px; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--linha); background: var(--painel); }
 .pl-nome { width: 110px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; }

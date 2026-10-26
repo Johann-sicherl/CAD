@@ -117,6 +117,9 @@ export const ICONES = {
   planificar: svg(`<path d="M3 12h7l4-6h7"/><path d="M3 18h18" stroke="${C}"/><path d="M12 13v3m-2-1 2 2 2-2"/>`),
   dxf: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6v5H9z" stroke="${C}"/><path d="M9 12l6 5" stroke="${C}"/>`),
   material: svg(`<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 14h18M10 4v16"/><path d="M13 11.5h5" stroke="${C}"/>`),
+  fecharCanto: svg(`<path d="M4 20V8h12"/><path d="M8 20V12h12" stroke="${C}"/><path d="M16 8l4 4" stroke="${C}"/>`),
+  alivioCanto: svg(`<path d="M4 20V4h16"/><path d="M8 20V8h12"/><rect x="5.5" y="5.5" width="5" height="5" stroke="${C}"/>`),
+  quebrarCanto: svg(`<path d="M4 20V10l6-6h10"/><path d="M4 10l6-6" stroke="${C}" stroke-width="2.2"/><path d="M8 20v-8a4 4 0 0 1 4-4h8" stroke="${C}" stroke-dasharray="2 2"/>`),
   alivio: svg(`<path d="M4 4h16v16H4z"/><path d="M14 4v6h6" stroke="${C}"/><circle cx="14" cy="10" r="1.5" stroke="${C}"/>`),
 
   inclinacaoRecurso: svg(`<path d="M4 20h16"/><path d="M6 20 8 6h8l2 14"/><path d="M8 6h8" stroke="${C}" stroke-width="2.2"/><path d="M12 3v3" stroke-dasharray="1.5 1.5"/>`),

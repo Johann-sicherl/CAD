@@ -1073,7 +1073,7 @@ const casca: Casca = new Casca({
     {
       id: "dados", rotulo: "Dados", grupos: [
         [
-          { id: "csv", rotulo: "Exportar lista", icone: "exportar", dica: "Lista atual em CSV (abre no WJPlaniel)", acao: exportarCSV },
+          { id: "csv", rotulo: "Exportar lista", icone: "exportar", dica: "Lista atual em CSV (abre no WJPlan)", acao: exportarCSV },
           { id: "copia", rotulo: "Cópia de segurança", icone: "salvar", acao: () => void exportarCopia() },
           { id: "rest", rotulo: "Restaurar cópia", icone: "abrir", acao: () => void importarCopia() },
         ],

@@ -1,4 +1,4 @@
-// WJApion: apresentações do WJProMaster (especificação: docs/global/apresentacoes.md).
+// WJApresentation: apresentações do WJProMaster (especificação: docs/global/apresentacoes.md).
 // v1: slides 16:9/4:3 com caixas de texto, formas e imagens; temas e layouts próprios;
 // mover/redimensionar com alças (mouse, caneta e dedo); anotações; transições e animações;
 // apresentação em tela cheia, modo do apresentador; PDF pela impressão; arquivo .wjapn.
@@ -111,7 +111,7 @@ const docVazio = (): Apresentacao => ({ formato: "wjapn", versao: 1, nome: "Apre
 
 function validar(d: unknown): Apresentacao {
   const x = d as Apresentacao;
-  if (!x || x.formato !== "wjapn" || !Array.isArray(x.slides)) throw new Error("Arquivo não é uma apresentação do WJApion (.wjapn).");
+  if (!x || x.formato !== "wjapn" || !Array.isArray(x.slides)) throw new Error("Arquivo não é uma apresentação do WJApresentation (.wjapn).");
   if (!x.slides.length) x.slides.push(slideDoLayout("titulo", larguraDe(x.proporcao)));
   if (!TEMAS[x.tema]) x.tema = "claro";
   return x;
@@ -999,7 +999,7 @@ const abas: Aba[] = [
 ];
 
 const casca: Casca = new Casca({
-  app: "WJApion",
+  app: "WJApresentation",
   icone: "",
   extensao: "wjapn",
   abas,

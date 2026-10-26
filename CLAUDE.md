@@ -1,8 +1,8 @@
 # WJProMaster — contexto para o Claude
 
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
-> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlaniel**
-> (planilhas), **WJWord** (documentos), **WJApion** (apresentações), **WJCronProject**
+> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
+> (planilhas), **WJWord** (documentos), **WJApresentation** (apresentações), **WJCronProject**
 > (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
@@ -11,6 +11,24 @@
 > cópia valem para todas as faces: nomes registrados de terceiros ficam proibidos na UI;
 > importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
 > risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
+
+## Regras 001 (definidas pelo Johann, 26/10/2026 — valem sempre)
+
+1. **Postura de otimização e melhor experiência de uso (UX):** propor o caminho mais simples,
+   rápido e leve para o usuário e para o código.
+2. **Discordar quando fizer sentido:** se um pedido não tiver lógica operacional ou impactar
+   muito o projeto (desempenho, arquitetura, manutenção), dizer isso claramente, explicar o
+   motivo e propor uma alternativa antes de implementar.
+3. **Perguntar quando houver dúvida** real de requisito, em vez de supor.
+4. **Cautela e precisão:** validar cada mudança (testes, build, verificação no navegador quando
+   for interface) e relatar o resultado com fidelidade.
+5. **Eficiência e desempenho** em tudo: código enxuto, sem trabalho desnecessário na thread da UI,
+   sem dependências supérfluas.
+6. **Publicação até o fim, sem trabalho manual do Johann:** depois de `pnpm check && pnpm teste &&
+   pnpm build`, fazer commit, push, abrir o PR para `main`, acompanhar o CI, corrigir o que falhar
+   e **fazer o merge** quando estiver verde (isso publica no GitHub Pages e no Cloudflare Pages).
+   Ele não deve precisar entrar no GitHub nem no Cloudflare. Só parar para perguntar se algo
+   exigir decisão dele ou acesso que a sessão não tem.
 
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
@@ -65,9 +83,9 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 
 | Face | Página | Código | Motor testado | Arquivo / dados |
 |---|---|---|---|---|
-| WJPlaniel | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
+| WJPlan | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
 | WJWord | `documento/` | `src/documento/` | — | `.wjdoc`, autosave `wjdoc:documento` |
-| WJApion | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
+| WJApresentation | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
@@ -140,8 +158,8 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
 
 Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
 com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
-próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada, junta e flange de meia-esquadria ✅. Pendentes da Fase 4:
-cantos, desdobrar/dobrar, converter em chapa. Pendentes da Fase 3: filete variável/de face, furo avançado.
+próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada, junta e flange de meia-esquadria ✅,
+cantos (fechar canto, alívio de canto, quebrar canto) ✅. Pendentes da Fase 4: desdobrar/dobrar, converter em chapa, rasgar. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
 a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.

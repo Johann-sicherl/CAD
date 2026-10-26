@@ -10,9 +10,9 @@ e identidade de objetos.
 | **WJProMaster** | hub: início, arquivos recentes, busca, notificações, conta | — | — | este arquivo (§5) |
 | **WJCAD** | CAD paramétrico (antigo JLSCAD) | CAD paramétrico profissional | `.wjcad` (abre `.jlscad`/`.cadt`) | [cad.md](cad.md) + `docs/funcional/` |
 | **WJPDM** | diretório/cofre do WJCAD: versões, revisões, fluxos, itens, lista de materiais | PDM integrado ao CAD de referência | cofre no servidor | [pdm.md](pdm.md) |
-| **WJPlaniel** | planilhas com fórmulas avançadas | planilha eletrônica profissional | `.wjpl` | [planilha.md](planilha.md) |
+| **WJPlan** | planilhas com fórmulas avançadas | planilha eletrônica profissional | `.wjpl` | [planilha.md](planilha.md) |
 | **WJWord** | documentos com propriedades avançadas | processador de texto profissional | `.wjdoc` | [documentos.md](documentos.md) |
-| **WJApion** | apresentações | software de apresentações profissional | `.wjapn` | [apresentacoes.md](apresentacoes.md) |
+| **WJApresentation** | apresentações | software de apresentações profissional | `.wjapn` | [apresentacoes.md](apresentacoes.md) |
 | **WJCronProject** | cronogramas e projetos | gerenciador de projetos com Gantt | `.wjcron` | [cronograma.md](cronograma.md) |
 | **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
@@ -76,9 +76,9 @@ WJProMaster/
 ├─ apps/
 │  ├─ inicio/          WJProMaster (hub): arquivos recentes, busca global, notificações, abrir qualquer face
 │  ├─ cad/             WJCAD (o app atual, movido de src/)
-│  ├─ planilha/        WJPlaniel
+│  ├─ planilha/        WJPlan
 │  ├─ documentos/      WJWord
-│  ├─ apresentacoes/   WJApion
+│  ├─ apresentacoes/   WJApresentation
 │  ├─ cronograma/      WJCronProject
 │  ├─ pdm/             WJPDM (explorador do cofre)
 │  └─ erp/             WJERP
@@ -107,7 +107,7 @@ WJProMaster/
   - Durable Objects para colaboração em tempo real e travas de check-out.
   - Mantém a hospedagem atual (Cloudflare Pages). Se o volume do ERP pedir, avaliar Postgres
     gerenciado; essa decisão é do Johann.
-- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para WJWord, WJPlaniel, WJApion e
+- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para WJWord, WJPlan, WJApresentation e
   WJCronProject. O ERP é transacional no servidor e não usa CRDT.
 - **Linguagem**: TypeScript em tudo (cliente, servidor, motores). DOM puro como hoje. Um framework
   de UI só entra com justificativa (avaliar quando a Planilha/ERP crescer; Lit ou Preact seriam
@@ -132,9 +132,9 @@ WJProMaster/
 |---|---|---|
 | **G0** Fundação | monorepo, `nucleo`, `icones`, `dados` local, hub WJProMaster, PWA único com rotas; CAD movido para `apps/cad` sem perder nada | base de tudo |
 | **G1** WJCAD | termina a Fase 4 (chapa) e a Fase 5 do CAD; propriedades personalizadas da peça (alimentam o WJPDM) | face que já existe |
-| **G2** WJPlaniel | `formulas` completo + planilha (grade, formatos, gráficos, tabelas, dinâmica, xlsx/csv) | o motor de fórmulas é usado por todas as outras faces |
+| **G2** WJPlan | `formulas` completo + planilha (grade, formatos, gráficos, tabelas, dinâmica, xlsx/csv) | o motor de fórmulas é usado por todas as outras faces |
 | **G3** WJWord | `texto-rico` + `paginacao` + documentos (estilos, sumário, campos, controle de alterações, docx/pdf) | base de texto para Apresentações e relatórios do ERP |
-| **G4** WJApion | slides, mestres, animações, apresentador, pptx/pdf | reaproveita texto rico e gráficos |
+| **G4** WJApresentation | slides, mestres, animações, apresentador, pptx/pdf | reaproveita texto rico e gráficos |
 | **G5** Servidor + WJPDM | contas, empresas, permissões, sync/colaboração, cofre do WJPDM, itens, revisões, estrutura, fluxos | liga o CAD ao mundo do ERP |
 | **G6** WJCronProject | EAP, CPM, recursos, linhas de base, valor agregado, MSPDI | usa servidor (recursos compartilhados) e fórmulas |
 | **G7** WJERP (núcleo) | cadastros, estoque/custos, compras, vendas, PCP/MRP, financeiro, CRM simples | usa PDM (estrutura) e Cronograma (capacidade/projetos) |

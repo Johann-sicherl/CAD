@@ -1,4 +1,4 @@
-# WJPlaniel — planilha eletrônica com fórmulas avançadas (G2)
+# WJPlan — planilha eletrônica com fórmulas avançadas (G2)
 
 Inspiração funcional: planilha eletrônica profissional de mercado. Nomes, ícones e telas são nossos.
 Arquivo nativo `.wjpl`. Importa/exporta `.xlsx` (OOXML), `.ods`, `.csv`/`.tsv`, PDF (exporta).

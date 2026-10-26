@@ -1,4 +1,4 @@
-// Pasta de trabalho do WJPlaniel (.wjpl) e o cálculo das células.
+// Pasta de trabalho do WJPlan (.wjpl) e o cálculo das células.
 // Cálculo sob demanda com memória: cada célula é calculada quando alguém pede o valor dela
 // (a grade pede só as visíveis); uma alteração limpa a memória. Referência circular → #CICLO!.
 
@@ -59,7 +59,7 @@ export function pastaVazia(nome = "Pasta1"): Pasta {
 
 export function validarPasta(d: unknown): Pasta {
   const p = d as Pasta;
-  if (!p || p.formato !== "wjpl" || !Array.isArray(p.folhas) || !p.folhas.length) throw new Error("Arquivo não é uma pasta do WJPlaniel (.wjpl).");
+  if (!p || p.formato !== "wjpl" || !Array.isArray(p.folhas) || !p.folhas.length) throw new Error("Arquivo não é uma pasta do WJPlan (.wjpl).");
   for (const f of p.folhas) f.celulas ??= {};
   p.ativa = Math.min(Math.max(0, p.ativa ?? 0), p.folhas.length - 1);
   return p;

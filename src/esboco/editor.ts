@@ -73,7 +73,7 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
   }
   switch (f) {
     case "estender": return "Toque perto da ponta da linha a estender até a próxima interseção.";
-    case "converter": return "Toque arestas e vértices da peça: viram geometria do esboço (fixa, usada no perfil).";
+    case "converter": return "Toque arestas, vértices ou uma face da peça (a face converte o contorno inteiro, com os furos): viram geometria do esboço.";
     case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre. Arestas e vértices da peça também podem ser tocados: viram referência (roxo) para relações e cotas.";
@@ -469,6 +469,35 @@ export class EditorEsboco {
     this.resolver(true);
   }
 
+  /**
+   * Converter entidades com uma face: todas as arestas dela (contorno externo e furos) viram
+   * geometria do esboço, projetadas no plano. Arestas que viram ponto na projeção ficam de fora.
+   */
+  private converterFace(x: number, y: number, tipo: string): boolean {
+    const vp = this.h.viewport;
+    const topo = vp.topologia;
+    if (!topo?.arestasDaFace) return false;
+    const e = vp.picarEntidade(x, y, new Set<TipoEntidade>(["face"]), tipo === "touch" ? 22 : 10);
+    if (!e || e.tipo !== "face") return false;
+    let n = 0;
+    for (const i of topo.arestasDaFace[e.indice] ?? []) {
+      const ref: Referencia = { tipo: "aresta", ass: topo.arestas[i] };
+      const proj = projetar(ref, this.ref);
+      // aresta perpendicular ao plano vira um ponto (ou curva que não fica plana): não entra no contorno
+      if (!proj || proj.tipo === "ponto") continue;
+      const g = criarExterna(this.esb, proj, ref);
+      delete g.construcao;
+      n++;
+    }
+    if (!n) {
+      this.h.avisar("Essa face não tem arestas que apareçam no plano do esboço.");
+      return true;
+    }
+    this.resolver(true);
+    this.h.avisar(`Face convertida: ${n} entidade(s) no esboço.`);
+    return true;
+  }
+
   /** Toque numa aresta/vértice da peça: vira referência e entra na seleção. */
   private selecionarModelo(m: AlvoModelo, x: number, y: number) {
     const g = criarExterna(this.esb, m.proj, m.ref);
@@ -565,7 +594,9 @@ export class EditorEsboco {
     const tol = this.tolMm(pt.tipo);
 
     if (this.ferramenta === "converter") {
-      if (pt.modelo && !pt.moveu) this.converterModelo(pt.modelo);
+      if (pt.moveu) return;
+      if (pt.modelo) this.converterModelo(pt.modelo);
+      else this.converterFace(e.clientX, e.clientY, pt.tipo);
       return;
     }
     if (this.rastro) {
@@ -601,6 +632,7 @@ export class EditorEsboco {
     if (e.pointerType === "touch" && this.ferramenta === "converter") {
       const m = this.acharModelo(e.clientX, e.clientY, "touch", ["vertice", "aresta"]);
       if (m) this.converterModelo(m);
+      else this.converterFace(e.clientX, e.clientY, "touch");
       return;
     }
     if (e.pointerType !== "touch" || this.ferramenta !== "selecionar") return;
@@ -2173,7 +2205,9 @@ export class EditorEsboco {
         : this.ferramenta === "offset" ? this.previaOffset()
         : this.ferramenta === "espelhar" ? this.previaEspelho()
         : this.ferramenta === "padraoLinearEsboco" || this.ferramenta === "padraoCircularEsboco" ? this.previaPadrao()
-        : this.rastro ? { segmentos: this.rastro.flatMap((q, i) => (i ? [this.rastro![i - 1], q] : [])), pontos: [] } : undefined,
+        : this.rastro ? { segmentos: this.rastro.flatMap((q, i) => (i ? [this.rastro![i - 1], q] : [])), pontos: [] }
+        : this.ferramenta === "estender" ? this.previaEstender() : undefined,
+      remover: this.previaAparar(),
       marcador,
       mostrarEixos: true,
       cotaPrevia: this.cotaPrevia,
@@ -2181,6 +2215,32 @@ export class EditorEsboco {
     vp.grupoEsboco.add(this.camada);
     this.montarOverlay();
     vp.pedirRender();
+  }
+
+  /**
+   * Prévia do aparar: o trecho que sai se tocar onde o cursor está (vermelho), antes do toque
+   * (modos "potente" e "mais próximo").
+   */
+  private previaAparar(): P2[] | undefined {
+    if (this.ferramenta !== "aparar" || !this.cursor || this.ponteiro?.moveu) return undefined;
+    const tol = this.tolMm(this.tela?.tipo ?? "mouse");
+    const alvo = this.achar(this.cursor.p, tol);
+    if (alvo?.tipo !== "geo" || alvo.id === EIXO_H || alvo.id === EIXO_V) return undefined;
+    const g = this.esb.geos.find((x) => x.id === alvo.id);
+    if (!g || g.externa || (g.construcao && this.aparo.ignorarConstrucao)) return undefined;
+    const m = this.aparo.modo;
+    if (m !== "potente" && m !== "proximo") return undefined;
+    const trechos = op.trechoAparado(this.esb, alvo.id, this.cursor.p);
+    return trechos.flatMap((pl) => pl.flatMap((q, i) => (i ? [pl[i - 1], q] : [])));
+  }
+
+  /** Prévia do estender: tracejado da ponta até a entidade que a linha vai encontrar. */
+  private previaEstender(): { segmentos: P2[]; pontos: P2[] } | undefined {
+    if (!this.cursor) return undefined;
+    const alvo = this.achar(this.cursor.p, this.tolMm(this.tela?.tipo ?? "mouse"));
+    if (alvo?.tipo !== "geo") return undefined;
+    const t = op.trechoEstendido(this.esb, alvo.id, this.cursor.p);
+    return t ? { segmentos: t, pontos: [t[1]] } : undefined;
   }
 
   /** Cota em andamento seguindo o cursor (já com o distanciador aplicado). */

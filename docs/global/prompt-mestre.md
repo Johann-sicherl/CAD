@@ -21,9 +21,9 @@ FACES DO ECOSSISTEMA (todas para celular, tablet e notebook/computador, no naveg
 1. WJCAD: CAD paramétrico (antigo JLSCAD), já existente, inspirado no CAD profissional de referência.
 2. WJPDM: diretório/cofre do WJCAD (versões, revisões, fluxos, itens, lista de materiais),
    inspirado no PDM integrado ao CAD de referência.
-3. WJPlaniel: planilhas com fórmulas avançadas, inspiradas na planilha eletrônica profissional.
+3. WJPlan: planilhas com fórmulas avançadas, inspiradas na planilha eletrônica profissional.
 4. WJWord: documentos com propriedades avançadas, inspirados no processador de texto profissional.
-5. WJApion: apresentações, inspiradas no software de apresentações profissional.
+5. WJApresentation: apresentações, inspiradas no software de apresentações profissional.
 6. WJCronProject: cronogramas com Gantt/CPM, inspirados no gerenciador de projetos profissional.
 7. WJERP: ERP SaaS multiempresa ligado ao WJPDM e ao WJCAD, inspirado em ERP brasileiro de mercado.
 
