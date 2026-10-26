@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJCronProject — WJProMaster</title>
+  </head>
+  <body>
+    <main id="cr-principal" class="cr-principal">
+      <section id="cr-gantt-vista" class="cr-gantt-vista">
+        <div id="cr-tabela-area" class="cr-tabela-area"><table id="cr-tabela" class="cr-tabela"></table></div>
+        <div id="cr-divisor" class="cr-divisor" title="Arraste para ajustar a largura da tabela"></div>
+        <div id="cr-gantt-area" class="cr-gantt-area">
+          <div id="cr-gantt-cab" class="cr-gantt-cab"></div>
+          <div id="cr-gantt-corpo" class="cr-gantt-corpo"></div>
+        </div>
+      </section>
+      <section id="cr-recursos-vista" class="cr-recursos-vista" hidden></section>
+      <section id="cr-quadro-vista" class="cr-quadro-vista" hidden></section>
+    </main>
+    <script type="module" src="/src/cronograma/main.ts"></script>
+  </body>
+</html>

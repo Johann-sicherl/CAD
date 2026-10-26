@@ -598,6 +598,93 @@ const bloco = ext(base, 10);
     verdade("bainhas vizinhas: planificado", exportarDxf("h").resumo.dobras === 2 && ch > 0);
   }
 
+  // dobra esboçada: linha em x = 60 na face de cima da placa, 90°, R2, K 0,44
+  {
+    const de = novoEsboco(10, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+    op.linha(de, op.ponto(de, { x: 60, y: -10 }), op.ponto(de, { x: 60, y: 60 }));
+    const dob = (o: object) => ({ ...(novaFeature("dobraEsboco", 1) as any), esboco: de.id, ...o });
+    const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+    const maxX = (r: ReturnType<typeof regenerar>) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[0], x.b[0]]));
+    const maxZ = (r: ReturnType<typeof regenerar>) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[2], x.b[2]]));
+    const rd = regenerar([placaE, base, de, dob({ posicao: "centro" })]);
+    semErros("dobra esboçada", rd);
+    // retas: 100 − BA de chapa plana; dobra: ¼ coroa R2–R4 × 50
+    confere("dobra esboçada: volume", rd.volume, 2 * 50 * (100 - ba) + 3 * Math.PI * 50);
+    const pd = exportarDxf("dob").resumo;
+    confere("dobra esboçada: planificado igual à placa (100)", pd.largura, 100);
+    verdade("dobra esboçada: 1 dobra no DXF", pd.dobras === 1);
+    // centrada: lado fixo (esquerdo, maior) vai até 60 − BA/2; face de fora da aba em +R+t
+    confere("dobra esboçada (centro): face de fora", maxX(rd), 60 - ba / 2 + 4);
+    confere("dobra esboçada (centro): altura da aba", maxZ(rd), 4 + (100 - 60 - ba / 2));
+    // material interno: a face de fora da aba fica na linha
+    confere("dobra esboçada (material interno): face de fora na linha", maxX(regenerar([placaE, base, de, dob({ posicao: "materialInterno" })])), 60);
+    // dobra externa: a dobra começa na linha
+    confere("dobra esboçada (dobra externa)", maxX(regenerar([placaE, base, de, dob({ posicao: "dobraExterna" })])), 64);
+    // inverter lado fixo: o lado direito fica e o esquerdo sobe
+    const ri = regenerar([placaE, base, de, dob({ posicao: "centro", inverterFixo: true })]);
+    semErros("dobra esboçada (lado fixo invertido)", ri);
+    confere("dobra esboçada (lado fixo invertido): altura", maxZ(ri), 4 + (60 - ba / 2));
+  }
+
+  // flange de meia-esquadria: perfil desenhado na face da ponta (x = 0), começando na aresta de cima
+  {
+    const perfil = (pts: [number, number][]) => {
+      const e = novoEsboco(12, { tipo: "face", origem: [0, 0, 0], normal: [1, 0, 0], eixoX: [0, 1, 0] } as any); // x do esboço = Y, y = Z
+      const ps = pts.map(([x, y]) => op.ponto(e, { x, y }));
+      for (let k = 0; k + 1 < ps.length; k++) op.linha(e, ps[k], ps[k + 1]);
+      return e;
+    };
+    const ar = (fn: (a: { a: number[]; b: number[] }) => boolean) => r0.topologia!.arestas.find((x) => x.geom === "linha" && fn(x))!;
+    const cimaY50 = ar((x) => [x.a, x.b].every((p) => Math.abs(p[1] - 50) < 1e-6 && Math.abs(p[2] - 2) < 1e-6));
+    const cimaX100 = ar((x) => [x.a, x.b].every((p) => Math.abs(p[0] - 100) < 1e-6 && Math.abs(p[2] - 2) < 1e-6));
+    const me = (e: object, arestas: object[], o: object = {}) => ({ ...(novaFeature("meiaEsquadria", 1) as any), esboco: (e as any).id, arestas: arestas.map((ass) => ({ tipo: "aresta", ass })), ...o });
+    // perfil de 1 linha (sobe 20) = flange de aresta de 20 (externo virtual, material interno)
+    const p1 = perfil([[50, 2], [50, 22]]);
+    const rm1 = regenerar([placaE, base, p1, me(p1, [cimaY50])]);
+    semErros("meia-esquadria (1 linha)", rm1);
+    confere("meia-esquadria (1 linha) = flange de aresta", rm1.volume, 100 * 46 * 2 + (Math.PI / 4) * (16 - 4) * 100 + 100 * 16 * 2);
+    // perfil em L: sobe 20 e volta 10 para dentro (lábio); cantos medidos no canto vivo externo
+    const p2 = perfil([[50, 2], [50, 22], [40, 22]]);
+    const rm2 = regenerar([placaE, base, p2, me(p2, [cimaY50])]);
+    semErros("meia-esquadria (perfil em L)", rm2);
+    const quarto = (Math.PI / 4) * (16 - 4) * 100;
+    confere("meia-esquadria (perfil em L): volume", rm2.volume, 100 * 46 * 2 + quarto + (20 - 4 - 4) * 2 * 100 + quarto + (10 - 4) * 2 * 100);
+    verdade("meia-esquadria (perfil em L): 2 dobras", exportarDxf("me").resumo.dobras === 2);
+    // duas arestas que se encontram no canto (x = 100, y = 50): aparadas, sem sobrepor
+    const rm3 = regenerar([placaE, base, p2, me(p2, [cimaY50, cimaX100])]);
+    semErros("meia-esquadria em canto", rm3);
+    const pm3 = exportarDxf("me3").resumo;
+    verdade("meia-esquadria em canto: 4 dobras no planificado", pm3.dobras === 4);
+    // conta à mão: placa 96 × 46; cada elemento do perfil (¼ coroa, parede 12 × 2, lábio 6 × 2)
+    // tem comprimento L − δ − c (δ: centroide até a aresta; c = folga/√2 pelo plano a 45°)
+    const c = 0.25 / Math.SQRT2;
+    const yc = (4 * (64 - 8)) / (3 * Math.PI * 12);
+    const cad = (Lr: number) => 3 * Math.PI * 2 * (Lr - (4 - yc) - c) + 24 * (Lr - 1 - c) + 12 * (Lr - 7 - c);
+    confere("meia-esquadria em canto: volume", rm3.volume, 96 * 46 * 2 + cad(100) + cad(50));
+  }
+
+  // junta: mesma linha (x = 60), degrau de 10 mm entre faces do mesmo lado, 90°, R2
+  {
+    const je = novoEsboco(11, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
+    op.linha(je, op.ponto(je, { x: 60, y: -10 }), op.ponto(je, { x: 60, y: 60 }));
+    const jt = (o: object) => ({ ...(novaFeature("junta", 1) as any), esboco: je.id, ...o });
+    const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+    const ext = (r: ReturnType<typeof regenerar>, k: 0 | 2) => Math.max(...r.topologia!.arestas.flatMap((x) => [x.a[k], x.b[k]]));
+    const rj = regenerar([placaE, base, je, jt({ deslocamento: 10 })]);
+    semErros("junta", rj);
+    // trecho reto L = Z − (2R + t) = 4; duas ¼ coroas R2–R4; chapa reta = 100 − 2·BA
+    confere("junta: volume", rj.volume, 2 * 50 * (100 - 2 * ba) + 2 * 3 * Math.PI * 50);
+    confere("junta: degrau (face de cima da parte deslocada)", ext(rj, 2), 10 + 2);
+    // fim da chapa: lado fixo até 60 − BA/2, avanço 2R + t, resto = 100 − 60 − BA/2 − L − BA
+    confere("junta: comprimento projetado", ext(rj, 0), 60 - ba / 2 + 6 + (40 - ba / 2 - 4 - ba));
+    const pj = exportarDxf("junta").resumo;
+    verdade("junta: planificado 100 × 50 com 2 dobras", Math.abs(pj.largura - 100) < 1e-4 && Math.abs(pj.area - 5000) < 1e-3 && pj.dobras === 2);
+    confere("junta: medida interna (vão 8 → mesmo degrau)", ext(regenerar([placaE, base, je, jt({ deslocamento: 8, medicao: "interno" })]), 2), 12);
+    confere("junta: medida total (12 → mesmo degrau)", ext(regenerar([placaE, base, je, jt({ deslocamento: 12, medicao: "total" })]), 2), 12);
+    const rp = regenerar([placaE, base, je, jt({ deslocamento: 4 })]);
+    verdade("junta: deslocamento pequeno demais avisa", rp.erros.some((x) => /pequeno demais/.test(x.mensagem)));
+  }
+
   // corte na chapa: círculo Ø10 desenhado na face de cima da placa
   const ce = novoEsboco(8, { tipo: "face", origem: [0, 0, 2], normal: [0, 0, 1], eixoX: [1, 0, 0] } as any);
   op.circulo(ce, op.ponto(ce, { x: 50, y: 25 }), 5);

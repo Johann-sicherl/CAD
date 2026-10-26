@@ -1,0 +1,91 @@
+/* WJCronProject: tabela + Gantt (rolagem vertical sincronizada), planilha de recursos e quadro. */
+:root { --cr-linha: 28px; --cr-cab: 44px; --cr-tabela: 560px; }
+body.disp-tablet, body.disp-celular { --cr-linha: 40px; }
+body.disp-celular { --cr-tabela: 46vw; }
+.cr-principal { min-height: 0; display: grid; }
+.cr-principal > section { min-height: 0; }
+.cr-principal > section[hidden] { display: none !important; }
+
+.cr-gantt-vista { display: grid; grid-template-columns: var(--cr-tabela) 6px minmax(0, 1fr); background: var(--painel); }
+.cr-tabela-area, .cr-gantt-area { overflow: auto; min-height: 0; position: relative; }
+.cr-divisor { background: var(--linha); cursor: col-resize; touch-action: none; }
+.cr-divisor:hover { background: var(--acento); }
+
+.cr-tabela { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; user-select: none; }
+.cr-tabela th {
+  position: sticky; top: 0; z-index: 2; height: var(--cr-cab); padding: 0 6px; background: var(--painel-2);
+  border-bottom: 1px solid var(--linha-forte); border-right: 1px solid var(--linha); font-weight: 600; font-size: 12px;
+  text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;
+}
+.cr-tabela td {
+  height: var(--cr-linha); line-height: calc(var(--cr-linha) - 1px); padding: 0 6px; box-sizing: border-box;
+  border-bottom: 1px solid #e6eaee; border-right: 1px solid #edf0f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: cell;
+}
+.cr-tabela td.dir { text-align: right; }
+.cr-tabela td.centro { text-align: center; }
+.cr-tabela td.cr-id { background: var(--painel-2); color: var(--texto-2); text-align: center; cursor: default; }
+.cr-tabela tr.sel td { background: #e8f1fb; }
+.cr-tabela tr.sel td.cr-id { background: #cfe2f6; color: var(--texto); }
+.cr-tabela td.ativa { outline: 2px solid var(--acento); outline-offset: -2px; }
+.cr-tabela tr.resumo td { font-weight: 700; }
+.cr-tabela tr.inativa td { color: #a5afb9; text-decoration: line-through; }
+.cr-tabela tr.vazia td:not(.cr-id) { color: transparent; }
+.cr-tabela td.critica { color: var(--erro); }
+.cr-tabela td input { width: 100%; height: calc(var(--cr-linha) - 2px); min-height: 0; padding: 0 2px; border: 0; border-radius: 0; outline: none; background: #fff; font: inherit; }
+.cr-dobrar { display: inline-block; width: 16px; text-align: center; color: var(--texto-2); cursor: pointer; }
+.cr-ind { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--erro); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; margin-right: 2px; }
+.cr-ind.nota { background: #8a96a3; }
+.cr-ind.ok { background: var(--ok); }
+
+.cr-gantt-cab { position: sticky; top: 0; z-index: 2; height: var(--cr-cab); background: var(--painel-2); border-bottom: 1px solid var(--linha-forte); }
+.cr-gantt-cab svg, .cr-gantt-corpo svg { display: block; }
+.cr-gantt-cab text { font-size: 11px; fill: #45515d; }
+.cr-gantt-corpo { position: relative; }
+.cr-gantt-corpo .cr-barra { cursor: grab; touch-action: none; }
+.cr-gantt-corpo .cr-barra:active { cursor: grabbing; }
+.cr-gantt-corpo text { font-size: 11px; fill: #45515d; pointer-events: none; }
+.cr-dica { position: fixed; z-index: 30; pointer-events: none; padding: 4px 8px; border-radius: 6px; background: #26303a; color: #fff; font-size: 12px; white-space: nowrap; }
+
+/* planilha de recursos */
+.cr-recursos-vista { overflow: auto; padding: 12px; }
+.cr-recursos-vista table { border-collapse: collapse; background: var(--painel); font-size: 13px; }
+.cr-recursos-vista th, .cr-recursos-vista td { border: 1px solid var(--linha); padding: 2px 4px; text-align: left; }
+.cr-recursos-vista th { background: var(--painel-2); font-size: 12px; }
+.cr-recursos-vista td input, .cr-recursos-vista td select { width: 100%; min-height: 30px; border-color: transparent; }
+.cr-recursos-vista tr.super td { color: var(--erro); }
+.cr-recursos-vista .cr-acoes { margin-top: 10px; display: flex; gap: 8px; }
+
+/* quadro (cartões por situação) */
+.cr-quadro-vista { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; padding: 12px; overflow: auto; }
+.cr-coluna { background: var(--painel-2); border: 1px solid var(--linha); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+.cr-coluna.alvo { outline: 2px dashed var(--acento); }
+.cr-coluna header { font-weight: 700; display: flex; justify-content: space-between; color: var(--texto-2); }
+.cr-cartao { background: var(--painel); border: 1px solid var(--linha); border-left: 4px solid var(--acento); border-radius: 8px; padding: 8px 10px; touch-action: none; cursor: grab; font-size: 13px; }
+.cr-cartao.critica { border-left-color: var(--erro); }
+.cr-cartao strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.cr-cartao .cr-barra-pct { height: 4px; background: #e6eaee; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.cr-cartao .cr-barra-pct span { display: block; height: 100%; background: var(--ok); }
+.cr-fantasma { position: fixed; z-index: 30; pointer-events: none; opacity: 0.85; width: 240px; box-shadow: var(--sombra); }
+body.disp-celular .cr-quadro-vista { grid-template-columns: minmax(0, 1fr); }
+
+.cr-lista-ed { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cr-lista-ed td, .cr-lista-ed th { padding: 2px 4px; border-bottom: 1px solid var(--linha); text-align: left; }
+.cr-lista-ed input, .cr-lista-ed select { width: 100%; }
+.cr-abas-info { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.cr-abas-info button[aria-pressed="true"] { background: var(--acento-suave); color: var(--acento); border-color: var(--acento); }
+.cr-grade2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.cr-valores { width: 100%; border-collapse: collapse; font-size: 14px; }
+.cr-valores td { padding: 4px 6px; border-bottom: 1px solid var(--linha); }
+.cr-valores td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  .wj-topo, .wj-comandos, .wj-status, .cr-divisor { display: none !important; }
+  body.wj-app { display: block; height: auto; }
+  .cr-gantt-vista { display: flex; }
+  .cr-tabela-area, .cr-gantt-area { overflow: visible; }
+  .cr-tabela-area { flex: none; }
+}
+.cr-tabela-area:focus { outline: none; }
+.cr-recursos-vista select { min-width: 110px; }

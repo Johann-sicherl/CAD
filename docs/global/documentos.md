@@ -5,6 +5,24 @@ Arquivo nativo `.wjdoc`. Importa/exporta `.docx` (OOXML), `.odt`, `.md`, `.html`
 Exporta PDF (com marcadores, links, PDF/A ⏸).
 Status de tudo: **G3** salvo indicação.
 
+## Estado da v1 (25/10/2026) — `documento/index.html`, `src/documento/`
+
+✅ Texto rico na folha com tamanho e margens reais (A4, Carta, Ofício, A5; retrato/paisagem;
+margens em mm, padrão ABNT):
+- estilos Normal, Título, Subtítulo, Título 1–3 (Ctrl+Alt+1..3), Citação e Código;
+- fonte, tamanho, negrito/itálico/sublinhado/tachado, sobrescrito/subscrito, cor, realce;
+- listas, recuos, alinhamentos, entrelinhas;
+- tabelas (Tab entre células e nova linha no fim, menu de linhas/colunas), imagens (largura,
+  alinhamento, texto alternativo), links, linha, quebra de página (Ctrl+Enter), campo de data;
+- sumário com páginas aproximadas (inserir/atualizar), painel de navegação pelos títulos;
+- localizar/substituir, contagem de palavras, ortografia do navegador em PT-BR;
+- impressão/PDF com cabeçalho, rodapé e "Página X de Y"; marcas de fim de página na tela;
+- colar de outros programas limpo (sem scripts/estilos estranhos);
+- arquivos `.wjdoc`, abrir/exportar HTML e Markdown, abrir TXT, salvamento automático, offline.
+
+🟡 Próximos: paginação real na tela (motor `@wj/paginacao`), estilos editáveis, notas de rodapé,
+legendas e referências cruzadas, controle de alterações e comentários, mala direta, `.docx`.
+
 ---
 
 ## 0. Modelo do documento

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJApion — WJProMaster</title>
+  </head>
+  <body>
+    <main class="ap-principal">
+      <aside id="ap-miniaturas" class="ap-miniaturas" aria-label="Slides"></aside>
+      <section class="ap-centro">
+        <div id="ap-palco-area" class="ap-palco-area"><div id="ap-palco" class="ap-slide"></div></div>
+        <textarea id="ap-notas" class="ap-notas" placeholder="Clique para adicionar anotações do orador" spellcheck="true" lang="pt-BR"></textarea>
+      </section>
+    </main>
+    <div id="ap-show" class="ap-show" hidden></div>
+    <div id="ap-impressao" class="ap-impressao"></div>
+    <script type="module" src="/src/apresentacao/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJERP — WJProMaster</title>
+  </head>
+  <body>
+    <main class="er-principal">
+      <nav id="er-menu" class="er-menu" aria-label="Módulos"></nav>
+      <section class="er-centro">
+        <div class="er-barra">
+          <button id="er-menu-btn" class="er-so-celular" title="Módulos">☰</button>
+          <h2 id="er-titulo"></h2>
+          <input id="er-busca" type="search" placeholder="Buscar…" />
+          <select id="er-filtro" aria-label="Situação"></select>
+          <button id="er-novo" class="destaque">+ Novo</button>
+        </div>
+        <div id="er-conteudo" class="er-conteudo"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/erp/main.ts"></script>
+  </body>
+</html>

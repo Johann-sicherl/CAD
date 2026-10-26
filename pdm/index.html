@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>WJPDM — WJProMaster</title>
+  </head>
+  <body>
+    <main class="pd-principal">
+      <aside id="pd-arvore" class="pd-arvore" aria-label="Pastas"></aside>
+      <section class="pd-centro">
+        <div class="pd-barra">
+          <button id="pd-pastas" class="pd-so-celular" title="Pastas">☰</button>
+          <nav id="pd-migalhas" class="pd-migalhas"></nav>
+          <input id="pd-busca" class="pd-busca" type="search" placeholder="Pesquisar no cofre (nome, código, descrição)…" />
+        </div>
+        <div id="pd-lista-area" class="pd-lista-area"><table id="pd-lista" class="pd-lista"></table></div>
+        <div id="pd-painel" class="pd-painel">
+          <div id="pd-abas" class="pd-abas" role="tablist"></div>
+          <div id="pd-conteudo" class="pd-conteudo"></div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/pdm/main.ts"></script>
+  </body>
+</html>

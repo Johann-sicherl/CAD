@@ -45,7 +45,7 @@ import { construirCamada, descartarCamada } from "./esboco/visual";
 import { aninhamento, encontrarLacos } from "./esboco/geometria";
 import * as op from "./esboco/operacoes";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
-import { esquemaDe, type DadosEsquema } from "./ui/esquemas";
+import { esquemaDe, esquemaParametrosChapa, type DadosEsquema } from "./ui/esquemas";
 import { ler, renderizarFormulario, type Esquema, type TipoSel } from "./ui/formulario";
 import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes";
 import type { Analise } from "./analises";
@@ -117,6 +117,8 @@ interface ComandoAtivo {
   campo: { cam: string; aceita: TipoSel[]; multiplo: boolean } | null;
   aba?: string;
   recolhidas: Set<string>;
+  /** "chapa": item "Chapa metálica" da árvore (só os parâmetros globais da flange base). */
+  modo?: "chapa";
 }
 
 type FerramentaAvaliar =
@@ -159,6 +161,10 @@ let editor: EditorEsboco | null = null;
 let snapshotEsboco: string | null = null;
 /** Esboço aberto a partir das posições do furo: ao sair, volta ao painel do furo. */
 let voltarParaFuro: string | null = null;
+/** Comando de chapa (aba, corte, flange base) esperando o esboço: abre ao sair dele. */
+let recursoAposEsboco: string | null = null;
+/** Arestas escolhidas antes de abrir o esboço do perfil (meia-esquadria): voltam ao comando. */
+let arestasAposEsboco: Referencia[] = [];
 let comando: ComandoAtivo | null = null;
 let avaliacao: FerramentaAvaliar | null = null;
 /** Esperando o usuário tocar um plano/face para começar um esboço ou furo. */
@@ -447,7 +453,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   furo: "furo", "padrao-linear": "padraoLinear", "padrao-circular": "padraoCircular", espelhar: "espelhar",
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
-  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa",
+  "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -562,10 +568,28 @@ function criarRecurso(id: string) {
       f.faces = faces;
       f.planoNeutro = planosArvore[0] ?? { tipo: "plano", id: "XZ" }; // Superior
       break;
-    case "nervura":
     case "flangeBase":
     case "abaChapa":
-    case "corteChapa": {
+    case "corteChapa":
+    case "dobraEsboco":
+    case "junta": {
+      const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
+      if (!perfil) {
+        // sem esboço: pede o plano/face, abre o esboço e, ao sair dele, volta para este comando
+        recursoAposEsboco = id;
+        definirSel(null);
+        void iniciarEsboco().then((abriu) => {
+          const oque = f.tipo === "dobraEsboco" || f.tipo === "junta" ? "a linha da dobra" : "o contorno fechado";
+          avisar(abriu
+            ? `${ROTULO_TIPO[f.tipo]}: desenhe ${oque}. Ao sair do esboço, o comando abre com ele.`
+            : `${ROTULO_TIPO[f.tipo]}: toque uma face plana da chapa (ou um plano) para desenhar ${oque}.`);
+        });
+        return;
+      }
+      f.esboco = perfil.id;
+      break;
+    }
+    case "nervura": {
       const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
       if (perfil) f.esboco = perfil.id;
       break;
@@ -574,6 +598,29 @@ function criarRecurso(id: string) {
     case "bainha":
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
       break;
+    case "meiaEsquadria": {
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      const perfil = (sel?.tipo === "esboco" ? sel : null) ?? ultimoEsbocoLivre();
+      if (!perfil) {
+        const a0 = f.arestas[0];
+        if (!a0 || a0.tipo !== "aresta" || a0.ass.geom !== "linha") {
+          return avisar("Flange de meia-esquadria: selecione a aresta reta da chapa onde o perfil começa (Ctrl/Shift soma as outras) e toque o comando de novo.");
+        }
+        // como nos CADs profissionais: esboço num plano perpendicular à aresta, na ponta dela
+        const p = a0.ass.a, q = a0.ass.b;
+        const L = Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+        const n: Vec3 = [(q[0] - p[0]) / L, (q[1] - p[1]) / L, (q[2] - p[2]) / L];
+        recursoAposEsboco = id;
+        arestasAposEsboco = f.arestas;
+        definirSel(null);
+        limparSelPeca();
+        void suporteEscolhido({ tipo: "face", origem: p, normal: n, eixoX: eixoXParaNormal(n) }, null).then(() =>
+          avisar("Meia-esquadria: desenhe o perfil aberto (linhas) começando na origem do esboço, que está na ponta da aresta. Ao sair do esboço, o comando abre."));
+        return;
+      }
+      f.esboco = perfil.id;
+      break;
+    }
     case "padraoLinear":
     case "padraoCircular":
     case "espelhar":
@@ -702,16 +749,21 @@ function dadosEsquema(f: Feature): DadosEsquema {
   };
 }
 
-function abrirComando(f: Feature, novo: boolean) {
+/** Esquema do painel do comando ativo (o item "Chapa metálica" mostra só os parâmetros da chapa). */
+function esquemaComando(c: { f: Feature; modo?: "chapa" }): Esquema<Feature> {
+  return c.modo === "chapa" ? esquemaParametrosChapa() : (esquemaDe(c.f, dadosEsquema(c.f)) as Esquema<Feature>);
+}
+
+function abrirComando(f: Feature, novo: boolean, modo?: "chapa") {
   if (editor) sairEsboco();
   fecharCotasNoModelo();
   fecharAvaliacao();
   comando = {
     f, novo, snapshot: JSON.stringify(doc), campo: null, recolhidas: new Set(),
-    aba: f.tipo === "furo" ? "Tipo" : undefined,
+    aba: f.tipo === "furo" ? "Tipo" : undefined, modo,
   };
   // campo de seleção ativo: o primeiro vazio
-  const esq = esquemaDe(f, dadosEsquema(f));
+  const esq = esquemaComando(comando);
   for (const cx of esq.caixas) {
     if (cx.aba && cx.aba !== comando.aba) continue;
     if (cx.vis && !cx.vis(f)) continue;
@@ -738,7 +790,7 @@ function abrirComando(f: Feature, novo: boolean) {
 function renderizarComando() {
   if (!comando) return;
   const c = comando;
-  const esq = esquemaDe(c.f, dadosEsquema(c.f)) as Esquema<Feature>;
+  const esq = esquemaComando(c);
   renderizarFormulario($("painel-comando"), c.f, esq, {
     erro: errosPorFeature.get(c.f.id),
     aoMudar: (final) => {
@@ -780,6 +832,16 @@ function renderizarComando() {
 function confirmarComando() {
   if (!comando) return;
   const f = comando.f;
+  // como nos CADs profissionais, o OK só vale com a seleção obrigatória feita
+  if ((f.tipo === "flangeBase" || f.tipo === "abaChapa" || f.tipo === "corteChapa" || f.tipo === "dobraEsboco" || f.tipo === "junta") && !f.esboco) {
+    return avisar(`${ROTULO_TIPO[f.tipo]}: escolha o esboço (ou ✕ e desenhe um numa face da chapa).`);
+  }
+  if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
+    return avisar(`${ROTULO_TIPO[f.tipo]}: toque nas arestas da chapa.`);
+  }
+  if (f.tipo === "meiaEsquadria" && (!f.esboco || !f.arestas.length)) {
+    return avisar("Flange de meia-esquadria: escolha o esboço do perfil e as arestas.");
+  }
   fecharComando();
   registrarPasso();
   salvarAutosave();
@@ -896,7 +958,7 @@ const mesmaRef = (a: Referencia, b: Referencia) => JSON.stringify(a) === JSON.st
 /** Refs que o comando ativo usa (para pintar no modelo). */
 function refsDoComando(): Referencia[] {
   if (!comando) return [];
-  const esq = esquemaDe(comando.f, dadosEsquema(comando.f));
+  const esq = esquemaComando(comando);
   const out: Referencia[] = [];
   for (const cx of esq.caixas) {
     if (cx.vis && !cx.vis(comando.f)) continue;
@@ -1710,7 +1772,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   casca: "casca", inclinacao: "inclinacaoRecurso", nervura: "nervura", furo: "furo", padraoLinear: "padraoLinear",
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
-  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa",
+  flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -1837,6 +1899,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
       if (selecao) mostrarBarraNoItem(li, acoesDaFeature(f));
     };
     li.ondblclick = () => {
+      esconderBarraContexto();
       if (editor || comando) return;
       if (f.tipo === "esboco") void editarEsboco(f);
       else abrirComando(f, false);
@@ -1898,11 +1961,53 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
     return li;
   };
 
+  /** Item fixo da árvore (Chapa metálica, Padrão planificado): ícone, nome, detalhe e ações. */
+  const itemFixo = (icone: NomeIcone, nome: string, detalhe: string, acoes: () => AcaoContexto[], duplo: () => void, apagado = false) => {
+    const li = document.createElement("li");
+    li.className = "item";
+    li.classList.toggle("suprimida", apagado);
+    li.innerHTML = `<span class="item-seta vazia"></span><span class="item-ic">${ICONES[icone]}</span><span class="item-texto"><strong></strong><small></small></span>`;
+    li.querySelector("strong")!.textContent = nome;
+    li.querySelector("small")!.textContent = detalhe;
+    li.onclick = () => {
+      if (editor || comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
+      limparSelPeca();
+      definirSel(null);
+      mostrarBarraNoItem(li, acoes());
+    };
+    li.ondblclick = () => {
+      esconderBarraContexto();
+      if (!editor && !comando) duplo();
+    };
+    li.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      if (!editor && !comando) mostrarBarraNoItem(li, acoes());
+    };
+    return li;
+  };
+  const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR");
+  // "Chapa metálica": parâmetros globais (guardados na primeira flange base), antes dela
+  const base = doc.features.find((x): x is FeatureFlangeBase => x.tipo === "flangeBase");
+  const editarChapa = () => base && abrirComando(base, false, "chapa");
+
   doc.features.forEach((f, i) => {
     if (i === limite) lista.appendChild(barraRetrocesso());
     if (f.tipo === "esboco" && filhos.has(f.id)) return; // aparece dentro do recurso
+    if (f === base && !mini) {
+      lista.appendChild(itemFixo("chapa", "Chapa metálica", `t ${fmt(f.espessura)} · R ${fmt(f.raio)} · K ${fmt(f.fatorK)}`, () => [
+        { rotulo: "Editar parâmetros", icone: "chapa", acao: editarChapa },
+        { rotulo: "Material / K", icone: "material", acao: abrirTabelaChapa },
+      ], editarChapa, f.suprimida));
+    }
     adicionar(f, i, 0);
   });
+  // "Padrão planificado": no fim, apagado enquanto a peça está dobrada (toque duplo alterna)
+  if (base && !mini && temChapa()) {
+    lista.appendChild(itemFixo("planificar", "Padrão planificado", planificado ? "planificado — toque duas vezes para dobrar" : "toque duas vezes para planificar", () => [
+      { rotulo: planificado ? "Dobrar" : "Planificar", icone: "planificar", acao: () => alternarPlanificado() },
+      { rotulo: "Exportar DXF", icone: "dxf", acao: () => void comandoChapa("dxf") },
+    ], () => alternarPlanificado(), !planificado));
+  }
   if (limite >= doc.features.length && doc.features.length) lista.appendChild(barraRetrocesso());
 
   if (!doc.features.length) {
@@ -2322,6 +2427,15 @@ function sairEsboco() {
       renderizarComando();
     }
   }
+  if (recursoAposEsboco) {
+    const cmd = recursoAposEsboco;
+    recursoAposEsboco = null;
+    if (arestasAposEsboco.length) selPeca = arestasAposEsboco;
+    arestasAposEsboco = [];
+    prefs.aba = "chapa";
+    renderizarAbas();
+    criarRecurso(cmd);
+  }
 }
 
 /** ✕ no canto de confirmação: sai do esboço desfazendo tudo o que foi feito nele. */
@@ -2333,6 +2447,8 @@ function descartarEsboco() {
   editor = null;
   snapshotEsboco = null;
   voltarParaFuro = null;
+  recursoAposEsboco = null;
+  arestasAposEsboco = [];
   instalarToqueCurto();
   doc = JSON.parse(s);
   mostrarPainel("arvore");
@@ -2678,6 +2794,7 @@ function alternarPlanificado(liga = !planificado) {
   planificado = liga;
   limparSelPeca();
   renderizarAbas();
+  renderizarArvore();
   regenerar();
   primeiraRegeneracao = true; // enquadra a peça na nova forma
   avisar(liga ? "Vista planificada (linhas de dobra em laranja). Toque Planificar de novo para dobrar." : "Chapa dobrada.");
@@ -3507,6 +3624,12 @@ $("btn-lateral").onclick = () => abrirGaveta(!document.body.classList.contains("
 aplicarDispositivo();
 atualizarAreaDeTrabalho();
 if (!prefs.dispositivo) escolherDispositivo(true);
+// vindo do WJPDM ("Abrir no app"): abre direto o documento que o cofre deixou no salvamento automático
+if (location.hash === "#abrir-autosave") {
+  history.replaceState(null, "", location.pathname + location.search);
+  const doCofre = carregarAutosave();
+  if (doCofre) abrirDocumento(doCofre);
+}
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();

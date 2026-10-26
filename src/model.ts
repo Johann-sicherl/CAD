@@ -518,11 +518,54 @@ export interface FeatureAbaChapa extends FeatureBase {
   esboco?: string;
 }
 
+/** Dobra esboçada: linha(s) de esboço numa face plana da chapa dobram a parede ali. */
+export interface FeatureDobraEsboco extends FeatureBase {
+  tipo: "dobraEsboco";
+  esboco?: string;
+  angulo: number;
+  /** Onde a dobra fica em relação à linha do esboço. */
+  posicao: "centro" | "materialInterno" | "materialExterno" | "dobraExterna";
+  inverter: boolean;
+  /** Lado que fica parado: padrão = o maior; marcado = o outro. */
+  inverterFixo: boolean;
+  raioProprio: boolean;
+  raio: number;
+}
+
+/** Junta: degrau na chapa (duas dobras opostas) a partir de uma linha de esboço numa face. */
+export interface FeatureJunta extends FeatureBase {
+  tipo: "junta";
+  esboco?: string;
+  /** Altura do degrau, medida conforme `medicao`. */
+  deslocamento: number;
+  /** mesmoLado: entre faces do mesmo lado · interno: vão entre as faces · total: de fora a fora. */
+  medicao: "mesmoLado" | "interno" | "total";
+  angulo: number;
+  posicao: "centro" | "materialInterno" | "materialExterno" | "dobraExterna";
+  inverter: boolean;
+  inverterFixo: boolean;
+  raioProprio: boolean;
+  raio: number;
+}
+
+/** Flange de meia-esquadria: perfil aberto de esboço levado ao longo de arestas da chapa. */
+export interface FeatureMeiaEsquadria extends FeatureBase {
+  tipo: "meiaEsquadria";
+  esboco?: string;
+  arestas: Referencia[];
+  posicao: PosicaoFlange;
+  inverter: boolean;
+  raioProprio: boolean;
+  raio: number;
+  /** Distância de folga entre as abas nos cantos. */
+  folga: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
-  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa;
+  | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria;
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -715,6 +758,21 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `Aba${indice}` };
     case "corteChapa":
       return { ...base, tipo, nome: `CorteChapa${indice}` };
+    case "meiaEsquadria":
+      return {
+        ...base, tipo, nome: `FlangeMeiaEsquadria${indice}`, arestas: [], posicao: "materialInterno", inverter: false,
+        raioProprio: false, raio: 2, folga: 0.25,
+      };
+    case "junta":
+      return {
+        ...base, tipo, nome: `Junta${indice}`, deslocamento: 10, medicao: "mesmoLado", angulo: 90, posicao: "centro",
+        inverter: false, inverterFixo: false, raioProprio: false, raio: 2,
+      };
+    case "dobraEsboco":
+      return {
+        ...base, tipo, nome: `DobraEsboçada${indice}`, angulo: 90, posicao: "centro", inverter: false, inverterFixo: false,
+        raioProprio: false, raio: 2,
+      };
     case "curva":
       return {
         ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
@@ -748,6 +806,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   bainha: "Bainha",
   abaChapa: "Aba",
   corteChapa: "Corte na chapa",
+  dobraEsboco: "Dobra esboçada",
+  junta: "Junta",
+  meiaEsquadria: "Flange de meia-esquadria",
 };
 
 /**

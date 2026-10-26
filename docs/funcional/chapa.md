@@ -19,8 +19,12 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | Planificar (liga/desliga, linhas de dobra em laranja) | ✅ |
 | Exportar DXF R12 (camadas CONTORNO, DOBRA_CIMA, DOBRA_BAIXO, NOTAS) + lista de corte | ✅ |
 | Canto automático entre abas vizinhas da mesma flange de aresta ou bainha: meia-esquadria pela bissetriz das paredes, com **distância de folga** (padrão 0,25 mm); as dobras também são aparadas. No planificado o corte é perpendicular à chapa pela face de dentro (dobrada, a peça não colide; o canto fica com fresta de até t) | ✅ |
-| Árvore: item "Chapa metálica" (parâmetros globais) e "Padrão planificado"; bloquear OK de Aba/Corte sem esboço | F4 |
-| Dobra esboçada, junta, meia-esquadria, cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| Árvore: item **Chapa metálica** (parâmetros globais: bitola, espessura, raio, K; toque duplo edita) e **Padrão planificado** no fim (apagado com a peça dobrada; toque duplo planifica/dobra; Exportar DXF) | ✅ |
+| Aba, Corte na chapa e Flange base sem esboço: pedem a face/plano, abrem o esboço e voltam ao comando ao sair dele; OK bloqueado sem esboço (e flange de aresta/bainha sem arestas) | ✅ |
+| **Dobra esboçada**: linha(s) de esboço numa face plana; lado fixo = o maior (ou inverter); posição: linha de centro, material interno, material externo, dobra externa; ângulo, inverter direção, raio próprio; o planificado não muda de tamanho | ✅ (só linhas retas; flanges já feitas precisam estar no lado fixo) |
+| **Junta**: degrau (dobra θ + trecho reto + dobra −θ) a partir de linha(s) de esboço numa face; deslocamento entre faces do mesmo lado / interno (vão) / total; posição da junta como na dobra esboçada; ângulo; raio próprio; lado fixo | ✅ (fixar comprimento projetado: F4) |
+| **Flange de meia-esquadria**: perfil aberto (linhas) num plano perpendicular à 1ª aresta, começando nela; levado ao longo das arestas escolhidas; cada linha medida até o canto vivo virtual externo; raio próprio, posição da flange, inverter, distância de folga; cantos entre arestas vizinhas aparados pelo plano bissetor; com uma aresta selecionada e sem esboço, abre o esboço perpendicular na ponta da aresta | ✅ (perfil com arcos, deslocamentos inicial/final e aparar dobras laterais: F4) |
+| Cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -62,7 +66,7 @@ Perfil: esboço fechado (placa) ou aberto (perfil dobrado)
   **Deslocamento** (condição, distância)
 - Margem de dobra personalizada · Alívio personalizado (tipo, proporção)
 
-## 3. Flange de meia-esquadria (Miter Flange)
+## 3. Flange de meia-esquadria (Miter Flange) — ✅ (perfil só de linhas; deslocamentos: F4)
 Perfil: esboço aberto perpendicular à aresta
 - **Parâmetros**: ao longo das arestas (cadeia), raio, posição da flange (interno/externo/dobra
   externa), aparar dobras laterais, distância de folga
@@ -76,14 +80,14 @@ Perfil: esboço aberto perpendicular à aresta
 - Posição: material interno · material externo · dobra externa · inverter
 - Folga de meia-esquadria · margem de dobra personalizada
 
-## 5. Dobra esboçada (Sketched Bend)
+## 5. Dobra esboçada (Sketched Bend) — ✅
 Linha de esboço numa face plana da chapa
 - **Face fixa**
 - **Posição da dobra**: Linha de centro da dobra · Material interno · Material externo · Dobra externa
 - **Ângulo**, inverter direção, raio
 - Margem de dobra personalizada
 
-## 6. Junta (Jog)
+## 6. Junta (Jog) — ✅ (salvo "fixar comprimento projetado")
 - Face fixa, usar raio padrão / raio
 - **Deslocamento da junta**: condição (Cego, Até o vértice…), distância,
   **posição da cota**: deslocamento externo · interno · total; **fixar comprimento projetado**

@@ -4,7 +4,7 @@ import type {
   Feature, FeatureChanfro, FeatureCasca, FeatureCurva, FeatureEixoRef, FeatureEspelhar, FeatureExtrusao, FeatureFilete,
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
-  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa,
+  FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -99,6 +99,12 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
     case "abaChapa":
     case "corteChapa":
       return abaChapa(f.tipo === "corteChapa", d) as Esquema<Feature>;
+    case "dobraEsboco":
+      return dobraEsboco(d) as Esquema<Feature>;
+    case "junta":
+      return junta(d) as Esquema<Feature>;
+    case "meiaEsquadria":
+      return meiaEsquadria(d) as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -108,20 +114,9 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
 
 const POSICOES: [string, string][] = [["materialInterno", "Material interno"], ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"]];
 
-function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
-  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
-  return {
-    titulo: "Flange base",
-    caixas: [
-      { titulo: "Perfil", campos: [
-        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
-        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
-      ] },
-      { titulo: "Direção 1", vis: aberto, campos: [
-        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
-        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
-        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
-      ] },
+/** Parâmetros globais da chapa (bitola, espessura, raio, fator K, alívio): guardados na flange base. */
+function caixasChapa(): Caixa<FeatureFlangeBase>[] {
+  return [
       { titulo: "Bitolas de chapa", campos: [
         { t: "sel", rot: "Tabela", cam: "tabela",
           opcoes: [["", "Personalizado"], ...TABELA_CHAPA.map((l): [string, string] => [`${l.material}|${l.espessura}`, `${l.material} — ${l.espessura} mm (R${l.raio}, K ${l.k})`])],
@@ -150,6 +145,29 @@ function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
         { t: "num", rot: "Fator K", cam: "fatorK", min: 0, max: 1, passo: 0.01 },
       ] },
       { titulo: "Alívio automático", campos: [{ t: "info", texto: () => "Retangular, largura = espessura, nas pontas de flanges parciais." }] },
+  ];
+}
+
+/** Painel do item "Chapa metálica" da árvore: só os parâmetros globais da chapa. */
+export function esquemaParametrosChapa(): Esquema<Feature> {
+  return { titulo: "Chapa metálica", caixas: caixasChapa() } as unknown as Esquema<Feature>;
+}
+
+function flangeBase(d: DadosEsquema): Esquema<FeatureFlangeBase> {
+  const aberto = (f: FeatureFlangeBase) => !!f.esboco && d.contornos(f.esboco).length === 0;
+  return {
+    titulo: "Flange base",
+    caixas: [
+      { titulo: "Perfil", campos: [
+        { t: "sel", rot: "Esboço", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "info", texto: (f) => (!f.esboco ? "Esboço fechado vira placa; aberto (só linhas) vira perfil dobrado." : aberto(f) ? "Perfil aberto: as linhas viram paredes e os cantos viram dobras." : "Perfil fechado: placa plana.") },
+      ] },
+      { titulo: "Direção 1", vis: aberto, campos: [
+        { t: "sel", rot: "Condição final", cam: "planoMedio", opcoes: [["cego", "Cego"], ["medio", "Plano médio"]], valor: (f) => (f.planoMedio ? "medio" : "cego"), aoMudar: (f, v) => (f.planoMedio = v === "medio") },
+        { t: "inverter", rot: "Inverter direção", cam: "inverterDirecao", vis: (f) => !f.planoMedio },
+        { t: "num", rot: "Profundidade", cam: "profundidade", un: "mm", min: 0.001 },
+      ] },
+      ...caixasChapa(),
     ],
   };
 }
@@ -197,6 +215,77 @@ function bainha(): Esquema<FeatureBainha> {
         { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 1, max: 359, vis: (f) => f.estilo === "enrolada" },
         { t: "num", rot: "Raio", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.estilo === "enrolada" },
       ] },
+    ],
+  };
+}
+
+function dobraEsboco(d: DadosEsquema): Esquema<FeatureDobraEsboco> {
+  return {
+    titulo: "Dobra esboçada",
+    caixas: [
+      { titulo: "Parâmetros da dobra", campos: [
+        { t: "sel", rot: "Esboço (linha da dobra)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "check", rot: "Inverter lado fixo", cam: "inverterFixo" },
+        { t: "info", texto: (f) => (f.inverterFixo ? "O lado menor fica parado; o maior dobra." : "O lado maior fica parado; o menor dobra.") },
+        { t: "sel", rot: "Posição da dobra", cam: "posicao", opcoes: [
+          ["centro", "Linha de centro da dobra"], ["materialInterno", "Material interno"],
+          ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"],
+        ] },
+        { t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 0.1, max: 180 },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Margem de dobra", campos: [{ t: "info", texto: () => "Fator K da chapa (item Chapa metálica). O planificado não muda de tamanho." }] },
+    ],
+  };
+}
+
+const POSICOES_DOBRA: [string, string][] = [
+  ["centro", "Linha de centro da dobra"], ["materialInterno", "Material interno"],
+  ["materialExterno", "Material externo"], ["dobraExterna", "Dobra externa"],
+];
+
+function junta(d: DadosEsquema): Esquema<FeatureJunta> {
+  return {
+    titulo: "Junta",
+    caixas: [
+      { titulo: "Seleções", campos: [
+        { t: "sel", rot: "Esboço (linha da junta)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "check", rot: "Inverter lado fixo", cam: "inverterFixo" },
+        { t: "info", texto: (f) => (f.inverterFixo ? "O lado menor fica parado; o maior sobe o degrau." : "O lado maior fica parado; o menor sobe o degrau.") },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+      ] },
+      { titulo: "Deslocamento da junta", campos: [
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Deslocamento", cam: "deslocamento", un: "mm", min: 0.001 },
+        { t: "sel", rot: "Posição da cota", cam: "medicao", opcoes: [
+          ["mesmoLado", "Entre faces do mesmo lado"], ["interno", "Interno (vão entre as faces)"], ["total", "Total (de fora a fora)"],
+        ] },
+        { t: "info", texto: () => "Fixar comprimento projetado: próxima versão (hoje o planificado mantém o tamanho e o degrau encurta a peça)." },
+      ] },
+      { titulo: "Posição da junta", campos: [{ t: "sel", rot: "Posição", cam: "posicao", opcoes: POSICOES_DOBRA }] },
+      { titulo: "Ângulo da junta", campos: [{ t: "num", rot: "Ângulo", cam: "angulo", un: "°", min: 0.1, max: 179.9 }] },
+    ],
+  };
+}
+
+function meiaEsquadria(d: DadosEsquema): Esquema<FeatureMeiaEsquadria> {
+  return {
+    titulo: "Flange de meia-esquadria",
+    caixas: [
+      { titulo: "Parâmetros de meia-esquadria", campos: [
+        { t: "sel", rot: "Esboço (perfil aberto)", cam: "esboco", opcoes: () => [["", "—"], ...d.esbocosAntes] },
+        { t: "refs", rot: "Ao longo das arestas", cam: "arestas", aceita: ["aresta"], multiplo: true, dica: "A 1ª é a aresta onde o perfil começa; toque as outras em sequência" },
+        { t: "info", texto: () => "Perfil: só linhas, num plano perpendicular à 1ª aresta e começando nela; cada linha é medida até o canto vivo virtual externo." },
+        { t: "check", rot: "Usar raio próprio", cam: "raioProprio" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.raioProprio },
+        { t: "sel", rot: "Posição da flange", cam: "posicao", opcoes: POSICOES },
+        { t: "inverter", rot: "Inverter direção", cam: "inverter" },
+        { t: "num", rot: "Distância de folga", cam: "folga", un: "mm", min: 0, passo: 0.05 },
+      ] },
+      { titulo: "Deslocamentos inicial/final", campos: [{ t: "info", texto: () => "Próxima versão (hoje a aba vai de ponta a ponta de cada aresta)." }] },
     ],
   };
 }
