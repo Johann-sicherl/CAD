@@ -19,7 +19,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureConverterChapa, FeatureDesdobrar, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
@@ -584,8 +584,15 @@ function revolucaoRapida(f: FeatureRevolucao): Shape3D {
 // ---------- chapa metálica (docs/funcional/chapa.md) ----------
 
 function exigirChapa(ctx: Ctx, oque: string): ModeloChapa {
-  if (!ctx.chapa) throw new Error(`${oque} precisa de uma Flange base antes dele na árvore.`);
+  if (!ctx.chapa) throw new Error(`${oque} precisa de uma Flange base (ou Converter em chapa) antes dele na árvore.`);
   return ctx.chapa;
+}
+
+/** Recursos que criam paredes ou cortam por planos 3D só valem com a chapa dobrada. */
+function exigirChapaDobrada(ctx: Ctx, oque: string): ModeloChapa {
+  const m = exigirChapa(ctx, oque);
+  if (m.planas.size) throw new Error(`${oque}: a chapa está desdobrada — coloque um Dobrar antes deste recurso.`);
+  return m;
 }
 
 /** Peça = chapa (+ corpo anterior) com os recursos comuns que vieram depois reaplicados. */
@@ -802,7 +809,7 @@ function cantosAutomaticos(m: ModeloChapa, feitas: AbaFeita[], folga: number) {
 }
 
 function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
-  const m = exigirChapa(ctx, "A flange de aresta");
+  const m = exigirChapaDobrada(ctx, "A flange de aresta");
   if (!(f.angulo > 0 && f.angulo <= 180)) throw new Error("O ângulo da flange fica entre 0° e 180°.");
   const theta = grausRad(f.angulo);
   const r = f.raioProprio ? f.raio : m.p.r;
@@ -823,7 +830,7 @@ function flangeAresta(f: FeatureFlangeAresta, ctx: Ctx) {
  * das duas abas são aparadas pelo plano bissetor do canto, afastadas pela folga.
  */
 function meiaEsquadria(f: FeatureMeiaEsquadria, ctx: Ctx) {
-  const m = exigirChapa(ctx, "A flange de meia-esquadria");
+  const m = exigirChapaDobrada(ctx, "A flange de meia-esquadria");
   const t = m.p.t;
   const r = f.raioProprio ? f.raio : m.p.r;
   if (!(r > 0)) throw new Error("O raio de dobra deve ser maior que zero.");
@@ -929,7 +936,7 @@ function meiaEsquadria(f: FeatureMeiaEsquadria, ctx: Ctx) {
 }
 
 function bainha(f: FeatureBainha, ctx: Ctx) {
-  const m = exigirChapa(ctx, "A bainha");
+  const m = exigirChapaDobrada(ctx, "A bainha");
   const t = m.p.t;
   const arestas = arestasDaChapa(m, f.arestas, ctx, "Bainha");
   let theta = Math.PI, r: number, compReto: number;
@@ -1035,7 +1042,7 @@ function tratarCanto(m: ModeloChapa, k: Canto, tipo: FeatureFecharCanto["tipoCan
 }
 
 function fecharCanto(f: FeatureFecharCanto, ctx: Ctx) {
-  const m = exigirChapa(ctx, "Fechar canto");
+  const m = exigirChapaDobrada(ctx, "Fechar canto");
   if (!(f.folga >= 0)) throw new Error("A distância de folga não pode ser negativa.");
   let n = 0;
   for (const k of cantosDaChapa(m, "Fechar canto")) if (tratarCanto(m, k, f.tipoCanto, f.folga)) n++;
@@ -1210,7 +1217,7 @@ function inicioDaDobra(posicao: FeatureDobraEsboco["posicao"], theta: number, r:
  * dobra em relação à linha: centrada, material interno/externo ou dobra externa.
  */
 function dobraEsboco(f: FeatureDobraEsboco, ctx: Ctx) {
-  const m = exigirChapa(ctx, "A dobra esboçada");
+  const m = exigirChapaDobrada(ctx, "A dobra esboçada");
   if (!(f.angulo > 0 && f.angulo <= 180)) throw new Error("O ângulo da dobra fica entre 0° e 180°.");
   const { rs, linhas } = linhasDoEsboco(f.esboco, ctx, "Dobra esboçada");
   const t = m.p.t, theta = grausRad(f.angulo);
@@ -1232,7 +1239,7 @@ function dobraEsboco(f: FeatureDobraEsboco, ctx: Ctx) {
  * mesmo lado: Z = (2R + t)(1 − cos θ) + L·sen θ, de onde sai o trecho reto L.
  */
 function junta(f: FeatureJunta, ctx: Ctx) {
-  const m = exigirChapa(ctx, "A junta");
+  const m = exigirChapaDobrada(ctx, "A junta");
   if (!(f.angulo > 0 && f.angulo < 180)) throw new Error("O ângulo da junta fica entre 0° e 180° (sem incluir).");
   const { rs, linhas } = linhasDoEsboco(f.esboco, ctx, "Junta");
   const t = m.p.t, theta = grausRad(f.angulo);
@@ -1282,8 +1289,12 @@ function abaOuCorte(f: FeatureAbaChapa, ctx: Ctx) {
     const a = esc3(rs.x, w.q.u), b = esc3(rs.y, w.q.u), c = esc3(rs.x, w.q.v), d = esc3(rs.y, w.q.v);
     const tx = esc3(sub3(rs.origem, w.q.o), w.q.u), ty = esc3(sub3(rs.origem, w.q.o), w.q.v);
     const Dl = transformarDesenho(D, a, b, c, d, tx, ty);
-    if (corte) m.recortar(w.id, Dl);
-    else {
+    if (corte) {
+      m.recortar(w.id, Dl);
+      // dobras desdobradas que continuam esta parede: o corte também vale nelas
+      const conts = lacos.map((l) => l.poligono.map((p) => ({ x: a * p.x + b * p.y + tx, y: c * p.x + d * p.y + ty })));
+      for (const db of m.dobras) if (db.pai === w.id && m.planas.has(db.id)) m.cortarDobraPlana(db, Dl, conts);
+    } else {
       const conts = lacos.map((l) => l.poligono.map((p) => ({ x: a * p.x + b * p.y + tx, y: c * p.x + d * p.y + ty })));
       m.somar(w.id, Dl, conts);
       usou = true;
@@ -1292,6 +1303,234 @@ function abaOuCorte(f: FeatureAbaChapa, ctx: Ctx) {
     usou = true;
   }
   if (!usou) throw new Error("Faça o esboço numa face plana da chapa (de cima ou de baixo de uma parede).");
+}
+
+// ---------- desdobrar / dobrar (docs/funcional/chapa.md §11) ----------
+
+function desdobrar(f: FeatureDesdobrar, ctx: Ctx) {
+  const m = exigirChapa(ctx, "Desdobrar");
+  const peca = exigirPeca(ctx, "Desdobrar");
+  let fixa: string | undefined;
+  if (f.faceFixa) {
+    if (f.faceFixa.tipo !== "face") throw new Error("Desdobrar: a face fixa precisa ser uma face plana da chapa.");
+    const a = assinaturaFace(acharFace(peca, f.faceFixa.ass));
+    const w = a.geom === "plano" && a.normal ? m.paredeDaFace(a.centro, a.normal) : undefined;
+    if (!w) throw new Error("Desdobrar: a face fixa precisa ser uma face plana de uma parede da chapa (não de uma dobra).");
+    fixa = w.id;
+  }
+  let ids: string[];
+  if (f.todas) ids = m.dobras.map((b) => b.id);
+  else {
+    if (!f.dobras.length) throw new Error("Desdobrar: toque nas faces curvas das dobras (ou marque Coletar todas as dobras).");
+    ids = f.dobras.map((ref) => {
+      if (ref.tipo !== "face") throw new Error("Desdobrar: escolha as faces curvas das dobras.");
+      const a = assinaturaFace(acharFace(peca, ref.ass));
+      const b = a.geom === "cilindro" && a.eixo && a.pontoEixo ? m.dobraDoEixo(a.pontoEixo, a.eixo) : undefined;
+      if (!b) throw new Error("Desdobrar: a face escolhida não é a face curva de uma dobra.");
+      return b.id;
+    });
+  }
+  if (!ids.length) throw new Error("Desdobrar: a chapa não tem dobras.");
+  m.desdobrar(ids, fixa);
+}
+
+// ---------- converter em chapa (docs/funcional/chapa.md §13) ----------
+
+/** Contornos de uma face plana (externo primeiro) em 3D; círculos inteiros ficam exatos. */
+function lacosDaFace(face: Face): { lacos: Vec3[][]; circulos: { c: Vec3; r: number }[] } {
+  const ponto = (v: { x: number; y: number; z: number }): Vec3 => [v.x, v.y, v.z];
+  const perto = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-5;
+  const lacos: Vec3[][] = [], circulos: { c: Vec3; r: number }[] = [];
+  // outerWire/innerWires apagam a face (que fica no cache da topologia): usa cópias
+  for (const fio of [face.clone().outerWire(), ...face.clone().innerWires()]) {
+    const trechos = fio.edges.map((e) => {
+      if (e.geomType === "LINE") return [ponto(e.startPoint), ponto(e.endPoint)];
+      return Array.from({ length: 17 }, (_, i) => ponto(e.pointAt(i / 16)));
+    });
+    if (trechos.length === 1 && perto(trechos[0][0], trechos[0][trechos[0].length - 1])) {
+      const ass = assinaturaAresta(fio.edges[0]);
+      if (ass.geom === "circulo" && ass.centro && ass.raio) {
+        circulos.push({ c: ass.centro, r: ass.raio });
+        continue;
+      }
+    }
+    // encadeia os trechos (cada um pode vir no sentido contrário)
+    const resto = trechos.slice(1), laco = [...trechos[0]];
+    while (resto.length) {
+      const fim = laco[laco.length - 1];
+      const i = resto.findIndex((t) => perto(t[0], fim) || perto(t[t.length - 1], fim));
+      if (i < 0) break;
+      const [t] = resto.splice(i, 1);
+      laco.push(...(perto(t[0], fim) ? t : t.slice().reverse()).slice(1));
+    }
+    if (perto(laco[0], laco[laco.length - 1])) laco.pop();
+    if (laco.length >= 3) lacos.push(laco);
+  }
+  return { lacos, circulos };
+}
+
+/**
+ * Converter em chapa: a face fixa e as faces planas ligadas a ela pelas arestas de dobra viram
+ * paredes (espessura para dentro do sólido, ou para fora), com dobras de raio R nas arestas
+ * escolhidas (canto vivo virtual na face do sólido). Arestas entre paredes que não dobram viram
+ * rasgos com folga; cantos entre abas vizinhas ficam em meia-esquadria.
+ */
+function converterChapa(f: FeatureConverterChapa, ctx: Ctx): ModeloChapa {
+  const oque = "Converter em chapa";
+  if (!(f.espessura > 0)) throw new Error("A espessura da chapa deve ser maior que zero.");
+  if (!(f.raio >= 0)) throw new Error("O raio de dobra não pode ser negativo.");
+  if (!(f.fatorK >= 0 && f.fatorK <= 1)) throw new Error("O fator K fica entre 0 e 1 (típico 0,3 a 0,5).");
+  if (ctx.chapa) throw new Error(`${oque}: a peça já é de chapa.`);
+  const peca = exigirPeca(ctx, oque);
+  if (!f.faceFixa || f.faceFixa.tipo !== "face") throw new Error(`${oque}: escolha a face fixa (uma face plana do sólido).`);
+  const { faces, arestas, topo } = topologia(peca);
+  const indiceDe = <T extends Face | Edge>(lista: T[], x: T) => lista.findIndex((y) => y.isSame(x));
+  const iFixa = indiceDe(faces, acharFace(peca, f.faceFixa.ass));
+  if (iFixa < 0 || topo.faces[iFixa].geom !== "plano") throw new Error(`${oque}: a face fixa precisa ser plana.`);
+  const t = f.espessura, R = f.raio;
+  const plana = (i: number) => topo.faces[i].geom === "plano" && !!topo.faces[i].normal;
+  const facesDaAresta = (k: number) => topo.arestasDaFace!.flatMap((l, i) => (l.includes(k) ? [i] : []));
+  // arestas de dobra: cada uma entre duas faces planas
+  const dobrasK = new Set<number>();
+  for (const ref of f.arestas) {
+    if (ref.tipo !== "aresta") throw new Error(`${oque}: as arestas de dobra precisam ser arestas retas do sólido.`);
+    const k = indiceDe(arestas, acharAresta(peca, ref.ass));
+    const fs = facesDaAresta(k);
+    if (topo.arestas[k]?.geom !== "linha" || fs.length !== 2 || !fs.every(plana)) {
+      throw new Error(`${oque}: cada aresta de dobra precisa ser reta e ficar entre duas faces planas.`);
+    }
+    dobrasK.add(k);
+  }
+  // paredes: faces ligadas à fixa pelas dobras (árvore em largura)
+  const pai = new Map<number, { face: number; aresta: number }>();
+  const ordem = [iFixa];
+  for (let q = 0; q < ordem.length; q++) {
+    for (const k of topo.arestasDaFace![ordem[q]]) {
+      if (!dobrasK.has(k)) continue;
+      for (const j of facesDaAresta(k)) {
+        if (j === ordem[q] || ordem.includes(j)) continue;
+        pai.set(j, { face: ordem[q], aresta: k });
+        ordem.push(j);
+      }
+    }
+  }
+  if (pai.size < [...dobrasK].length) throw new Error(`${oque}: toda aresta de dobra precisa ligar (direta ou indiretamente) à face fixa, sem formar um anel.`);
+  const N = (i: number) => topo.faces[i].normal!;
+  const geo = new Map(ordem.map((i) => [i, lacosDaFace(faces[i])]));
+  const centro = (i: number): Vec3 => {
+    const l = geo.get(i)!.lacos[0];
+    return mul3(l.reduce((a, p) => soma3(a, p), [0, 0, 0] as Vec3), 1 / l.length);
+  };
+  // cada dobra: ângulo, lado e recuo (canto vivo virtual na face do sólido)
+  const s0: 1 | -1 = f.inverter ? 1 : -1; // −1: material para dentro (normal da face aponta para fora)
+  const para = (i: number, k: number) => {
+    // direção no plano da face i, perpendicular à aresta k, apontando para dentro da face
+    const A = topo.arestas[k];
+    const e = normalizar(sub3(A.b, A.a));
+    let w = cruz(N(i), e);
+    if (esc3(w, sub3(centro(i), A.a)) < 0) w = mul3(w, -1);
+    return { e, w, a: A.a, b: A.b };
+  };
+  const infoDobra = new Map<number, { theta: number; paraMaterial: boolean; recuo: number }>();
+  for (const [filha, { face: mae, aresta: k }] of pai) {
+    const pm = para(mae, k), pf = para(filha, k);
+    const d3 = mul3(pm.w, -1); // sai da mãe pela aresta
+    const theta = Math.acos(Math.max(-1, Math.min(1, esc3(d3, pf.w))));
+    if (theta < grausRad(1) || theta > grausRad(175)) throw new Error(`${oque}: o ângulo entre as faces de uma aresta de dobra precisa ficar entre 1° e 175°.`);
+    const paraMaterial = esc3(pf.w, mul3(N(mae), s0)) > 0;
+    infoDobra.set(k, { theta, paraMaterial, recuo: (paraMaterial ? R + t : R) * Math.tan(theta / 2) });
+  }
+  // contorno de cada face recortado nas suas arestas de dobra (recuo dos dois lados)
+  const recorte = (i: number, P: Vec3[]) => {
+    let pol = P;
+    for (const k of topo.arestasDaFace![i]) {
+      const inf = infoDobra.get(k);
+      if (!inf) continue;
+      const { w, a } = para(i, k);
+      pol = recortarPoligono3(pol, (x) => esc3(sub3(x, a), w) - inf.recuo);
+    }
+    return pol;
+  };
+  const m = new ModeloChapa({ t, r: R, k: f.fatorK });
+  const preencher = (w: Parede, i: number) => {
+    const g = geo.get(i)!;
+    const loc = (x: Vec3): P2 => ({ x: esc3(sub3(x, w.q.o), w.q.u), y: esc3(sub3(x, w.q.o), w.q.v) });
+    const conts = g.lacos.map((l) => recorte(i, l).map(loc)).filter((c) => c.length >= 3);
+    if (!conts.length) throw new Error(`${oque}: uma face ficou pequena demais para as dobras (raio + espessura).`);
+    let D = desenhoDoPoligono(conts[0]);
+    for (const c of conts.slice(1)) D = D.cut(desenhoDoPoligono(c));
+    for (const c of g.circulos) {
+      const p = loc(c.c);
+      D = D.cut(drawCircle(c.r).translate(p.x, p.y));
+      conts.push(Array.from({ length: 48 }, (_, j) => ({ x: p.x + c.r * Math.cos((j * Math.PI) / 24), y: p.y + c.r * Math.sin((j * Math.PI) / 24) })));
+    }
+    w.forma = D;
+    w.contornos = conts;
+  };
+  const paredeDe = new Map<number, Parede>();
+  const n0 = N(iFixa), u0 = eixoXParaNormal(n0);
+  const raiz = m.raiz(`${f.id}:${iFixa}`, { o: centro(iFixa), u: u0, v: cruz(n0, u0), n: n0 }, s0, retanguloDesenho(0, 1, 0, 1), []);
+  preencher(raiz, iFixa);
+  paredeDe.set(iFixa, raiz);
+  for (const i of ordem.slice(1)) {
+    const { face: mae, aresta: k } = pai.get(i)!;
+    const P = paredeDe.get(mae)!, inf = infoDobra.get(k)!;
+    const loc = (x: Vec3): P2 => ({ x: esc3(sub3(x, P.q.o), P.q.u), y: esc3(sub3(x, P.q.o), P.q.v) });
+    const pa = loc(topo.arestas[k].a), pb = loc(topo.arestas[k].b);
+    const L = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+    const e = { x: (pb.x - pa.x) / L, y: (pb.y - pa.y) / L };
+    const cm = loc(centro(mae));
+    let d = { x: e.y, y: -e.x };
+    if ((cm.x - pa.x) * d.x + (cm.y - pa.y) * d.y > 0) d = { x: -d.x, y: -d.y };
+    const filha = m.dobrar({
+      pai: P, idDobra: `${f.id}:d${k}`, idFilha: `${f.id}:${i}`, e0: { x: pa.x - d.x * inf.recuo, y: pa.y - d.y * inf.recuo }, e, d,
+      s0: 0, s1: L, theta: inf.theta, r: R, paraMaterial: inf.paraMaterial, forma: retanguloDesenho(0, 1, 0, 1), contornos: [],
+    });
+    // a filha precisa cair no plano da face do sólido (confere a conta da dobra)
+    if (Math.abs(Math.abs(esc3(filha.q.n, N(i))) - 1) > 1e-6 || Math.abs(esc3(sub3(filha.q.o, topo.arestas[k].a), N(i))) > 1e-4) {
+      throw new Error(`${oque}: não consegui posicionar a parede depois de uma dobra (geometria não suportada).`);
+    }
+    preencher(filha, i);
+    paredeDe.set(i, filha);
+  }
+  // cantos entre abas vizinhas: meia-esquadria (paredes e dobras)
+  const tratadas = new Set<string>();
+  for (const k of m.cantos()) {
+    if (tratarCanto(m, k, "meiaEsquadria", f.folga)) tratadas.add([k.a.filha, k.b.filha].sort().join("|"));
+  }
+  // rasgos: arestas entre duas paredes que não dobram → corte pelo plano bissetor, com folga
+  const g = f.folga / 2;
+  topo.arestas.forEach((A, k) => {
+    if (dobrasK.has(k)) return;
+    const fs = facesDaAresta(k).filter((i) => paredeDe.has(i));
+    if (fs.length !== 2) return;
+    const [wa, wb] = fs.map((i) => paredeDe.get(i)!);
+    if (tratadas.has([wa.id, wb.id].sort().join("|"))) return;
+    const ca = centro(fs[0]), cb = centro(fs[1]);
+    let melhor: Vec3 | null = null, sep = 0;
+    for (const n of [sub3(N(fs[0]), N(fs[1])), soma3(N(fs[0]), N(fs[1]))]) {
+      if (Math.hypot(...n) < 1e-6) continue;
+      const u = normalizar(n);
+      const va = esc3(sub3(ca, A.a), u), vb = esc3(sub3(cb, A.a), u);
+      if (va * vb < 0 && Math.min(Math.abs(va), Math.abs(vb)) > sep) (sep = Math.min(Math.abs(va), Math.abs(vb))), (melhor = mul3(u, Math.sign(va)));
+    }
+    if (!melhor) return;
+    (wa.cortes ??= []).push({ p: soma3(A.a, mul3(melhor, g)), m: melhor });
+    (wb.cortes ??= []).push({ p: soma3(A.a, mul3(melhor, -g)), m: mul3(melhor, -1) });
+  });
+  return m;
+}
+
+/** Recorta um polígono 3D (plano) no semiespaço f(x) ≥ 0. */
+function recortarPoligono3(c: Vec3[], f: (x: Vec3) => number): Vec3[] {
+  const out: Vec3[] = [];
+  for (let i = 0; i < c.length; i++) {
+    const p = c[i], q = c[(i + 1) % c.length];
+    const fp = f(p), fq = f(q);
+    if (fp >= 0) out.push(p);
+    if ((fp >= 0) !== (fq >= 0)) out.push(soma3(p, mul3(sub3(q, p), fp / (fp - fq))));
+  }
+  return out;
 }
 
 // ---------- curvas 3D ----------
@@ -1574,6 +1813,8 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
   }
 
   ultimaChapa = ctx.chapa;
+  // chapa desdobrada no fim da árvore: linhas de dobra sobre as dobras planas
+  if (!opcoes.planificar && ctx.chapa?.planas.size) ctx.refsSaida.push({ id: "__dobras", tipo: "curva", linhas: ctx.chapa.linhasDasPlanas() });
   // vista planificada: troca a peça pelo planificado e mostra as linhas de dobra
   let planificada = false;
   if (opcoes.planificar && ctx.chapa) {
@@ -1853,6 +2094,17 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       return reconstruirChapa(ctx);
     case "meiaEsquadria":
       meiaEsquadria(f, ctx);
+      return reconstruirChapa(ctx);
+    case "converterChapa":
+      ctx.chapa = converterChapa(f, ctx);
+      ctx.corpoAntesChapa = null; // o sólido vira a chapa
+      ctx.opsAposChapa = [];
+      return reconstruirChapa(ctx);
+    case "desdobrar":
+      desdobrar(f, ctx);
+      return reconstruirChapa(ctx);
+    case "dobrar":
+      exigirChapa(ctx, "Dobrar").dobrarDeVolta();
       return reconstruirChapa(ctx);
     case "fecharCanto":
       fecharCanto(f, ctx);

@@ -159,7 +159,7 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
 Fase atual: Fases 1, 2 e 3 entregues (e quase toda a Fase 5 antecipada); **Fase 4** (Sheet Metal)
 com o núcleo entregue (flange base, aba, flange de aresta, bainha, corte, planificar, DXF; modelo
 próprio em `src/kernel/chapa.ts`). Canto automático entre abas vizinhas ✅. Árvore com "Chapa metálica" e "Padrão planificado" ✅, dobra esboçada, junta e flange de meia-esquadria ✅,
-cantos (fechar canto, alívio de canto, quebrar canto) ✅. Pendentes da Fase 4: desdobrar/dobrar, converter em chapa, rasgar. Pendentes da Fase 3: filete variável/de face, furo avançado.
+cantos (fechar canto, alívio de canto, quebrar canto) ✅. Desdobrar/dobrar (cortes atravessando dobras) e converter em chapa (com rasgos) ✅. Pendentes da Fase 4: inserir dobras (sólido com casca), margem/dedução de dobra por tabela. Pendentes da Fase 3: filete variável/de face, furo avançado.
 Pendente da Fase 5: propriedades de seção. Estado detalhado em `docs/funcional/README.md`.
 Referências a faces/arestas são por assinatura geométrica (`src/kernel/topologia.ts`): reencontra
 a entidade mais parecida após regenerar; mudanças grandes na peça podem trocar a referência.

@@ -5,7 +5,7 @@ de **paredes** planas (contorno 2D + referencial) ligadas por **dobras** (aresta
 fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o planificado é exato
 (margem de dobra = ângulo × (R + K·t)). DXF em `src/kernel/dxf.ts`. Testes em `scripts/teste-recursos.ts`.
 
-## Estado (26/10/2026)
+## Estado (26/10/2026, atualizado em 26/10/2026)
 
 | Comando | Status |
 |---|---|
@@ -27,7 +27,9 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | **Fechar canto**: todos os cantos entre abas vizinhas, também de recursos diferentes (estende as duas abas além do canto e apara); **meia-esquadria** (plano bissetor), **sobreposto** (a 1ª aba vai até a face de fora da 2ª; a 2ª para na face de dentro da 1ª menos a folga) ou **subposto**; distância de folga; dobras sempre em meia-esquadria | ✅ (escolher cantos/faces a estender um a um, proporção de sobreposição: F4) |
 | **Alívio de canto** (2 dobras), em todos os cantos: **retangular** e **circular** centrados no encontro das linhas de centro das dobras (tamanho = lado/diâmetro; automático = maior BA + 2t), **rasgado** (só a região onde as dobras se cruzam); recorta parede-mãe, dobras e abas, igual no planificado | ✅ (3 dobras, oblongo, largura constante: F4) |
 | **Quebrar canto**: chanfro (distância) ou filete (raio) em cantos do contorno das paredes, escolhidos pela aresta da espessura ou pelo vértice; canto convexo perde material, côncavo ganha; vale no planificado | ✅ (só cantos entre retas) |
-| Desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| **Converter em chapa**: sólido de faces planas → chapa; face fixa, arestas de dobra (canto vivo virtual na face do sólido), espessura para dentro (medidas externas mantidas) ou para fora, bitola/raio/K; arestas entre paredes que não dobram viram **rasgos** com folga; cantos entre abas vizinhas em meia-esquadria | ✅ (faces curvas, dobras em anel e "Inserir dobras" em casca: F4) |
+| **Desdobrar / Dobrar**: todas as dobras ou as escolhidas (face curva), face fixa; com a chapa desdobrada, o **Corte na chapa** pode atravessar dobras e acompanha a dobra ao dobrar (3D e planificado). Recursos que criam paredes pedem Dobrar antes | ✅ |
+| **Rasgar** (comando separado) | ⏸ só faz sentido com "Inserir dobras" em sólido com casca; hoje o rasgo é feito pelo Converter em chapa |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -123,7 +125,7 @@ Canto, ponto de parada, filete, textura, nota de solda.
 Aresta da aba, referências inicial/final, deslocamento, espaçamento (igual / nº de instâncias),
 comprimento/altura da aba, comprimento/folga do rasgo, tipo de canto, rasgo passante.
 
-## 11. Desdobrar / Dobrar (Unfold / Fold)
+## 11. Desdobrar / Dobrar (Unfold / Fold) — ✅
 - **Face fixa** · **Dobras a desdobrar** (lista) · **Coletar todas as dobras**
 - Uso: desdobrar → adicionar corte atravessando dobras → dobrar de volta
 
@@ -133,7 +135,7 @@ comprimento/altura da aba, comprimento/folga do rasgo, tipo de canto, rasgo pass
   tratamento de cantos · **direção do grão** · recriar padrão planificado
 - **Caixa delimitadora** do planificado (comprimento × largura) — alimenta a lista de corte
 
-## 13. Converter em chapa / Inserir dobras / Rasgar
+## 13. Converter em chapa ✅ / Inserir dobras (F4) / Rasgar (no Converter ✅)
 - **Converter em chapa** (de sólido): face fixa, espessura, inverter espessura, manter corpo,
   **arestas de dobra** (lista), **arestas de rasgo** (encontradas), raio padrão, folga do rasgo,
   alívio automático

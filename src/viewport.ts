@@ -84,6 +84,8 @@ export class Viewport {
   readonly grupoEsboco = new THREE.Group();
   /** Botão direito (ou toque longo): menu de contexto. */
   aoMenuContexto: ((e: MouseEvent) => void) | null = null;
+  /** Toque longo (caneta ou dedo parado), em ms; 0 desliga. Fora do esboço abre o menu de contexto. */
+  tempoToqueLongo = 600;
   /** Clique/toque duplo (fora da tríade). */
   aoToqueDuplo: ((e: PointerEvent) => void) | null = null;
   /** Outros interessados em mudanças de câmera (rótulos de cotas no modelo). */
@@ -189,6 +191,8 @@ export class Viewport {
     this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoEsboco, this.grupoAlcas);
     this.renderer.domElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      // toque longo nativo do Android: quem decide é o nosso temporizador (tempo configurável)
+      if (this.dedoOuCanetaNaTela) return;
       this.aoMenuContexto?.(e);
     });
     this.criarTriade();
@@ -322,11 +326,54 @@ export class Viewport {
     const el = this.renderer.domElement;
     const inicios = new Map<number, { x: number; y: number; t: number }>();
     let ultimo: { x: number; y: number; t: number } | null = null;
-    el.addEventListener("pointerdown", (e) => inicios.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() }));
-    el.addEventListener("pointercancel", (e) => inicios.delete(e.pointerId));
+    // toque longo: só caneta/dedo, um ponteiro só, parado (até 8 px) pelo tempo configurado
+    let longo: { id: number; timer: number } | null = null;
+    let consumido = -1; // ponteiro cujo toque longo já abriu o menu: o soltar não vale como toque
+    const pararLongo = () => {
+      if (longo) clearTimeout(longo.timer);
+      longo = null;
+    };
+    el.addEventListener("pointerdown", (e) => {
+      inicios.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+      if (e.pointerType !== "mouse") this.ponteirosToque++;
+      pararLongo();
+      if (e.pointerType === "mouse" || this.emEsboco || this.tempoToqueLongo <= 0 || inicios.size > 1) return;
+      const { clientX, clientY } = e;
+      longo = {
+        id: e.pointerId,
+        timer: window.setTimeout(() => {
+          longo = null;
+          consumido = e.pointerId;
+          this.controles.enabled = false; // o dedo continua na tela: não girar ao soltar
+          this.aoMenuContexto?.(new MouseEvent("contextmenu", { clientX, clientY }));
+          navigator.vibrate?.(15);
+        }, this.tempoToqueLongo),
+      };
+    });
+    el.addEventListener("pointermove", (e) => {
+      const ini = inicios.get(e.pointerId);
+      if (longo?.id === e.pointerId && ini && Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 8) pararLongo();
+    });
+    const fimLongo = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") this.ponteirosToque = Math.max(0, this.ponteirosToque - 1);
+      if (longo?.id === e.pointerId) pararLongo();
+      if (consumido === e.pointerId) {
+        this.controles.enabled = true;
+        return true;
+      }
+      return false;
+    };
+    el.addEventListener("pointercancel", (e) => {
+      inicios.delete(e.pointerId);
+      if (fimLongo(e)) consumido = -1;
+    });
     el.addEventListener("pointerup", (e) => {
       const ini = inicios.get(e.pointerId);
       inicios.delete(e.pointerId);
+      if (fimLongo(e)) {
+        consumido = -1;
+        return;
+      }
       // só o botão esquerdo é "toque" (o direito abre o menu de contexto; o do meio gira)
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (!ini || Math.hypot(e.clientX - ini.x, e.clientY - ini.y) > 8 || performance.now() - ini.t > 600) return;
@@ -362,6 +409,12 @@ export class Viewport {
 
   private emEsboco = false;
 
+  /** Algum dedo/caneta encostado no viewport (o toque longo é tratado pelo nosso temporizador). */
+  private get dedoOuCanetaNaTela() {
+    return this.ponteirosToque > 0;
+  }
+  private ponteirosToque = 0;
+
   /**
    * Mouse como nos CADs profissionais: botão do meio gira (Ctrl + meio arrasta), roda aproxima,
    * direito abre o menu de contexto. Fora do esboço o esquerdo arrastado no vazio também gira
@@ -396,6 +449,19 @@ export class Viewport {
   mundoParaTela(p: Vec3): { x: number; y: number } {
     const t = this.paraTela(new THREE.Vector3(...p));
     return { x: t.x, y: t.y };
+  }
+
+  /** Retângulo da peça na tela (pixels relativos ao viewport); null sem peça. */
+  retanguloDaPeca(): { x0: number; y0: number; x1: number; y1: number } | null {
+    const caixa = new THREE.Box3().setFromObject(this.grupoPeca);
+    if (caixa.isEmpty()) return null;
+    const r = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (let i = 0; i < 8; i++) {
+      const t = this.mundoParaTela([i & 1 ? caixa.max.x : caixa.min.x, i & 2 ? caixa.max.y : caixa.min.y, i & 4 ? caixa.max.z : caixa.min.z]);
+      r.x0 = Math.min(r.x0, t.x); r.y0 = Math.min(r.y0, t.y);
+      r.x1 = Math.max(r.x1, t.x); r.y1 = Math.max(r.y1, t.y);
+    }
+    return r;
   }
 
   /** Coordenadas do plano → pixel (relativo ao canto do viewport). */
