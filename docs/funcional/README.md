@@ -29,6 +29,16 @@ Arquivos:
   translúcido**. No esboço, o Aparar mostra em vermelho o trecho que vai sair e o Estender mostra
   o prolongamento tracejado, antes do toque.
 
+- **Testadores de estresse** (26/10/2026):
+  - `pnpm estresse` (Node): percorre o painel inteiro de cada recurso (cada opção, caixa e valor
+    extremo), monta uma peça com todos os recursos juntos, suprime cada um e embaralha a ordem;
+    acusa estouro, mensagem técnica crua, volume inválido, reinício do kernel e lentidão.
+  - `pnpm estresse:ui -- <computador|tablet|celular> [rapido]` (navegador, com `pnpm dev --port 5199`):
+    clica em todos os comandos, menus, barra de vistas e menu de contexto. Não editar o código
+    durante a rodada: o servidor recarrega a página.
+  - `node scripts/roteiro-ui.cjs <perfil>`: modelagem real pela interface (esboço → extrusão →
+    aresta tocada → filete → massa → desfazer/refazer → salvar e reabrir), conferindo volumes.
+
 - **Toque e tablet** ✅ (26/10/2026):
   - **Caixa flutuante do comando** (piloto na **Extrusão**): em celular e tablet, as opções de
     Direção 1/Direção 2 e o ✓/✕ aparecem numa caixa pequena ao lado da peça, arrastável pelo
