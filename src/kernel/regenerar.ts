@@ -1723,6 +1723,11 @@ function furo(f: FeatureFuro, ctx: Ctx): Ferramenta[] {
   if (!posicoes.length) throw new Error("Posicione os furos: aba Posições → toque na face para cada furo.");
   const m = medidasFuro(f);
   const cx = caixa(ctx)!;
+  // furo maior que a peça inteira é erro de digitação (e derruba o kernel)
+  const maior = Math.max(m.diametro, f.tipoFuro === "rebaixado" ? m.diamRebaixo : 0, f.tipoFuro === "escareado" ? m.diamEscareado : 0);
+  if (!(maior > 0)) throw new Error("O diâmetro do furo deve ser maior que zero.");
+  if (maior > 2 * cx.diag) throw new Error(`Furo de Ø${Number(maior.toFixed(2)).toLocaleString("pt-BR")} mm maior que a peça inteira: confira o diâmetro.`);
+  if (f.condicao.tipo === "cego" && f.condicao.profundidade > 20 * cx.diag) throw new Error("Profundidade do furo muito maior que a peça: use Passante.");
   const baixo = neg3(r.normal); // furo entra contra a normal da face
   let tool: Shape3D | null = null;
   for (const q of posicoes) {
@@ -1782,14 +1787,86 @@ function juntar(fs: Ferramenta[]): Ferramenta[] {
   const out: Ferramenta[] = [];
   for (const op of ["adicionar", "cortar"] as const) {
     const ts = fs.filter((f) => f.op === op).map((f) => f.tool);
-    if (ts.length) out.push({ op, tool: ts.slice(1).reduce((a, b) => a.fuse(b), ts[0]) });
+    if (ts.length) out.push({ op, tool: uniaoEmArvore(ts) });
   }
   return out;
 }
 
+/**
+ * União de muitos sólidos em pares (1+2, 3+4… depois os resultados): cada booleana opera em
+ * peças pequenas. Somar um a um faz o resultado crescer a cada passo (custo quadrático).
+ */
+function uniaoEmArvore(ts: Shape3D[]): Shape3D {
+  let lista = ts;
+  while (lista.length > 1) {
+    const prox: Shape3D[] = [];
+    for (let k = 0; k < lista.length; k += 2) prox.push(k + 1 < lista.length ? lista[k].fuse(lista[k + 1]) : lista[k]);
+    lista = prox;
+  }
+  return lista[0];
+}
+
 // ---------- regeneração ----------
 
+/**
+ * Falha fatal do WebAssembly (acesso fora da memória, divisão por zero, função nula…): depois
+ * dela a memória do OpenCascade pode ficar corrompida e toda regeneração seguinte falha. Quem
+ * chama precisa reiniciar o kernel (ver regenerarComRecuperacao).
+ */
+export class KernelQuebrado extends Error {
+  constructor(public culpado: string | null, causa: string) {
+    super(`Falha interna do kernel: ${causa}`);
+  }
+}
+
+const FATAL = /memory access out of bounds|table index is out of bounds|null function|function signature mismatch|unreachable|remainder by zero|divide by zero|integer overflow|call stack|out of memory|Aborted/i;
+export function ehFatal(e: unknown): boolean {
+  const W = (globalThis as { WebAssembly?: { RuntimeError?: new () => Error } }).WebAssembly;
+  return (!!W?.RuntimeError && e instanceof W.RuntimeError) || (e instanceof Error && FATAL.test(e.message));
+}
+
 export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean; previa?: string } = {}): ResultadoRegeneracao {
+  try {
+    return regenerarBruto(features, tolerancia, opcoes);
+  } catch (e) {
+    if (e instanceof KernelQuebrado) throw e;
+    // falha fora dos recursos (malha, topologia, volume): o recurso culpado é procurado
+    throw new KernelQuebrado(null, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/**
+ * Regenera; se o kernel quebrar, reinicia o OpenCascade, suprime o recurso culpado (marcado com
+ * erro) e tenta de novo — o resto da peça continua aparecendo. Sem culpado conhecido (a falha foi
+ * ao gerar a malha), testa o recurso em edição e depois os últimos da árvore.
+ */
+export async function regenerarComRecuperacao(
+  features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }, reiniciar: () => Promise<void>,
+): Promise<ResultadoRegeneracao> {
+  let feats = features;
+  const extras: ErroFeature[] = [];
+  const msg = "O kernel não aguentou este recurso (geometria degenerada) e foi reiniciado. Mude os valores ou exclua o recurso.";
+  const candidatos = [opcoes.previa, ...features.filter((f) => !f.suprimida && f.tipo !== "esboco").map((f) => f.id).reverse()].filter((x): x is string => !!x);
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    try {
+      const r = regenerar(feats, tolerancia, opcoes);
+      r.erros.push(...extras.filter((x) => !r.erros.some((y) => y.id === x.id)));
+      return r;
+    } catch (e) {
+      if (!(e instanceof KernelQuebrado)) throw e;
+      await reiniciar();
+      ultimaPeca = null;
+      ultimaChapa = null;
+      const culpado = e.culpado ?? candidatos.find((id) => !extras.some((x) => x.id === id));
+      if (!culpado) throw e;
+      extras.push({ id: culpado, mensagem: msg });
+      feats = feats.map((f) => (f.id === culpado ? { ...f, suprimida: true } : f));
+    }
+  }
+  throw new Error("O kernel falhou várias vezes seguidas: recarregue a página.");
+}
+
+function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
@@ -1805,9 +1882,11 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
       rastreador.registrar(f.id, antes, ctx.peca);
       if (opcoes.previa === f.id) previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
     } catch (e) {
+      // memória do kernel possivelmente corrompida: não dá para continuar nesta instância
+      if (ehFatal(e)) throw new KernelQuebrado(f.id, (e as Error).message);
       // A feature com falha é ignorada e a regeneração continua com a peça anterior,
       // como um CAD faz ao marcar a feature em vermelho na árvore.
-      erros.push({ id: f.id, mensagem: traduzirErro(e) });
+      erros.push({ id: f.id, mensagem: traduzirErro(e, f.tipo) });
     }
     tempos.push({ id: f.id, ms: performance.now() - t0 });
   }
@@ -1882,12 +1961,16 @@ function materialRemovido(antes: Shape3D | null, depois: Shape3D | null, toleran
     const a = r.meshEdges({ tolerance: tolerancia * 2, angularTolerance: 20 });
     if (!m.triangles.length) return null;
     return { vertices: Float32Array.from(m.vertices), normais: Float32Array.from(m.normals), triangulos: Uint32Array.from(m.triangles), arestas: Float32Array.from(a.lines) };
-  } catch {
+  } catch (e) {
+    if (ehFatal(e)) throw e;
     return null; // a prévia nunca impede a regeneração
   }
 }
 
 let ultimaChapa: ModeloChapa | null = null;
+
+/** Limite de cópias do padrão linear (n1 × n2): acima disso a regeneração trava o aparelho. */
+const MAX_COPIAS = 500;
 
 /** DXF do planificado da última regeneração e o resumo para a lista de corte. */
 export function exportarDxf(nome: string): { dxf: string; resumo: ResumoPlanificado } {
@@ -2011,6 +2094,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const usa2 = !!f.dir2?.ativa;
       const d2 = usa2 ? mul3(eixoDeRef(f.dir2!.ref, ctx).dir, f.dir2!.inverter ? -1 : 1) : [0, 0, 0] as Vec3;
       const n2 = usa2 ? Math.max(1, Math.round(f.dir2!.instancias)) : 1;
+      if (!(n1 * n2 <= MAX_COPIAS)) throw new Error(`Padrão grande demais (${n1} × ${n2} = ${n1 * n2} instâncias): o máximo é ${MAX_COPIAS}.`);
       const copias: Ferramenta[] = [];
       for (let i = 0; i < n1; i++) for (let j = 0; j < n2; j++) {
         if ((i === 0 && j === 0) || f.pular.includes(`${i},${j}`)) continue;
@@ -2026,7 +2110,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const base = ferramentasDe(f.recursos, ctx);
       const ax = eixoDeRef(f.eixo, ctx);
       const n = Math.max(1, Math.round(f.instancias));
+      if (!(n <= 360)) throw new Error(`Padrão grande demais (${n} instâncias): o máximo é 360.`);
       const passo = (f.igual ? (Math.abs(f.angulo) >= 360 ? f.angulo / n : f.angulo / Math.max(1, n - 1)) : f.angulo) * (f.inverter ? -1 : 1);
+      // cópias quase no mesmo lugar: o booleano degenera (e pode derrubar o kernel)
+      if (n > 1 && !(Math.abs(passo) >= 0.5)) throw new Error(`Ângulo entre as instâncias pequeno demais (${Math.abs(passo).toFixed(3)}°): o mínimo é 0,5°.`);
       const copias: Ferramenta[] = [];
       for (let i = 1; i < n; i++) {
         if (f.pular.includes(String(i))) continue;
@@ -2164,15 +2251,33 @@ export function exportar(formato: "step" | "stl"): Blob {
     : ultimaPeca.blobSTL({ tolerance: 0.01, angularTolerance: 5, binary: true } as never);
 }
 
-function traduzirErro(e: unknown): string {
+/** Quando o kernel falha sem texto: o que costuma causar a falha em cada recurso. */
+const DICA_FALHA: Partial<Record<Feature["tipo"], string>> = {
+  extrusao: "Não foi possível extrudar: confira se o perfil é fechado e sem auto-interseção, e a condição final.",
+  revolucao: "Não foi possível revolver: o perfil não pode cruzar o eixo de revolução.",
+  filete: "Raio grande demais para as arestas escolhidas (ou arestas que não aceitam filete).",
+  chanfro: "Distância grande demais para as arestas escolhidas.",
+  casca: "Não foi possível fazer a casca: espessura grande demais para a peça ou face que não pode ser removida.",
+  inclinacao: "Não foi possível inclinar essas faces: escolha faces laterais (não paralelas ao plano neutro) e um ângulo menor.",
+  nervura: "Não foi possível fazer a nervura: o esboço precisa ficar sobre a peça e a nervura precisa encostar nela.",
+  furo: "Não foi possível fazer o furo: confira se os pontos estão sobre a face e a profundidade.",
+  varredura: "Não foi possível varrer: o perfil não pode ser maior que a curvatura da trajetória nem se cruzar.",
+  loft: "Não foi possível fazer o loft: confira a ordem dos perfis e se eles não se cruzam.",
+  padraoLinear: "Não foi possível repetir: as cópias precisam encostar na peça (ou mude o espaçamento).",
+  padraoCircular: "Não foi possível repetir: as cópias precisam encostar na peça (ou mude o ângulo/quantidade).",
+  espelhar: "Não foi possível espelhar: a cópia precisa encostar na peça ou ficar separada dela sem sobrepor faces.",
+};
+
+function traduzirErro(e: unknown, tipo?: Feature["tipo"]): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/fillet|chamfer/i.test(msg)) return "Raio/distância grande demais para as arestas escolhidas.";
   if (/shell|thick/i.test(msg)) return "Não foi possível fazer a casca (espessura grande demais para a peça?).";
   if (/draft/i.test(msg)) return "Não foi possível inclinar essas faces (verifique o plano neutro).";
   if (/boolean|fuse|cut|intersect/i.test(msg)) return "Falha na operação booleana.";
   // Exceções C++ do OpenCascade chegam como números ou WebAssembly.Exception, sem texto útil.
-  if (typeof e === "number" || /WebAssembly|object/i.test(msg)) {
-    return "O kernel não conseguiu gerar esta geometria (valor grande demais ou perfil inválido).";
+  // forma vazia/nula devolvida pelo kernel (replicad em inglês): mesma dica da falha sem texto
+  if (typeof e === "number" || /WebAssembly|object|has not type|is null|null shape|not a valid/i.test(msg)) {
+    return (tipo && DICA_FALHA[tipo]) ?? "O kernel não conseguiu gerar esta geometria (valor grande demais ou perfil inválido).";
   }
   return msg;
 }

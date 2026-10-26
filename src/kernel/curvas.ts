@@ -28,13 +28,20 @@ export function medidasHelice(f: Pick<FeatureCurva, "definicao" | "passo" | "rev
     if (!(v > 0)) throw new Error(`${nome} deve ser maior que zero.`);
     return v;
   };
-  switch (f.definicao) {
-    case "passoRevolucao": return { passo: pos(f.passo, "O passo"), voltas: pos(f.revolucoes, "O nº de revoluções"), altura: f.passo * f.revolucoes };
-    case "alturaRevolucao": return { passo: pos(f.altura, "A altura") / pos(f.revolucoes, "O nº de revoluções"), voltas: f.revolucoes, altura: f.altura };
-    case "alturaPasso": return { passo: pos(f.passo, "O passo"), voltas: pos(f.altura, "A altura") / f.passo, altura: f.altura };
-    case "espiral": return { passo: pos(f.passo, "O passo"), voltas: pos(f.revolucoes, "O nº de revoluções"), altura: 0 };
-  }
+  const r = (() => {
+    switch (f.definicao) {
+      case "passoRevolucao": return { passo: pos(f.passo, "O passo"), voltas: pos(f.revolucoes, "O nº de revoluções"), altura: f.passo * f.revolucoes };
+      case "alturaRevolucao": return { passo: pos(f.altura, "A altura") / pos(f.revolucoes, "O nº de revoluções"), voltas: f.revolucoes, altura: f.altura };
+      case "alturaPasso": return { passo: pos(f.passo, "O passo"), voltas: pos(f.altura, "A altura") / f.passo, altura: f.altura };
+      case "espiral": return { passo: pos(f.passo, "O passo"), voltas: pos(f.revolucoes, "O nº de revoluções"), altura: 0 };
+    }
+  })();
+  // cada volta vira dezenas de pontos e trechos: limite para não travar a regeneração
+  if (r.voltas > MAX_VOLTAS) throw new Error(`Voltas demais (${Math.round(r.voltas)}): o máximo é ${MAX_VOLTAS}. Aumente o passo ou diminua a altura.`);
+  return r;
 }
+
+export const MAX_VOLTAS = 200;
 
 /**
  * Pontos da hélice (ou espiral plana) a partir do círculo de base. Hélice cônica: o raio muda
