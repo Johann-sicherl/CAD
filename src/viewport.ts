@@ -9,7 +9,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
-import type { InfoReferencia, MalhaPeca } from "./kernel/regenerar";
+import type { InfoReferencia, MalhaPeca, MalhaSimples } from "./kernel/regenerar";
 import type { Topologia } from "./kernel/topologia";
 import { coresCurvatura, coresEspessura, coresInclinacao, materialZebra, type Analise } from "./analises";
 import type { Plano, Vec3 } from "./model";
@@ -56,6 +56,9 @@ const COR_SELECAO = 0x1f78d1;
 const COR_REALCE = 0x7fb8ef;
 /** Faces do recurso selecionado na árvore: outro tom, para ver onde ele está na peça. */
 const COR_RECURSO = 0x2bb3a3;
+/** Prévia do recurso em edição: faces que ele cria (âmbar) e material que ele tira (vermelho). */
+const COR_PREVIA = 0xf0a020;
+const COR_REMOVIDO = 0xd9443a;
 
 /** Face plana tocada na peça: ponto e normal para iniciar um esboço nela. */
 export interface FacePlana {
@@ -103,6 +106,7 @@ export class Viewport {
   private posArestas: Float32Array = new Float32Array();
   topologia: Topologia | null = null;
   private grupoDestaque = new THREE.Group();
+  private grupoPrevia = new THREE.Group();
   private grupoRefsExtras = new THREE.Group();
   private grupoSecao = new THREE.Group();
   private secao: THREE.Plane | null = null;
@@ -181,7 +185,8 @@ export class Viewport {
     this.grupoDestaque.renderOrder = 5;
     this.grupoAlcas.renderOrder = 30;
     this.ouvintesCamera.add(() => { if (this.alcas.length) this.desenharAlcas(); });
-    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoEsboco, this.grupoAlcas);
+    this.grupoPrevia.renderOrder = 4;
+    this.cena.add(this.grupoPeca, this.grupoRefs, this.grupoRefsExtras, this.grupoSecao, this.grupoDestaque, this.grupoPrevia, this.grupoEsboco, this.grupoAlcas);
     this.renderer.domElement.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       this.aoMenuContexto?.(e);
@@ -820,7 +825,31 @@ export class Viewport {
   }
 
   /** Realça entidades selecionadas (azul forte) e a que está sob o cursor (azul claro). */
-  destacarEntidades(sel: Entidade[], realce: Entidade | null = null, doRecurso: Entidade[] = []) {
+  /** Prévia do material que o recurso em edição tira (sólido translúcido vermelho). */
+  mostrarPrevia(m: MalhaSimples | null | undefined) {
+    for (const o of [...this.grupoPrevia.children]) {
+      this.grupoPrevia.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+      ((o as THREE.Mesh).material as THREE.Material)?.dispose();
+    }
+    if (m) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
+      geo.setAttribute("normal", new THREE.BufferAttribute(m.normais, 3));
+      geo.setIndex(new THREE.BufferAttribute(m.triangulos, 1));
+      const corpo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: COR_REMOVIDO, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
+        clippingPlanes: this.secao ? [this.secao] : [],
+      }));
+      const geoA = new THREE.BufferGeometry();
+      geoA.setAttribute("position", new THREE.BufferAttribute(m.arestas, 3));
+      const arestas = new THREE.LineSegments(geoA, new THREE.LineBasicMaterial({ color: COR_REMOVIDO, transparent: true, opacity: 0.9, depthTest: false }));
+      this.grupoPrevia.add(corpo, arestas);
+    }
+    this.precisaRender = true;
+  }
+
+  destacarEntidades(sel: Entidade[], realce: Entidade | null = null, doRecurso: Entidade[] = [], previa: Entidade[] = []) {
     for (const o of [...this.grupoDestaque.children]) {
       this.grupoDestaque.remove(o);
       (o as THREE.Mesh).geometry?.dispose();
@@ -828,6 +857,7 @@ export class Viewport {
     }
     const solido = this.grupoPeca.getObjectByName("solido") as THREE.Mesh | undefined;
     const itens = [
+      ...previa.map((e) => ({ e, cor: COR_PREVIA })),
       ...doRecurso.map((e) => ({ e, cor: COR_RECURSO })),
       ...sel.map((e) => ({ e, cor: COR_SELECAO })),
       ...(realce ? [{ e: realce, cor: COR_REALCE }] : []),

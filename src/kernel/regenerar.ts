@@ -70,6 +70,19 @@ export interface ResultadoRegeneracao {
   tempos: { id: string; ms: number }[];
   /** Faces da peça final (índices de `topologia.faces`) de cada recurso: destaque na árvore. */
   facesPorRecurso: Record<string, number[]>;
+  /**
+   * Prévia do recurso em edição (opção `previa`): o material que ele tira (peça antes − peça
+   * depois), para ver cortes, furos, filetes etc. antes de confirmar.
+   */
+  previaRemovido?: MalhaSimples | null;
+}
+
+/** Malha só de triângulos (prévia). */
+export interface MalhaSimples {
+  vertices: Float32Array;
+  normais: Float32Array;
+  triangulos: Uint32Array;
+  arestas: Float32Array;
 }
 
 // ---------- vetores ----------
@@ -1537,11 +1550,12 @@ function juntar(fs: Ferramenta[]): Ferramenta[] {
 
 // ---------- regeneração ----------
 
-export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean } = {}): ResultadoRegeneracao {
+export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean; previa?: string } = {}): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
   const rastreador = new RastreadorFaces();
+  let previaRemovido: MalhaSimples | null | undefined;
 
   for (const f of features) {
     if (f.suprimida) continue;
@@ -1550,6 +1564,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
       const antes = ctx.peca;
       regenerarFeature(f, ctx);
       rastreador.registrar(f.id, antes, ctx.peca);
+      if (opcoes.previa === f.id) previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
     } catch (e) {
       // A feature com falha é ignorada e a regeneração continua com a peça anterior,
       // como um CAD faz ao marcar a feature em vermelho na árvore.
@@ -1606,7 +1621,29 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
     referencias: ctx.refsSaida,
     tempos,
     facesPorRecurso: planificada ? {} : rastreador.atribuir(peca),
+    previaRemovido: planificada ? null : previaRemovido,
   };
+}
+
+/** Material que um recurso tirou da peça (antes − depois), em malha; null se não tirou nada. */
+function materialRemovido(antes: Shape3D | null, depois: Shape3D | null, tolerancia: number): MalhaSimples | null {
+  if (!antes || !depois || antes === depois) return null;
+  try {
+    const r = antes.cut(depois);
+    let v = 0;
+    try {
+      v = measureVolume(r);
+    } catch {
+      v = 0;
+    }
+    if (!(v > 1e-6)) return null;
+    const m = r.mesh({ tolerance: tolerancia * 2, angularTolerance: 20 });
+    const a = r.meshEdges({ tolerance: tolerancia * 2, angularTolerance: 20 });
+    if (!m.triangles.length) return null;
+    return { vertices: Float32Array.from(m.vertices), normais: Float32Array.from(m.normals), triangulos: Uint32Array.from(m.triangles), arestas: Float32Array.from(a.lines) };
+  } catch {
+    return null; // a prévia nunca impede a regeneração
+  }
 }
 
 let ultimaChapa: ModeloChapa | null = null;

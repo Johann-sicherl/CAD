@@ -23,6 +23,12 @@ Arquivos:
 
 ## Estado da implementação (22/10/2026)
 
+- **Prévia antes do OK** ✅ (26/10/2026): com o painel de qualquer recurso aberto, a peça é
+  recalculada ao vivo; as faces que o recurso cria ficam em **âmbar** e o material que ele tira
+  (cortes, furos, filetes, casca, corte na chapa, alívios…) aparece como sólido **vermelho
+  translúcido**. No esboço, o Aparar mostra em vermelho o trecho que vai sair e o Estender mostra
+  o prolongamento tracejado, antes do toque.
+
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
   equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,

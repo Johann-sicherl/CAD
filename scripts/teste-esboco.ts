@@ -113,6 +113,30 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   verdade("aparar círculo vira arco", e2.geos.find((g) => g.id === ci.id)?.tipo === "arco");
 }
 
+// 5b. Prévia do aparar/estender: mostra o trecho certo sem mexer no esboço
+{
+  const e = plano();
+  const h = op.linha(e, op.ponto(e, { x: -10, y: 0 }), op.ponto(e, { x: 10, y: 0 }));
+  op.linha(e, op.ponto(e, { x: 0, y: -10 }), op.ponto(e, { x: 0, y: 10 }));
+  op.linha(e, op.ponto(e, { x: 5, y: -10 }), op.ponto(e, { x: 5, y: 10 }));
+  const antes = JSON.stringify(e);
+  const [t1] = op.trechoAparado(e, h.id, { x: 2, y: 0 });
+  verdade("prévia do aparar: trecho entre as interseções (0 a 5)", t1.length === 2 && Math.abs(t1[0].x) < 1e-9 && Math.abs(t1[1].x - 5) < 1e-9);
+  const [t2] = op.trechoAparado(e, h.id, { x: 8, y: 0 });
+  verdade("prévia do aparar: ponta solta (5 a 10)", Math.abs(t2[0].x - 5) < 1e-9 && Math.abs(t2[1].x - 10) < 1e-9);
+  verdade("prévia do aparar não altera o esboço", JSON.stringify(e) === antes);
+  const c = plano();
+  const ci = op.circulo(c, op.ponto(c, { x: 0, y: 0 }), 10);
+  op.linha(c, op.ponto(c, { x: -20, y: 5 }), op.ponto(c, { x: 20, y: 5 }));
+  const [arco] = op.trechoAparado(c, ci.id, { x: 0, y: 10 });
+  verdade("prévia do aparar no círculo: arco de cima (y ≥ 5)", arco.every((p) => p.y >= 5 - 1e-9) && arco.length > 10);
+  const x = plano();
+  const lx = op.linha(x, op.ponto(x, { x: 0, y: 0 }), op.ponto(x, { x: 10, y: 0 }));
+  op.linha(x, op.ponto(x, { x: 30, y: -10 }), op.ponto(x, { x: 30, y: 10 }));
+  const est = op.trechoEstendido(x, lx.id, { x: 9, y: 0 });
+  verdade("prévia do estender: de 10 até 30", !!est && Math.abs(est[0].x - 10) < 1e-9 && Math.abs(est[1].x - 30) < 1e-9);
+}
+
 // 6. Offset de retângulo 20×10 para fora em 2 → 24×14
 {
   const e = plano();

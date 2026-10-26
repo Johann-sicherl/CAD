@@ -9,7 +9,7 @@ import { exportar, exportarDxf, pecaAtual, regenerar } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
 
 export type PedidoKernel =
-  | { tipo: "regenerar"; seq: number; features: Feature[]; planificar?: boolean }
+  | { tipo: "regenerar"; seq: number; features: Feature[]; planificar?: boolean; previa?: string }
   | { tipo: "dxf"; seq: number; nome: string }
   | { tipo: "exportar"; seq: number; formato: "step" | "stl" }
   | { tipo: "medir"; seq: number; refs: Referencia[] }
@@ -44,12 +44,15 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
     switch (p.tipo) {
       case "regenerar": {
         const t0 = performance.now();
-        const resultado = regenerar(p.features, 0.05, { planificar: p.planificar });
+        const resultado = regenerar(p.features, 0.05, { planificar: p.planificar, previa: p.previa });
         const ms = performance.now() - t0;
-        const m = resultado.malha;
+        const m = resultado.malha, pr = resultado.previaRemovido;
         enviar(
           { tipo: "regenerado", seq: p.seq, resultado, ms },
-          m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : [],
+          [
+            ...(m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : []),
+            ...(pr ? [pr.vertices.buffer, pr.normais.buffer, pr.triangulos.buffer, pr.arestas.buffer] : []),
+          ],
         );
         break;
       }

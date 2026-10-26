@@ -65,6 +65,8 @@ export interface Topologia {
   faces: AssinaturaFace[];
   arestas: AssinaturaAresta[];
   vertices: Vec3[];
+  /** Índices (em `arestas`) das arestas de cada face (contorno externo e furos). */
+  arestasDaFace?: number[][];
 }
 
 const cache = new WeakMap<Shape3D, { faces: Face[]; arestas: Edge[]; topo: Topologia }>();
@@ -83,7 +85,21 @@ export function topologia(peca: Shape3D) {
     add(a.a);
     add(a.b);
   }
-  t = { faces, arestas, topo: { faces: faces.map(assinaturaFace), arestas: assA, vertices: vs } };
+  // arestas de cada face (para converter a face inteira no esboço): busca pelo hash do OCC
+  const porHash = new Map<number, number[]>();
+  arestas.forEach((e, i) => {
+    const h = e.hashCode;
+    porHash.set(h, [...(porHash.get(h) ?? []), i]);
+  });
+  const arestasDaFace = faces.map((f) => {
+    const r: number[] = [];
+    for (const e of f.edges) {
+      const i = (porHash.get(e.hashCode) ?? []).find((k) => arestas[k].isSame(e));
+      if (i !== undefined && !r.includes(i)) r.push(i);
+    }
+    return r;
+  });
+  t = { faces, arestas, topo: { faces: faces.map(assinaturaFace), arestas: assA, vertices: vs, arestasDaFace } };
   cache.set(peca, t);
   return t;
 }

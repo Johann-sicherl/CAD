@@ -35,6 +35,8 @@ export interface OpcoesCamada {
   conflitantes?: Set<string>;
   /** Geometria provisória da ferramenta (linhas em pares de pontos) e pontos de encaixe. */
   previa?: { segmentos: P2[]; pontos: P2[] };
+  /** Prévia do que a ferramenta vai apagar (aparar): segmentos em vermelho, por cima. */
+  remover?: P2[];
   marcador?: P2 | null;
   mostrarEixos?: boolean;
   /** Cota sendo posicionada (segue o cursor). */
@@ -126,6 +128,7 @@ export function construirCamada(esb: FeatureEsboco, o: OpcoesCamada): THREE.Grou
     if (d) adicionar({ cor: CORES.previa, largura: 1.2, tracejado: false }, d.segmentos);
   }
   if (o.previa?.segmentos.length) adicionar({ cor: CORES.previa, largura: 1.6, tracejado: true }, o.previa.segmentos);
+  if (o.remover?.length) adicionar({ cor: CORES.conflito, largura: 4.5, tracejado: false }, o.remover);
 
   for (const { t, pos } of tracos.values()) {
     const geo = new LineSegmentsGeometry();

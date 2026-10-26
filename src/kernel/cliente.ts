@@ -44,9 +44,10 @@ export class ClienteKernel {
     });
   }
 
-  regenerar(features: Feature[], planificar = false) {
+  /** `previa`: id do recurso em edição (o kernel devolve o material que ele tira). */
+  regenerar(features: Feature[], planificar = false, previa?: string) {
     this.ultimaRegeneracao = ++this.seq;
-    this.enviar({ tipo: "regenerar", seq: this.seq, features, planificar });
+    this.enviar({ tipo: "regenerar", seq: this.seq, features, planificar, previa });
   }
 
   /** DXF do planificado (da última regeneração) e o resumo da lista de corte. */

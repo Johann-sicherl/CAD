@@ -7,7 +7,7 @@ import { novoId } from "../model";
 import {
   angulo, angulosArco, areaAssinada, centroTresPontos, cruz2, dist, distPontoSegmento, EIXO_H, EIXO_V,
   elipseDe, esc2, extremidades, IDS_IMPLICITOS, parabolaDe, paramElipse, paramParabola, pontoElipse, pontoParabola, intersecoes, mapaPontos, mult, norm, ORIGEM, paramNoArco, polar,
-  pontosDaGeo, soma, sub, type MapaPontos, type P2,
+  pontosDaGeo, soma, sub, tracosDaGeo, type MapaPontos, type P2,
 } from "./geometria";
 
 type Geo<T extends GeoEsboco["tipo"]> = Extract<GeoEsboco, { tipo: T }>;
@@ -288,6 +288,44 @@ export function aparar(esb: FeatureEsboco, geoId: string, toque: P2, opc: Opcoes
   esb.restricoes = esb.restricoes.filter((r) => !(r.tipo === "distancia" && r.a === g.id && !r.b));
   limpar(esb);
   return true;
+}
+
+/**
+ * Prévia do aparar: o trecho que `aparar` tiraria com o mesmo toque (polilinhas), sem mexer no
+ * esboço. Vazio se nada sairia.
+ */
+export function trechoAparado(esb: FeatureEsboco, geoId: string, toque: P2, opc: OpcoesAparar = {}): P2[][] {
+  const g = esb.geos.find((x) => x.id === geoId);
+  if (!g) return [];
+  const pts = mapaPontos(esb);
+  const inteira = () => (opc.cortadores ? [] : tracosDaGeo(g, pts));
+  if (g.tipo !== "linha" && g.tipo !== "arco" && g.tipo !== "circulo") return inteira();
+  const cortes = cortesNaGeo(esb, g, pts, opc.cortadores);
+  if (g.tipo === "circulo") {
+    if (cortes.length < 2) return inteira();
+    const ctr = pts.get(g.c)!;
+    const t = norm(angulo(ctr, toque));
+    const ords = [...cortes].sort((a, b) => a.param - b.param);
+    const depois = ords.find((c) => c.param > t) ?? ords[0];
+    const antes = [...ords].reverse().find((c) => c.param < t) ?? ords[ords.length - 1];
+    if (depois === antes) return [];
+    let a0 = antes.param, a1 = depois.param;
+    if (a1 <= a0) a1 += 2 * Math.PI;
+    return [Array.from({ length: 49 }, (_, k) => polar(ctr, g.r, a0 + ((a1 - a0) * k) / 48))];
+  }
+  let t: number;
+  if (g.tipo === "linha") t = distPontoSegmento(toque, pts.get(g.p1)!, pts.get(g.p2)!).t;
+  else {
+    const ctr = pts.get(g.c)!;
+    const [a0, a1] = angulosArco(ctr, pts.get(g.ini)!, pts.get(g.fim)!);
+    t = paramNoArco(angulo(ctr, toque), a0, a1) ?? 0.5;
+  }
+  const antes = cortes.filter((c) => c.param < t).sort((a, b) => b.param - a.param)[0];
+  const depois = cortes.filter((c) => c.param > t).sort((a, b) => a.param - b.param)[0];
+  if (!antes && !depois) return inteira();
+  const lo = antes?.param ?? 0, hi = depois?.param ?? 1;
+  const n = g.tipo === "linha" ? 1 : 32;
+  return [Array.from({ length: n + 1 }, (_, k) => pontoNoParametro(g, pts, lo + ((hi - lo) * k) / n)!)];
 }
 
 /** Ponto no parâmetro 0..1 de uma linha ou arco. */
@@ -918,6 +956,21 @@ export function chanfroEsboco(esb: FeatureEsboco, p: string, d1: number, d2 = d1
 }
 
 /** Estende a ponta da linha mais próxima do toque até a próxima interseção. */
+/** Prévia do estender: da ponta da linha até onde ela encontraria outra entidade (ou null). */
+export function trechoEstendido(esb: FeatureEsboco, geoId: string, toque: P2): [P2, P2] | null {
+  const g = esb.geos.find((x): x is Geo<"linha"> => x.id === geoId && x.tipo === "linha");
+  if (!g) return null;
+  const copia: FeatureEsboco = JSON.parse(JSON.stringify(esb));
+  const pts0 = mapaPontos(esb);
+  const a = pts0.get(g.p1)!, b = pts0.get(g.p2)!;
+  const para = dist(toque, b) <= dist(toque, a) ? b : a;
+  if (!estender(copia, geoId, toque)) return null;
+  const g2 = copia.geos.find((x): x is Geo<"linha"> => x.id === geoId && x.tipo === "linha")!;
+  const pts = mapaPontos(copia);
+  const novo = dist(para, b) < 1e-9 ? pts.get(g2.p2)! : pts.get(g2.p1)!;
+  return [para, novo];
+}
+
 export function estender(esb: FeatureEsboco, geoId: string, toque: P2): boolean {
   const g = esb.geos.find((x): x is Geo<"linha"> => x.id === geoId && x.tipo === "linha");
   if (!g) return false;
