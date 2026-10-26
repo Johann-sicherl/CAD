@@ -1,8 +1,8 @@
 # WJProMaster — contexto para o Claude
 
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
-> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlaniel**
-> (planilhas), **WJWord** (documentos), **WJApion** (apresentações), **WJCronProject**
+> **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
+> (planilhas), **WJWord** (documentos), **WJApresentation** (apresentações), **WJCronProject**
 > (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
@@ -65,9 +65,9 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 
 | Face | Página | Código | Motor testado | Arquivo / dados |
 |---|---|---|---|---|
-| WJPlaniel | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
+| WJPlan | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
 | WJWord | `documento/` | `src/documento/` | — | `.wjdoc`, autosave `wjdoc:documento` |
-| WJApion | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
+| WJApresentation | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |

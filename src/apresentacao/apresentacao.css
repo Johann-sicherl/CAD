@@ -1,4 +1,4 @@
-/* WJApion: miniaturas, palco do slide (1280×720 escalado), objetos com alças, apresentação. */
+/* WJApresentation: miniaturas, palco do slide (1280×720 escalado), objetos com alças, apresentação. */
 .ap-principal { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 0; }
 .ap-miniaturas { overflow: auto; padding: 10px 8px 40px; border-right: 1px solid var(--linha); background: var(--painel-2); display: flex; flex-direction: column; gap: 10px; }
 .ap-mini { position: relative; display: flex; gap: 6px; align-items: flex-start; cursor: pointer; }

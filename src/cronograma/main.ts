@@ -363,6 +363,7 @@ function renderizarTabela() {
     h += "</tr>";
   });
   tabela.innerHTML = h + "</tbody>";
+  posicionarTeclado();
 }
 
 function iniciarEdicao(texto?: string) {
@@ -379,8 +380,40 @@ function iniciarEdicao(texto?: string) {
   input.focus();
   if (texto === undefined) input.select();
   editor = { r: ativa.r, c: ativa.c, input };
+  ligarEditor(input);
+}
+
+/**
+ * Campo escondido sobre a célula ativa: recebe as teclas. Quando o navegador não diz a tecla
+ * (teclado virtual do celular/tablet, acentos ´ ~ ^, sugestões), ele mesmo vira o editor no
+ * lugar, para o texto aparecer enquanto é digitado.
+ */
+const teclado = el("input", { type: "text", class: "cr-teclado", autocomplete: "off", "aria-label": "Célula do cronograma" }) as HTMLInputElement;
+tabelaArea.append(teclado);
+function editarNoLugar() {
+  if (editor || vista !== "gantt") return;
+  const col = colunas()[ativa.c], l = linhas[ativa.r];
+  if (!col || !l || !col.editar) return;
+  teclado.classList.add("ativo");
+  editor = { r: ativa.r, c: ativa.c, input: teclado };
+  ligarEditor(teclado);
+}
+teclado.addEventListener("compositionstart", editarNoLugar);
+teclado.addEventListener("input", () => !editor && teclado.value && editarNoLugar());
+function posicionarTeclado() {
+  if (editor?.input === teclado) return;
+  teclado.classList.remove("ativo");
+  teclado.value = "";
+  teclado.onkeydown = teclado.onblur = null;
+  const td = tabela.tBodies[0]?.rows[ativa.r]?.cells[ativa.c];
+  if (!td) return;
+  Object.assign(teclado.style, { left: `${td.offsetLeft}px`, top: `${td.offsetTop}px`, width: `${td.offsetWidth}px`, height: `${td.offsetHeight}px` });
+}
+
+function ligarEditor(input: HTMLInputElement) {
   input.onkeydown = (e) => {
     e.stopPropagation();
+    if (e.isComposing) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (confirmarEdicao()) mover(1, 0);
@@ -475,9 +508,10 @@ tabela.addEventListener("pointerdown", (e) => {
   } else selecao = new Set(t ? [t.id] : []);
   ativa = { r, c: c === 0 ? ativa.c : c };
   renderizar();
-  if (e.pointerType !== "mouse") return;
+  // mouse e caneta: foco no campo da célula (no dedo, abriria o teclado virtual a cada toque)
+  if (e.pointerType === "touch") return;
   e.preventDefault();
-  tabelaArea.focus({ preventScroll: true });
+  teclado.focus({ preventScroll: true });
 });
 tabela.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -491,8 +525,8 @@ tabela.addEventListener("contextmenu", (e) => {
 });
 tabelaArea.tabIndex = -1;
 document.addEventListener("keydown", (e) => {
-  if (editor || vista !== "gantt" || document.querySelector(".wj-fundo, .wj-menu")) return;
-  if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+  if (editor || vista !== "gantt" || document.querySelector(".wj-fundo, .wj-menu") || e.isComposing) return;
+  if (e.target !== teclado && (e.target as HTMLElement).closest("input, textarea, select")) return;
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key === "ArrowDown") mover(1, 0);
   else if (e.key === "ArrowUp") mover(-1, 0);

@@ -1,4 +1,4 @@
-// Grade do WJPlaniel: desenho em Canvas só da parte visível (milhões de linhas sem pesar),
+// Grade do WJPlan: desenho em Canvas só da parte visível (milhões de linhas sem pesar),
 // seleção, edição na célula com autocompletar de funções e "modo apontar" (clicar numa célula
 // durante uma fórmula insere a referência), alça de preenchimento, largura de coluna, painéis
 // congelados, teclado do computador e toque do tablet/celular.
@@ -70,15 +70,23 @@ export class Grade {
     this.espaco = document.createElement("div");
     this.espaco.className = "pl-espaco";
     this.rolagem.append(this.espaco);
-    this.editor = document.createElement("textarea");
+    // dois campos que trocam de papel: o "teclado" (escondido, recebe as teclas com a célula
+    // selecionada) e o "editor" (visível sobre a célula). Quando o navegador não diz a tecla
+    // (teclado virtual do celular/tablet, acentos ´ ~ ^, sugestões do teclado), o próprio teclado
+    // vira o editor no lugar, para o texto aparecer enquanto é digitado.
+    const campo = () => {
+      const x = document.createElement("textarea");
+      x.spellcheck = false;
+      x.setAttribute("autocapitalize", "off");
+      x.setAttribute("autocomplete", "off");
+      x.setAttribute("aria-label", "Célula da planilha");
+      return x;
+    };
+    this.editor = campo();
     this.editor.className = "pl-editor";
     this.editor.hidden = true;
-    this.editor.spellcheck = false;
-    this.editor.setAttribute("autocapitalize", "off");
-    this.teclado = document.createElement("textarea");
+    this.teclado = campo();
     this.teclado.className = "pl-teclado";
-    this.teclado.setAttribute("aria-label", "Planilha");
-    this.teclado.setAttribute("autocapitalize", "off");
     this.sugestoes = document.createElement("div");
     this.sugestoes.className = "pl-sugestoes";
     this.sugestoes.hidden = true;
@@ -94,8 +102,23 @@ export class Grade {
       this.posicionarEditor();
     });
     this.instalarPonteiro();
-    this.instalarTeclado();
-    this.instalarEditor();
+    for (const x of [this.editor, this.teclado]) {
+      this.instalarTeclado(x);
+      this.instalarEditor(x);
+    }
+  }
+
+  /** O campo escondido vira o editor (com o foco e o texto que já está nele) e vice-versa. */
+  private trocarPapeis() {
+    const novoEditor = this.teclado, novoTeclado = this.editor;
+    this.editor = novoEditor;
+    this.teclado = novoTeclado;
+    novoEditor.className = "pl-editor";
+    novoEditor.hidden = false;
+    novoTeclado.className = "pl-teclado";
+    novoTeclado.removeAttribute("style");
+    novoTeclado.hidden = false;
+    novoTeclado.value = "";
   }
 
   // ---------- geometria ----------
@@ -795,10 +818,19 @@ export class Grade {
     if (!this.editando) this.teclado.focus({ preventScroll: true });
   }
 
-  private instalarTeclado() {
-    const t = this.teclado;
+  private instalarTeclado(t: HTMLTextAreaElement) {
+    // digitação sem tecla conhecida (composição/teclado virtual): edita no lugar, já visível
+    const noLugar = () => {
+      if (t !== this.teclado || this.editando) return;
+      this.trocarPapeis();
+      this.iniciarEdicao(null, "entrar", true);
+    };
+    t.addEventListener("compositionstart", noLugar);
+    t.addEventListener("input", () => {
+      if (t === this.teclado && !this.editando && t.value) noLugar();
+    });
     t.addEventListener("keydown", (e) => {
-      if (this.editando) return;
+      if (t !== this.teclado || this.editando || e.isComposing) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const mover = (dl: number, dc: number) => {
         e.preventDefault();
@@ -869,9 +901,10 @@ export class Grade {
         this.iniciarEdicao(e.key, "entrar");
       }
     });
-    t.addEventListener("copy", (e) => this.copiar(e, false));
-    t.addEventListener("cut", (e) => this.copiar(e, true));
+    t.addEventListener("copy", (e) => t === this.teclado && this.copiar(e, false));
+    t.addEventListener("cut", (e) => t === this.teclado && this.copiar(e, true));
     t.addEventListener("paste", (e) => {
+      if (t !== this.teclado) return;
       e.preventDefault();
       this.colar(e.clipboardData?.getData("text/plain") ?? "");
     });
@@ -934,18 +967,21 @@ export class Grade {
   }
 
   /** Começa a editar a célula ativa: com um caractere digitado (substitui) ou o conteúdo atual. */
-  iniciarEdicao(inicial: string | null, modo: "entrar" | "editar") {
+  iniciarEdicao(inicial: string | null, modo: "entrar" | "editar", noLugar = false) {
     const cel = this.host.folha().celulas[chave(this.ativa.l, this.ativa.c)];
     const original = cel?.e ?? "";
     this.editando = { pos: { ...this.ativa }, original, modo };
-    this.editor.value = inicial ?? original;
+    // no lugar: o campo já tem o foco e o texto em composição; mexer nele quebraria a digitação
+    if (!noLugar) this.editor.value = inicial ?? original;
     this.editor.hidden = false;
     this.apontado = null;
     this.mostrar(this.ativa);
     this.posicionarEditor();
-    this.editor.focus({ preventScroll: true });
-    const k = this.editor.value.length;
-    this.editor.setSelectionRange(k, k);
+    if (!noLugar) {
+      this.editor.focus({ preventScroll: true });
+      const k = this.editor.value.length;
+      this.editor.setSelectionRange(k, k);
+    }
     this.host.aoEditar(this.editor.value);
     this.atualizarSugestoes();
     this.redesenhar();
@@ -1005,15 +1041,16 @@ export class Grade {
     this.editando = null;
     this.apontado = null;
     this.editor.hidden = true;
+    this.teclado.value = "";
     this.sugestoes.hidden = true;
     this.dica.hidden = true;
     this.host.aoEditar(null);
     this.redesenhar();
   }
 
-  private instalarEditor() {
-    const ed = this.editor;
+  private instalarEditor(ed: HTMLTextAreaElement) {
     ed.addEventListener("input", () => {
+      if (ed !== this.editor || !this.editando) return;
       this.apontado = null;
       this.posicionarEditor();
       this.host.aoEditar(ed.value);
@@ -1021,11 +1058,12 @@ export class Grade {
       this.redesenhar();
     });
     ed.addEventListener("click", () => {
+      if (ed !== this.editor) return;
       if (this.editando) this.editando.modo = "editar";
       this.atualizarSugestoes();
     });
     ed.addEventListener("keydown", (e) => {
-      if (!this.editando) return;
+      if (ed !== this.editor || !this.editando || e.isComposing) return;
       const lista = !this.sugestoes.hidden;
       if (lista && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         e.preventDefault();
@@ -1258,7 +1296,7 @@ export class Grade {
     this.redesenhar();
   }
 
-  /** Cola: do próprio WJPlaniel (fórmulas e formatos, referências deslocadas) ou texto (TSV). */
+  /** Cola: do próprio WJPlan (fórmulas e formatos, referências deslocadas) ou texto (TSV). */
   colar(texto: string) {
     const folha = this.host.folha();
     const destino = this.ativa;

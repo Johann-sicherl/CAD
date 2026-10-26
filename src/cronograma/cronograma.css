@@ -89,3 +89,6 @@ body.disp-celular .cr-quadro-vista { grid-template-columns: minmax(0, 1fr); }
 }
 .cr-tabela-area:focus { outline: none; }
 .cr-recursos-vista select { min-width: 110px; }
+/* campo da célula ativa: invisível até a digitação começar sem tecla conhecida (teclado virtual, acentos) */
+.cr-teclado { position: absolute; z-index: 1; opacity: 0; pointer-events: none; margin: 0; padding: 0 6px; border: 0; border-radius: 0; min-height: 0; background: #fff; font: inherit; font-size: 13px; }
+.cr-teclado.ativo { opacity: 1; pointer-events: auto; z-index: 3; outline: 2px solid var(--acento); outline-offset: -2px; }

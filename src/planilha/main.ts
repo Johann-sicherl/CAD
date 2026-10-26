@@ -1,4 +1,4 @@
-// WJPlaniel: planilha eletrônica do WJProMaster (especificação: docs/global/planilha.md).
+// WJPlan: planilha eletrônica do WJProMaster (especificação: docs/global/planilha.md).
 // Liga a casca comum, a grade, a barra de fórmulas, as folhas e os arquivos (.wjpl e CSV).
 
 import "./planilha.css";
@@ -738,7 +738,7 @@ const abas: Aba[] = [
 ];
 
 const casca = new Casca({
-  app: "WJPlaniel",
+  app: "WJPlan",
   icone: "",
   extensao: "wjpl",
   abas,

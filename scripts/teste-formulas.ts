@@ -1,4 +1,4 @@
-// Teste do motor de fórmulas (@wj/formulas) e da pasta do WJPlaniel em Node.
+// Teste do motor de fórmulas (@wj/formulas) e da pasta do WJPlan em Node.
 import { Calculadora, chave, interpretarEntrada, pastaVazia, type Pasta } from "../src/formulas/pasta";
 import { ajustarReferencias, deslocarReferencias } from "../src/formulas/sintaxe";
 import { dataParaSerie } from "../src/formulas/conversao";

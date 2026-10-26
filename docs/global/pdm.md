@@ -18,7 +18,7 @@ Status de tudo: **G5** salvo indicação.
   aparelho para a lista, lixeira (restaurar/destruir);
 - arquivos com **versões** (cada check-in) e **revisões** (A, B… na liberação; Z → AA);
 - **check-out/check-in** com trava por usuário, comentário, "manter check-out", check-in de um
-  arquivo do aparelho **ou do documento aberto no WJCAD/WJPlaniel/WJWord/WJApion/WJCronProject**;
+  arquivo do aparelho **ou do documento aberto no WJCAD/WJPlan/WJWord/WJApresentation/WJCronProject**;
   desfazer check-out (com liberação de administrador);
 - **fluxo**: Em trabalho → Em revisão → Liberado (sobe a revisão) → Nova revisão; rejeitar,
   obsoleto, reativar; condições (sem check-out, código e descrição preenchidos); liberado não se
@@ -161,7 +161,7 @@ referências, integração com o WJERP.
   - versões da lista acompanham as versões do arquivo;
   - **onde é usado** em todos os níveis;
   - comparar listas (revisões ou itens);
-  - exportar para o WJPlaniel.
+  - exportar para o WJPlan.
 - Transferência ao WJERP: EBOM → estrutura de manufatura (MBOM) com perdas, fantasmas, alternativos,
   consumo de matéria-prima (chapa: área planificada × espessura × densidade × (1 + perda)) e roteiro.
   Detalhes em [erp.md](erp.md).
