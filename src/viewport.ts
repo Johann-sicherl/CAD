@@ -719,6 +719,17 @@ export class Viewport {
       }
     });
     if (melhorCurva) return { tipo: "curva", id: melhorCurva, borda: true };
+    // peça sob o toque ou a até tolPx dele (arestas da silhueta ficam bem na borda da malha)
+    let perto: boolean | null = null;
+    const pecaPerto = () => {
+      if (perto !== null) return perto;
+      perto = hitPeca < Infinity;
+      for (const [dx, dy] of [[tolPx, 0], [-tolPx, 0], [0, tolPx], [0, -tolPx]]) {
+        if (perto || !solido) break;
+        perto = this.raio(clientX + dx, clientY + dy).intersectObject(solido).length > 0;
+      }
+      return perto;
+    };
     const quads: THREE.Mesh[] = [];
     for (const g of [this.grupoRefs, this.grupoRefsExtras]) {
       g.traverse((o) => { if (o.userData.idRef?.tipo === "plano" && visivel(o)) quads.push(o as THREE.Mesh); });
@@ -729,6 +740,10 @@ export class Viewport {
       const pos = q.geometry.getAttribute("position") as THREE.BufferAttribute; // PlaneGeometry: 0 1 / 2 3
       const w = [0, 1, 3, 2].map((i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(q.matrixWorld));
       const c = w.map((p) => this.paraTela(p));
+      // plano visto de perfil vira uma linha que atravessa a peça: aí a peça tem prioridade
+      const area = Math.abs(c.reduce((s, p, i) => s + p.x * c[(i + 1) % 4].y - c[(i + 1) % 4].x * p.y, 0)) / 2;
+      const lado = Math.max(...c.map((p, i) => Math.hypot(c[(i + 1) % 4].x - p.x, c[(i + 1) % 4].y - p.y)));
+      if (area < lado * 2 && pecaPerto()) continue;
       for (let i = 0; i < 4; i++) {
         const a = c[i], b = c[(i + 1) % 4];
         const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;

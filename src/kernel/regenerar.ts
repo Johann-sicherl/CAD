@@ -1807,7 +1807,7 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
     } catch (e) {
       // A feature com falha é ignorada e a regeneração continua com a peça anterior,
       // como um CAD faz ao marcar a feature em vermelho na árvore.
-      erros.push({ id: f.id, mensagem: traduzirErro(e) });
+      erros.push({ id: f.id, mensagem: traduzirErro(e, f.tipo) });
     }
     tempos.push({ id: f.id, ms: performance.now() - t0 });
   }
@@ -2164,7 +2164,24 @@ export function exportar(formato: "step" | "stl"): Blob {
     : ultimaPeca.blobSTL({ tolerance: 0.01, angularTolerance: 5, binary: true } as never);
 }
 
-function traduzirErro(e: unknown): string {
+/** Quando o kernel falha sem texto: o que costuma causar a falha em cada recurso. */
+const DICA_FALHA: Partial<Record<Feature["tipo"], string>> = {
+  extrusao: "Não foi possível extrudar: confira se o perfil é fechado e sem auto-interseção, e a condição final.",
+  revolucao: "Não foi possível revolver: o perfil não pode cruzar o eixo de revolução.",
+  filete: "Raio grande demais para as arestas escolhidas (ou arestas que não aceitam filete).",
+  chanfro: "Distância grande demais para as arestas escolhidas.",
+  casca: "Não foi possível fazer a casca: espessura grande demais para a peça ou face que não pode ser removida.",
+  inclinacao: "Não foi possível inclinar essas faces: escolha faces laterais (não paralelas ao plano neutro) e um ângulo menor.",
+  nervura: "Não foi possível fazer a nervura: o esboço precisa ficar sobre a peça e a nervura precisa encostar nela.",
+  furo: "Não foi possível fazer o furo: confira se os pontos estão sobre a face e a profundidade.",
+  varredura: "Não foi possível varrer: o perfil não pode ser maior que a curvatura da trajetória nem se cruzar.",
+  loft: "Não foi possível fazer o loft: confira a ordem dos perfis e se eles não se cruzam.",
+  padraoLinear: "Não foi possível repetir: as cópias precisam encostar na peça (ou mude o espaçamento).",
+  padraoCircular: "Não foi possível repetir: as cópias precisam encostar na peça (ou mude o ângulo/quantidade).",
+  espelhar: "Não foi possível espelhar: a cópia precisa encostar na peça ou ficar separada dela sem sobrepor faces.",
+};
+
+function traduzirErro(e: unknown, tipo?: Feature["tipo"]): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/fillet|chamfer/i.test(msg)) return "Raio/distância grande demais para as arestas escolhidas.";
   if (/shell|thick/i.test(msg)) return "Não foi possível fazer a casca (espessura grande demais para a peça?).";
@@ -2172,7 +2189,7 @@ function traduzirErro(e: unknown): string {
   if (/boolean|fuse|cut|intersect/i.test(msg)) return "Falha na operação booleana.";
   // Exceções C++ do OpenCascade chegam como números ou WebAssembly.Exception, sem texto útil.
   if (typeof e === "number" || /WebAssembly|object/i.test(msg)) {
-    return "O kernel não conseguiu gerar esta geometria (valor grande demais ou perfil inválido).";
+    return (tipo && DICA_FALHA[tipo]) ?? "O kernel não conseguiu gerar esta geometria (valor grande demais ou perfil inválido).";
   }
   return msg;
 }
