@@ -22,7 +22,8 @@ import {
   type FeatureCurva,
   type FeatureExtrusao,
   type FeatureFuro,
-  type FeatureFlangeBase,
+  type FeatureBaseChapa,
+  ehBaseChapa,
   type Plano,
   type Referencia,
   type SuporteEsboco,
@@ -468,6 +469,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
   "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
+  desdobrar: "desdobrar", dobrar: "dobrar", "converter-chapa": "converterChapa",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -494,7 +496,7 @@ function nomeNovo(tipo: Feature["tipo"]) {
 
 function criarRecurso(id: string) {
   // com a chapa já criada, a Flange base vira Aba (como nos CADs profissionais)
-  if (id === "flange-base" && ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida)) id = "aba-chapa";
+  if (id === "flange-base" && ativas().some((x) => ehBaseChapa(x) && !x.suprimida)) id = "aba-chapa";
   const tipo = TIPO_POR_COMANDO[id];
   if (!tipo) return;
   if (tipo === "furo") return iniciarFuro();
@@ -614,6 +616,16 @@ function criarRecurso(id: string) {
       break;
     case "quebrarCanto":
       f.arestas = selPeca.filter((r) => r.tipo === "aresta" || r.tipo === "vertice");
+      break;
+    case "converterChapa":
+      // seleção feita antes: 1ª face = face fixa, arestas = dobras
+      f.faceFixa = faces[0];
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      break;
+    case "desdobrar":
+      f.faceFixa = faces.find((r) => r.tipo === "face" && r.ass.geom === "plano");
+      f.dobras = faces.filter((r) => r.tipo === "face" && r.ass.geom === "cilindro");
+      if (f.dobras.length) f.todas = false;
       break;
     case "meiaEsquadria": {
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
@@ -944,6 +956,12 @@ function confirmarComando() {
   }
   if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
     return avisar(`${ROTULO_TIPO[f.tipo]}: toque nas arestas da chapa.`);
+  }
+  if (f.tipo === "converterChapa" && (!f.faceFixa || !f.arestas.length)) {
+    return avisar("Converter em chapa: escolha a face fixa e as arestas de dobra do sólido.");
+  }
+  if (f.tipo === "desdobrar" && !f.todas && !f.dobras.length) {
+    return avisar("Desdobrar: toque nas faces curvas das dobras (ou marque Coletar todas as dobras).");
   }
   if (f.tipo === "quebrarCanto" && !f.arestas.length) {
     return avisar("Quebrar canto: toque nas arestas da espessura (ou nos vértices) dos cantos da chapa.");
@@ -1972,6 +1990,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   varredura: "varredura", loft: "loft", curva: "helice",
   flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
   fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
+  desdobrar: "desdobrar", dobrar: "dobrar", converterChapa: "converterChapa",
 };
 
 function iconeFeature(f: Feature): NomeIcone {
@@ -2186,7 +2205,7 @@ function preencherArvore(lista: HTMLElement, mini: boolean) {
   };
   const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR");
   // "Chapa metálica": parâmetros globais (guardados na primeira flange base), antes dela
-  const base = doc.features.find((x): x is FeatureFlangeBase => x.tipo === "flangeBase");
+  const base = doc.features.find(ehBaseChapa);
   const editarChapa = () => base && abrirComando(base, false, "chapa");
 
   doc.features.forEach((f, i) => {
@@ -2992,7 +3011,7 @@ $("janela-fechar").onclick = () => {
 
 /** Vista planificada da chapa ligada (o kernel troca a peça pelo planificado). */
 let planificado = false;
-const temChapa = () => ativas().some((x) => x.tipo === "flangeBase" && !x.suprimida);
+const temChapa = () => ativas().some((x) => ehBaseChapa(x) && !x.suprimida);
 
 function alternarPlanificado(liga = !planificado) {
   if (liga && !temChapa()) return avisar("Planificar: a peça não tem chapa metálica (comece por uma Flange base).");
@@ -3036,7 +3055,7 @@ async function comandoChapa(id: string) {
 
 /** Tabela de material/espessura: toca numa linha para aplicar na Flange base. */
 function abrirTabelaChapa() {
-  const fb = ativas().find((x): x is FeatureFlangeBase => x.tipo === "flangeBase" && !x.suprimida);
+  const fb = ativas().find((x): x is FeatureBaseChapa => ehBaseChapa(x) && !x.suprimida);
   const atual = fb ? `${fb.espessura}|${fb.raio}|${fb.fatorK}` : "";
   const linhas = TABELA_CHAPA.map((l, i) => {
     const sel = atual === `${l.espessura}|${l.raio}|${l.k}` && fb?.tabela.startsWith(l.material);

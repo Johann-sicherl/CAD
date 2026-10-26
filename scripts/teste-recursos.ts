@@ -777,6 +777,52 @@ const bloco = ext(base, 10);
   confere("aba: placa + 20 × 10 × 2", regenerar([placaE, base, ae, aba]).volume, 10000 + 400);
 }
 
+// ---------- converter em chapa, desdobrar e dobrar (chapa.md §11 e §13) ----------
+{
+  const ec = novoEsboco(20, { tipo: "plano", plano: "XY", deslocamento: 0 });
+  op.retangulo(ec, op.ponto(ec, { x: -50, y: -30 }), op.ponto(ec, { x: 50, y: 30 }));
+  const caixa = [ec, ext(ec, 40)];
+  const r0 = regenerar(caixa);
+  const fundo = r0.topologia!.faces.find((f) => f.normal && f.normal[2] < -0.99)!;
+  const dobras = r0.topologia!.arestas.filter((a) => a.geom === "linha" && Math.abs(a.a[2]) < 1e-6 && Math.abs(a.b[2]) < 1e-6);
+  const conv = { ...(novaFeature("converterChapa", 1) as any), faceFixa: { tipo: "face", ass: fundo }, arestas: dobras.map((ass) => ({ tipo: "aresta", ass })) };
+  const lim = (r: ReturnType<typeof regenerar>, k: number) => {
+    const v = r.topologia!.arestas.flatMap((a) => [a.a[k], a.b[k]]);
+    return [Math.min(...v), Math.max(...v)];
+  };
+  const rc = regenerar([...caixa, conv]);
+  semErros("converter em chapa (caixa aberta)", rc);
+  verdade("converter: medidas externas mantidas (100 × 60 × 40)", [0, 1, 2].every((k, i) => Math.abs(lim(rc, k)[1] - lim(rc, k)[0] - [100, 60, 40][i]) < 1e-3));
+  // R2, t2, K 0,44, 90°: recuo (R + t)·tg 45° = 4; planificado = fundo encurtado + 2 BA + 2 paredes de 36
+  const ba = (Math.PI / 2) * (2 + 0.44 * 2);
+  const pc = exportarDxf("conv").resumo;
+  confere("converter: planificado em x", pc.largura, 92 + 2 * ba + 72);
+  confere("converter: planificado em y", pc.altura, 52 + 2 * ba + 72);
+  verdade("converter: 4 dobras", pc.dobras === 4);
+  const des = novaFeature("desdobrar", 1) as any;
+  const rd = regenerar([...caixa, conv, des]);
+  semErros("desdobrar (todas)", rd);
+  confere("desdobrar: chapa plana com o fundo parado (x)", lim(rd, 0)[1] - lim(rd, 0)[0], 92 + 2 * ba + 72);
+  confere("desdobrar: espessura no lugar do fundo", lim(rd, 2)[1], 2);
+  // corte 20 × 10 atravessando a dobra do lado +x (face de baixo do fundo), depois dobrar
+  const ce = novoEsboco(21, { tipo: "face", origem: [0, 0, 0], normal: [0, 0, -1], eixoX: [1, 0, 0] } as any);
+  op.retangulo(ce, op.ponto(ce, { x: 40, y: -5 }), op.ponto(ce, { x: 60, y: 5 }));
+  const cc = { ...(novaFeature("corteChapa", 1) as any), esboco: ce.id };
+  const rcd = regenerar([...caixa, conv, des, ce, cc]);
+  semErros("corte com a chapa desdobrada", rcd);
+  confere("corte desdobrado: tira 20 × 10 × 2", rd.volume! - rcd.volume!, 400);
+  const rf = regenerar([...caixa, conv, des, ce, cc, novaFeature("dobrar", 1) as any]);
+  semErros("dobrar de volta", rf);
+  verdade("dobrar: medidas externas de volta", Math.abs(lim(rf, 2)[1] - 40) < 1e-3 && Math.abs(lim(rf, 0)[1] - 50) < 1e-3);
+  verdade("dobrar: o corte atravessa a dobra no 3D", rf.volume! < rc.volume! - 390);
+  const pf = exportarDxf("dobrado").resumo;
+  confere("dobrar: planificado perde o retângulo inteiro", pc.area - pf.area, 200);
+  verdade("dobrar: 1 recorte no planificado", pf.recortes === 1);
+  // com a chapa desdobrada, flange de aresta pede Dobrar antes
+  const fa = { ...(novaFeature("flangeAresta", 1) as any), arestas: [{ tipo: "aresta", ass: dobras[0] }] };
+  verdade("desdobrada: flange de aresta avisa", regenerar([...caixa, conv, des, fa]).erros.some((e) => /desdobrada/.test(e.mensagem)));
+}
+
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam`);
   process.exit(1);

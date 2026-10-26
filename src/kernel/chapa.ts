@@ -57,6 +57,8 @@ export interface Corte {
 export interface Alivio {
   poli: P2[];
   desenho: Drawing;
+  /** Fatias de ângulo no 3D da dobra (padrão 8; cortes que atravessam a dobra usam mais). */
+  n?: number;
 }
 
 /** Canto entre duas dobras da mesma parede cujas pontas se encontram (abas vizinhas). */
@@ -184,9 +186,22 @@ export function retanguloDesenho(x0: number, x1: number, y0: number, y1: number)
   return drawRectangle(w, h).translate((x0 + x1) / 2, (y0 + y1) / 2);
 }
 
+/** Movimento rígido levando o quadro `de` para o quadro `para` (pontos e vetores). */
+function movimento(de: Quadro, para: Quadro) {
+  const vet = (x: Vec3): Vec3 => soma(mul(para.u, esc(x, de.u)), soma(mul(para.v, esc(x, de.v)), mul(para.n, esc(x, de.n))));
+  return { vet, pt: (x: Vec3): Vec3 => soma(para.o, vet(sub(x, de.o))) };
+}
+type Movimento = ReturnType<typeof movimento>;
+const moverCortes = (cs: Corte[] | undefined, M: Movimento) => cs?.map((c) => ({ ...c, p: M.pt(c.p), m: M.vet(c.m) }));
+const moverQuadro = (q: Quadro, M: Movimento): Quadro => ({ o: M.pt(q.o), u: M.vet(q.u), v: M.vet(q.v), n: M.vet(q.n) });
+
 export class ModeloChapa {
   paredes: Parede[] = [];
   dobras: Dobra[] = [];
+  /** Dobras mostradas planas (Desdobrar); vazio = chapa dobrada. */
+  planas = new Set<string>();
+  /** Quadros e cortes da chapa dobrada, guardados no Desdobrar para o Dobrar voltar exatamente. */
+  private dobrada: { paredes: Map<string, { q: Quadro; cortes?: Corte[] }>; dobras: Map<string, Corte[] | undefined> } | null = null;
   /** Sinal do planificado de cada parede (reflexão em relação à raiz). */
   private orient = new Map<string, 1 | -1>();
 
@@ -310,7 +325,7 @@ export class ModeloChapa {
       const sk = w.forma.sketchOnPlane(new Plane(w.q.o, w.q.u, w.q.n)) as unknown as { extrude(d: number): Shape3D };
       partes.push(cortar(sk.extrude(w.s * t), w.cortes));
     }
-    for (const b of this.dobras) partes.push(cortar(this.solidoDobra(b), b.cortes));
+    for (const b of this.dobras) partes.push(this.planas.has(b.id) ? this.solidoDobraPlana(b) : cortar(this.solidoDobra(b), b.cortes));
     if (!partes.length) throw new Error("A chapa ficou vazia.");
     return partes.slice(1).reduce((acc, x) => acc.fuse(x), partes[0]);
   }
@@ -379,7 +394,7 @@ export class ModeloChapa {
     // com alívio: em cada fatia de ângulo tira o trecho (ao longo da aresta) que cai dentro do
     // alívio na posição correspondente do planificado. Só os trechos atingidos (um por alívio) são
     // fatiados; fatias seguidas iguais (alívio retangular ou rasgado) viram uma revolução só.
-    const N = 8;
+    const N = Math.max(8, ...b.alivios.map((al) => al.n ?? 8));
     const hs = Array.from({ length: N }, (_, i) => (b.ba * (i + 0.5)) / N);
     const regioes: [number, number][] = [];
     for (const al of b.alivios) {
@@ -464,6 +479,35 @@ export class ModeloChapa {
 
   // ---------- planificado ----------
 
+  /**
+   * Região plana da dobra (faixa de largura BA, com cortes de canto e alívios) e as linhas de
+   * dobra, nas coordenadas locais da parede-mãe — as mesmas do planificado em volta da dobra.
+   */
+  private regiaoPlana(b: Dobra): { desenho: Drawing; linhas: [P2, P2][] } {
+    const ponto = (s: number, h: number) => s2(b.e0, s2(m2(b.e, s), m2(b.d, h)));
+    if (b.alivios?.length || b.cortes?.length) {
+      // contorno por amostras do ângulo (linha neutra), aparado pelos cortes de canto
+      const N = 16, esq: P2[] = [], dir: P2[] = [];
+      const phi = this.geomDobra(b).phi;
+      for (let i = 0; i <= N; i++) {
+        const [lo, hi] = this.faixaDobra(b, (phi * i) / N);
+        esq.push(ponto(lo, (b.ba * i) / N));
+        dir.push(ponto(hi, (b.ba * i) / N));
+      }
+      let R = poligonoDesenho([...esq, ...dir.reverse()]);
+      for (const al of b.alivios ?? []) R = R.cut(al.desenho);
+      // linha de dobra só onde há material
+      const [lo, hi] = this.faixaDobra(b, phi / 2);
+      const linhas = this.trechosLivres({ ...b, s0: lo, s1: hi }, b.ba / 2).map(([a, z]): [P2, P2] => [ponto(a, b.ba / 2), ponto(z, b.ba / 2)]);
+      return { desenho: R, linhas };
+    }
+    const c0 = ponto(b.s0, 0);
+    return {
+      desenho: transformarDesenho(retanguloDesenho(0, b.s1 - b.s0, 0, b.ba), b.e.x, b.d.x, b.e.y, b.d.y, c0.x, c0.y),
+      linhas: [[ponto(b.s0, b.ba / 2), ponto(b.s1, b.ba / 2)]],
+    };
+  }
+
   /** Desenho do planificado (coordenadas locais da parede raiz) e linhas de dobra. */
   planificado(): { desenho: Drawing; dobras: { a: P2; b: P2; cima: boolean; angulo: number; raio: number }[] } {
     let D: Drawing | null = null;
@@ -474,55 +518,129 @@ export class ModeloChapa {
     }
     const linhas: { a: P2; b: P2; cima: boolean; angulo: number; raio: number }[] = [];
     for (const b of this.dobras) {
-      const P = this.parede(b.pai)!;
-      const ponto = (s: number, h: number) => plano2(P.plano, s2(b.e0, s2(m2(b.e, s), m2(b.d, h))));
-      const noPlano = (x: Drawing) => transformarDesenho(x, P.plano.u.x, P.plano.v.x, P.plano.u.y, P.plano.v.y, P.plano.o.x, P.plano.o.y);
-      if (b.alivios?.length) {
-        // região da dobra (com os cortes de canto) menos os alívios; linha de dobra só onde há material
-        const N = 16, esq: P2[] = [], dir: P2[] = [];
-        const phi = this.geomDobra(b).phi;
-        for (let i = 0; i <= N; i++) {
-          const [lo, hi] = this.faixaDobra(b, (phi * i) / N);
-          esq.push(ponto(lo, (b.ba * i) / N));
-          dir.push(ponto(hi, (b.ba * i) / N));
-        }
-        let R = poligonoDesenho([...esq, ...dir.reverse()]);
-        for (const al of b.alivios) R = R.cut(noPlano(al.desenho));
-        juntar(R);
-        const [lo, hi] = this.faixaDobra(b, phi / 2);
-        for (const [a, z] of this.trechosLivres({ ...b, s0: lo, s1: hi }, b.ba / 2)) {
-          linhas.push({ a: ponto(a, b.ba / 2), b: ponto(z, b.ba / 2), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
-        }
-        continue;
-      }
-      if (b.cortes?.length) {
-        // região da dobra aparada pelo canto: contorno por amostras do ângulo (linha neutra)
-        const N = 16, esq: P2[] = [], dir: P2[] = [];
-        const phi = this.geomDobra(b).phi;
-        for (let i = 0; i <= N; i++) {
-          const [lo, hi] = this.faixaDobra(b, (phi * i) / N);
-          esq.push(ponto(lo, (b.ba * i) / N));
-          dir.push(ponto(hi, (b.ba * i) / N));
-        }
-        juntar(poligonoDesenho([...esq, ...dir.reverse()]));
-        const [lo, hi] = this.faixaDobra(b, phi / 2);
-        linhas.push({ a: ponto(lo, b.ba / 2), b: ponto(hi, b.ba / 2), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
-        continue;
-      }
-      const c = [ponto(b.s0, 0), ponto(b.s1, 0), ponto(b.s1, b.ba), ponto(b.s0, b.ba)];
-      // região da dobra no planificado (retângulo de largura BA)
-      const minx = Math.min(...c.map((q) => q.x)), maxx = Math.max(...c.map((q) => q.x));
-      const miny = Math.min(...c.map((q) => q.y)), maxy = Math.max(...c.map((q) => q.y));
-      const e = lin2(P.plano, b.e);
-      if (Math.abs(e.x) < 1e-9 || Math.abs(e.y) < 1e-9) juntar(retanguloDesenho(minx, maxx, miny, maxy));
-      else {
-        const ang = (Math.atan2(e.y, e.x) * 180) / Math.PI;
-        juntar(retanguloDesenho(0, b.s1 - b.s0, 0, b.ba).rotate(ang, [0, 0]).translate(c[0].x, c[0].y));
-      }
-      linhas.push({ a: ponto(b.s0, b.ba / 2), b: ponto(b.s1, b.ba / 2), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
+      const P = this.parede(b.pai)!.plano;
+      const { desenho, linhas: ls } = this.regiaoPlana(b);
+      juntar(transformarDesenho(desenho, P.u.x, P.v.x, P.u.y, P.v.y, P.o.x, P.o.y));
+      for (const [a, z] of ls) linhas.push({ a: plano2(P, a), b: plano2(P, z), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
     }
     if (!D) throw new Error("A chapa ficou vazia.");
     return { desenho: D, dobras: linhas };
+  }
+
+  // ---------- desdobrar / dobrar (cortes que atravessam dobras) ----------
+
+  /** Dobra desdobrada no 3D: a faixa plana continua o plano da mãe. */
+  private solidoDobraPlana(b: Dobra): Shape3D {
+    const P = this.parede(b.pai)!;
+    const sk = this.regiaoPlana(b).desenho.sketchOnPlane(new Plane(P.q.o, P.q.u, P.q.n)) as unknown as { extrude(d: number): Shape3D };
+    return sk.extrude(P.s * this.p.t);
+  }
+
+  /** Linhas de dobra das dobras planas (no 3D, sobre a face de cima), para mostrar onde dobram. */
+  linhasDasPlanas(): Vec3[][] {
+    const r: Vec3[][] = [];
+    for (const b of this.dobras) {
+      if (!this.planas.has(b.id)) continue;
+      const P = this.parede(b.pai)!;
+      const z = P.s * this.p.t * 1.001;
+      for (const [a, c] of this.regiaoPlana(b).linhas) r.push([local3(P.q, a, z), local3(P.q, c, z)]);
+    }
+    return r;
+  }
+
+  /** Paredes abaixo de uma parede (ela inclusive), seguindo as dobras. */
+  private ramo(id: string): Set<string> {
+    const r = new Set<string>([id]);
+    for (const b of this.dobras) if (r.has(b.pai) && b.filha) r.add(b.filha);
+    return r;
+  }
+
+  /**
+   * Desdobra as dobras pedidas (as já desdobradas continuam): cada filha volta ao plano da mãe,
+   * a BA da aresta, e leva junto tudo o que vem depois dela. A parede `fixa` não sai do lugar.
+   */
+  desdobrar(ids: string[], fixa?: string) {
+    const todas = new Set([...this.planas, ...ids]);
+    this.dobrarDeVolta();
+    this.dobrada = {
+      paredes: new Map(this.paredes.map((w) => [w.id, { q: w.q, cortes: w.cortes }])),
+      dobras: new Map(this.dobras.map((b) => [b.id, b.cortes])),
+    };
+    const mover = (alvo: Set<string>, M: Movimento) => {
+      for (const w of this.paredes) {
+        if (!alvo.has(w.id)) continue;
+        w.q = moverQuadro(w.q, M);
+        w.cortes = moverCortes(w.cortes, M);
+      }
+      for (const b of this.dobras) if (alvo.has(b.pai)) b.cortes = moverCortes(b.cortes, M);
+    };
+    const fixaAntes = fixa ? this.parede(fixa)?.q : undefined;
+    // dobras em ordem de criação: a mãe sempre já está no lugar novo
+    for (const b of this.dobras) {
+      if (!todas.has(b.id) || !b.filha) continue;
+      const P = this.parede(b.pai)!, F = this.parede(b.filha)!;
+      const E0 = local3(P.q, b.e0);
+      const e3 = unit(lin3(P.q, b.e)), d3 = unit(lin3(P.q, b.d));
+      const plana: Quadro = { o: soma(E0, mul(d3, b.ba)), u: e3, v: d3, n: cruz(e3, d3) };
+      mover(this.ramo(F.id), movimento(F.q, plana));
+    }
+    this.planas = new Set([...todas].filter((id) => this.dobras.some((b) => b.id === id)));
+    // a face fixa volta para onde estava (o resto da chapa se move em volta dela)
+    const W = fixa ? this.parede(fixa) : undefined;
+    if (W && fixaAntes) mover(new Set(this.paredes.map((w) => w.id)), movimento(W.q, fixaAntes));
+  }
+
+  /** Dobra de volta tudo o que estava desdobrado (os cortes feitos no plano ficam nas dobras). */
+  dobrarDeVolta() {
+    if (!this.dobrada) return;
+    for (const w of this.paredes) {
+      const g = this.dobrada.paredes.get(w.id);
+      if (g) (w.q = g.q), (w.cortes = g.cortes);
+    }
+    for (const b of this.dobras) if (this.dobrada.dobras.has(b.id)) b.cortes = this.dobrada.dobras.get(b.id);
+    this.dobrada = null;
+    this.planas.clear();
+  }
+
+  /** Corte (desenho e contornos nas coordenadas locais da mãe) numa dobra desdobrada. */
+  cortarDobraPlana(b: Dobra, desenho: Drawing, contornos: P2[][]) {
+    const dentro = (q: P2) => {
+      const x = q.x - b.e0.x, y = q.y - b.e0.y;
+      const s = x * b.e.x + y * b.e.y, h = x * b.d.x + y * b.d.y;
+      return s > b.s0 - 1e-6 && s < b.s1 + 1e-6 && h > -1e-6 && h < b.ba + 1e-6;
+    };
+    // só os contornos que tocam a faixa; amostras finas no 3D (o corte pode ser curvo)
+    for (const c of contornos) {
+      const toca = c.some(dentro) || recortarPoligono(recortarPoligono(c, (q) => (q.x - b.e0.x) * b.d.x + (q.y - b.e0.y) * b.d.y), (q) => b.ba - ((q.x - b.e0.x) * b.d.x + (q.y - b.e0.y) * b.d.y)).length >= 3;
+      if (toca) (b.alivios ??= []).push({ poli: c, desenho, n: 24 });
+    }
+  }
+
+  /** Dobra cuja face cilíndrica tem este eixo (ponto e direção). */
+  dobraDoEixo(ponto: Vec3, dir: Vec3): Dobra | undefined {
+    let melhor: Dobra | undefined, dist = Infinity;
+    for (const b of this.dobras) {
+      const g = this.geomDobra(b);
+      if (Math.abs(esc(unit(dir), g.e3)) < 0.999) continue;
+      const r = sub(ponto, g.A);
+      const dd = Math.hypot(...sub(r, mul(g.e3, esc(r, g.e3))));
+      if (dd < dist) (dist = dd), (melhor = b);
+    }
+    return dist < 1e-3 * Math.max(1, this.p.t) + 1e-4 ? melhor : undefined;
+  }
+
+  /** Parede com uma face plana (de cima ou de baixo) no plano dado e que contém o ponto. */
+  paredeDaFace(centro: Vec3, normal: Vec3): Parede | undefined {
+    const t = this.p.t;
+    for (const w of this.paredes) {
+      if (Math.abs(Math.abs(esc(normal, w.q.n)) - 1) > 1e-6) continue;
+      const r = sub(centro, w.q.o);
+      const z = esc(r, w.q.n);
+      if (Math.abs(z) > 1e-4 && Math.abs(z - w.s * t) > 1e-4) continue;
+      const p = { x: esc(r, w.q.u), y: esc(r, w.q.v) };
+      if (w.contornos.some((c) => dentroDoPoligono(p, c))) return w;
+    }
+    return undefined;
   }
 
   /** Sólido do planificado, deitado no plano da parede raiz. */
@@ -651,6 +769,15 @@ export function recortarPoligono(c: P2[], f: (q: P2) => number): P2[] {
     }
   }
   return out;
+}
+
+/** Ponto dentro do polígono (par-ímpar). */
+function dentroDoPoligono(p: P2, c: P2[]): boolean {
+  let dentro = false;
+  for (let i = 0, j = c.length - 1; i < c.length; j = i++) {
+    if ((c[i].y > p.y) !== (c[j].y > p.y) && p.x < ((c[j].x - c[i].x) * (p.y - c[i].y)) / (c[j].y - c[i].y) + c[i].x) dentro = !dentro;
+  }
+  return dentro;
 }
 
 /** Aplica os cortes de canto a um sólido. */

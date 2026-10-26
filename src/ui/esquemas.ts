@@ -5,7 +5,7 @@ import type {
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
   FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria,
-  FeatureFecharCanto, FeatureAlivioCanto, FeatureQuebrarCanto,
+  FeatureFecharCanto, FeatureAlivioCanto, FeatureQuebrarCanto, FeatureDesdobrar, FeatureConverterChapa,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -112,6 +112,14 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return alivioCanto() as Esquema<Feature>;
     case "quebrarCanto":
       return quebrarCanto() as Esquema<Feature>;
+    case "desdobrar":
+      return desdobrar() as Esquema<Feature>;
+    case "dobrar":
+      return { titulo: "Dobrar", caixas: [{ titulo: "Dobrar", campos: [
+        { t: "info", texto: () => "Dobra de volta todas as dobras desdobradas antes na árvore. Os cortes feitos com a chapa desdobrada (Corte na chapa atravessando dobras) acompanham as dobras e aparecem no planificado." },
+      ] }] };
+    case "converterChapa":
+      return converterChapa() as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -326,6 +334,45 @@ function alivioCanto(): Esquema<FeatureAlivioCanto> {
         { t: "info", texto: (f) => (f.tipoAlivio === "rasgado"
           ? "Tira só a região onde as duas dobras se cruzam: cada dobra termina na linha de início da outra."
           : f.tamanho > 0 ? "Centrado no encontro das linhas de centro das dobras." : "Tamanho 0 = automático: maior largura de dobra (BA) + 2 × espessura, centrado no encontro das linhas de centro.") },
+      ] },
+    ],
+  };
+}
+
+function desdobrar(): Esquema<FeatureDesdobrar> {
+  return {
+    titulo: "Desdobrar",
+    caixas: [
+      { titulo: "Seleções", campos: [
+        { t: "refs", rot: "Face fixa", cam: "faceFixa", aceita: ["face"], multiplo: false, dica: "Face plana que fica parada (vazio = a parede inicial)" },
+        { t: "check", rot: "Coletar todas as dobras", cam: "todas" },
+        { t: "refs", rot: "Dobras a desdobrar", cam: "dobras", aceita: ["face"], multiplo: true, cor: "azul", dica: "Toque nas faces curvas das dobras", vis: (f) => !f.todas },
+        { t: "info", texto: () => "Uso: desdobrar → Corte na chapa com esboço na face plana (pode atravessar as dobras) → Dobrar." },
+      ] },
+    ],
+  };
+}
+
+function converterChapa(): Esquema<FeatureConverterChapa> {
+  const [bitolas, , margem] = caixasChapa() as unknown as Caixa<FeatureConverterChapa>[];
+  return {
+    titulo: "Converter em chapa",
+    caixas: [
+      { titulo: "Face fixa e dobras", campos: [
+        { t: "refs", rot: "Face fixa", cam: "faceFixa", aceita: ["face"], multiplo: false, dica: "Face plana do sólido que fica parada no planificado" },
+        { t: "refs", rot: "Arestas de dobra", cam: "arestas", aceita: ["aresta"], multiplo: true, cor: "azul", dica: "Toque nas arestas retas que dobram (entre faces planas)" },
+        { t: "info", texto: () => "As faces ligadas à face fixa pelas arestas de dobra viram paredes. Arestas entre paredes que não dobram viram rasgos." },
+      ] },
+      bitolas,
+      { titulo: "Parâmetros de chapa", campos: [
+        { t: "num", rot: "Espessura", cam: "espessura", un: "mm", min: 0.01, passo: 0.1 },
+        { t: "inverter", rot: "Espessura para fora do sólido", cam: "inverter" },
+        { t: "num", rot: "Raio de dobra", cam: "raio", un: "mm", min: 0.01, passo: 0.5 },
+      ] },
+      margem,
+      { titulo: "Rasgos", campos: [
+        { t: "num", rot: "Folga do rasgo", cam: "folga", un: "mm", min: 0, passo: 0.05 },
+        { t: "info", texto: () => "Cantos entre abas vizinhas ficam em meia-esquadria com essa folga (Fechar canto/Alívio de canto ajustam depois)." },
       ] },
     ],
   };

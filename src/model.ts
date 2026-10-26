@@ -587,12 +587,51 @@ export interface FeatureQuebrarCanto extends FeatureBase {
   distancia: number;
 }
 
+/** Desdobrar: dobras escolhidas (ou todas) ficam planas no 3D — para cortes que atravessam dobras. */
+export interface FeatureDesdobrar extends FeatureBase {
+  tipo: "desdobrar";
+  /** Face plana que fica parada (vazia = parede inicial da chapa). */
+  faceFixa?: Referencia;
+  /** Faces cilíndricas das dobras a desdobrar (com `todas`, ignoradas). */
+  dobras: Referencia[];
+  todas: boolean;
+}
+
+/** Dobrar: volta a dobrar tudo o que foi desdobrado; os cortes feitos no plano acompanham. */
+export interface FeatureDobrar extends FeatureBase {
+  tipo: "dobrar";
+}
+
+/**
+ * Converter em chapa: um sólido de faces planas vira chapa. A face fixa e as faces ligadas a ela
+ * pelas arestas de dobra viram paredes; as arestas entre paredes que não dobram são rasgadas
+ * (folga), e os cantos entre abas vizinhas ficam em meia-esquadria.
+ */
+export interface FeatureConverterChapa extends FeatureBase {
+  tipo: "converterChapa";
+  faceFixa?: Referencia;
+  arestas: Referencia[];
+  /** Mesmos parâmetros globais da Flange base. */
+  tabela: string;
+  espessura: number;
+  raio: number;
+  fatorK: number;
+  /** false: espessura para dentro do sólido (medidas externas mantidas); true: para fora. */
+  inverter: boolean;
+  /** Folga dos rasgos (arestas entre paredes que não dobram). */
+  folga: number;
+}
+
 export type Feature =
   | FeatureEsboco | FeatureExtrusao | FeatureRevolucao | FeatureFilete | FeatureChanfro
   | FeatureCasca | FeatureInclinacao | FeatureNervura | FeatureFuro | FeatureVarredura | FeatureLoft
   | FeaturePadraoLinear | FeaturePadraoCircular | FeatureEspelhar | FeaturePlanoRef | FeatureEixoRef | FeatureCurva
   | FeatureFlangeBase | FeatureFlangeAresta | FeatureBainha | FeatureAbaChapa | FeatureDobraEsboco | FeatureJunta | FeatureMeiaEsquadria
-  | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto;
+  | FeatureFecharCanto | FeatureAlivioCanto | FeatureQuebrarCanto | FeatureDesdobrar | FeatureDobrar | FeatureConverterChapa;
+
+/** Recurso que cria a chapa e guarda os parâmetros globais dela (bitola, espessura, raio, K). */
+export type FeatureBaseChapa = FeatureFlangeBase | FeatureConverterChapa;
+export const ehBaseChapa = (f: Feature): f is FeatureBaseChapa => f.tipo === "flangeBase" || f.tipo === "converterChapa";
 
 /**
  * Tabela de chapas: valores de referência para dobra no ar (raio interno ≈ espessura).
@@ -806,6 +845,15 @@ export function novaFeature(tipo: Exclude<Feature["tipo"], "esboco">, indice: nu
       return { ...base, tipo, nome: `AlívioDeCanto${indice}`, tipoAlivio: "retangular", tamanho: 0 };
     case "quebrarCanto":
       return { ...base, tipo, nome: `QuebrarCanto${indice}`, arestas: [], tipoQuebra: "chanfro", distancia: 5 };
+    case "desdobrar":
+      return { ...base, tipo, nome: `Desdobrar${indice}`, dobras: [], todas: true };
+    case "dobrar":
+      return { ...base, tipo, nome: `Dobrar${indice}` };
+    case "converterChapa":
+      return {
+        ...base, tipo, nome: `ConverterEmChapa${indice}`, arestas: [], tabela: "Aço carbono|2", espessura: 2, raio: 2, fatorK: 0.44,
+        inverter: false, folga: 0.25,
+      };
     case "curva":
       return {
         ...base, tipo, nome: `Curva${indice}`, modo: "helice", definicao: "passoRevolucao", passo: 5, revolucoes: 4, altura: 20,
@@ -845,6 +893,9 @@ export const ROTULO_TIPO: Record<Feature["tipo"], string> = {
   fecharCanto: "Fechar canto",
   alivioCanto: "Alívio de canto",
   quebrarCanto: "Quebrar canto",
+  desdobrar: "Desdobrar",
+  dobrar: "Dobrar",
+  converterChapa: "Converter em chapa",
 };
 
 /**
