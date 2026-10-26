@@ -1789,7 +1789,65 @@ function juntar(fs: Ferramenta[]): Ferramenta[] {
 
 // ---------- regeneração ----------
 
+/**
+ * Falha fatal do WebAssembly (acesso fora da memória, divisão por zero, função nula…): depois
+ * dela a memória do OpenCascade pode ficar corrompida e toda regeneração seguinte falha. Quem
+ * chama precisa reiniciar o kernel (ver regenerarComRecuperacao).
+ */
+export class KernelQuebrado extends Error {
+  constructor(public culpado: string | null, causa: string) {
+    super(`Falha interna do kernel: ${causa}`);
+  }
+}
+
+const FATAL = /memory access out of bounds|table index is out of bounds|null function|function signature mismatch|unreachable|remainder by zero|divide by zero|integer overflow|call stack|out of memory|Aborted/i;
+export function ehFatal(e: unknown): boolean {
+  const W = (globalThis as { WebAssembly?: { RuntimeError?: new () => Error } }).WebAssembly;
+  return (!!W?.RuntimeError && e instanceof W.RuntimeError) || (e instanceof Error && FATAL.test(e.message));
+}
+
 export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { planificar?: boolean; previa?: string } = {}): ResultadoRegeneracao {
+  try {
+    return regenerarBruto(features, tolerancia, opcoes);
+  } catch (e) {
+    if (e instanceof KernelQuebrado) throw e;
+    // falha fora dos recursos (malha, topologia, volume): o recurso culpado é procurado
+    throw new KernelQuebrado(null, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/**
+ * Regenera; se o kernel quebrar, reinicia o OpenCascade, suprime o recurso culpado (marcado com
+ * erro) e tenta de novo — o resto da peça continua aparecendo. Sem culpado conhecido (a falha foi
+ * ao gerar a malha), testa o recurso em edição e depois os últimos da árvore.
+ */
+export async function regenerarComRecuperacao(
+  features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }, reiniciar: () => Promise<void>,
+): Promise<ResultadoRegeneracao> {
+  let feats = features;
+  const extras: ErroFeature[] = [];
+  const msg = "O kernel não aguentou este recurso (geometria degenerada) e foi reiniciado. Mude os valores ou exclua o recurso.";
+  const candidatos = [opcoes.previa, ...features.filter((f) => !f.suprimida && f.tipo !== "esboco").map((f) => f.id).reverse()].filter((x): x is string => !!x);
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    try {
+      const r = regenerar(feats, tolerancia, opcoes);
+      r.erros.push(...extras.filter((x) => !r.erros.some((y) => y.id === x.id)));
+      return r;
+    } catch (e) {
+      if (!(e instanceof KernelQuebrado)) throw e;
+      await reiniciar();
+      ultimaPeca = null;
+      ultimaChapa = null;
+      const culpado = e.culpado ?? candidatos.find((id) => !extras.some((x) => x.id === id));
+      if (!culpado) throw e;
+      extras.push({ id: culpado, mensagem: msg });
+      feats = feats.map((f) => (f.id === culpado ? { ...f, suprimida: true } : f));
+    }
+  }
+  throw new Error("O kernel falhou várias vezes seguidas: recarregue a página.");
+}
+
+function regenerarBruto(features: Feature[], tolerancia: number, opcoes: { planificar?: boolean; previa?: string }): ResultadoRegeneracao {
   const erros: ErroFeature[] = [];
   const tempos: { id: string; ms: number }[] = [];
   const ctx = novoCtx();
@@ -1805,6 +1863,8 @@ export function regenerar(features: Feature[], tolerancia = 0.05, opcoes: { plan
       rastreador.registrar(f.id, antes, ctx.peca);
       if (opcoes.previa === f.id) previaRemovido = materialRemovido(antes, ctx.peca, tolerancia);
     } catch (e) {
+      // memória do kernel possivelmente corrompida: não dá para continuar nesta instância
+      if (ehFatal(e)) throw new KernelQuebrado(f.id, (e as Error).message);
       // A feature com falha é ignorada e a regeneração continua com a peça anterior,
       // como um CAD faz ao marcar a feature em vermelho na árvore.
       erros.push({ id: f.id, mensagem: traduzirErro(e, f.tipo) });
@@ -1882,12 +1942,16 @@ function materialRemovido(antes: Shape3D | null, depois: Shape3D | null, toleran
     const a = r.meshEdges({ tolerance: tolerancia * 2, angularTolerance: 20 });
     if (!m.triangles.length) return null;
     return { vertices: Float32Array.from(m.vertices), normais: Float32Array.from(m.normals), triangulos: Uint32Array.from(m.triangles), arestas: Float32Array.from(a.lines) };
-  } catch {
+  } catch (e) {
+    if (ehFatal(e)) throw e;
     return null; // a prévia nunca impede a regeneração
   }
 }
 
 let ultimaChapa: ModeloChapa | null = null;
+
+/** Limite de cópias do padrão linear (n1 × n2): acima disso a regeneração trava o aparelho. */
+const MAX_COPIAS = 500;
 
 /** DXF do planificado da última regeneração e o resumo para a lista de corte. */
 export function exportarDxf(nome: string): { dxf: string; resumo: ResumoPlanificado } {
@@ -2011,6 +2075,7 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const usa2 = !!f.dir2?.ativa;
       const d2 = usa2 ? mul3(eixoDeRef(f.dir2!.ref, ctx).dir, f.dir2!.inverter ? -1 : 1) : [0, 0, 0] as Vec3;
       const n2 = usa2 ? Math.max(1, Math.round(f.dir2!.instancias)) : 1;
+      if (!(n1 * n2 <= MAX_COPIAS)) throw new Error(`Padrão grande demais (${n1} × ${n2} = ${n1 * n2} instâncias): o máximo é ${MAX_COPIAS}.`);
       const copias: Ferramenta[] = [];
       for (let i = 0; i < n1; i++) for (let j = 0; j < n2; j++) {
         if ((i === 0 && j === 0) || f.pular.includes(`${i},${j}`)) continue;
@@ -2026,7 +2091,10 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
       const base = ferramentasDe(f.recursos, ctx);
       const ax = eixoDeRef(f.eixo, ctx);
       const n = Math.max(1, Math.round(f.instancias));
+      if (!(n <= 360)) throw new Error(`Padrão grande demais (${n} instâncias): o máximo é 360.`);
       const passo = (f.igual ? (Math.abs(f.angulo) >= 360 ? f.angulo / n : f.angulo / Math.max(1, n - 1)) : f.angulo) * (f.inverter ? -1 : 1);
+      // cópias quase no mesmo lugar: o booleano degenera (e pode derrubar o kernel)
+      if (n > 1 && !(Math.abs(passo) >= 0.5)) throw new Error(`Ângulo entre as instâncias pequeno demais (${Math.abs(passo).toFixed(3)}°): o mínimo é 0,5°.`);
       const copias: Ferramenta[] = [];
       for (let i = 1; i < n; i++) {
         if (f.pular.includes(String(i))) continue;

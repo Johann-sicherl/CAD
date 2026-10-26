@@ -5,7 +5,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC } from "replicad";
 import type { Feature, Referencia } from "../model";
-import { exportar, exportarDxf, pecaAtual, regenerar } from "./regenerar";
+import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
 
 export type PedidoKernel =
@@ -26,12 +26,15 @@ export type RespostaKernel =
 const enviar = (r: RespostaKernel, transfer: Transferable[] = []) =>
   (self as unknown as Worker).postMessage(r, transfer);
 
-const inicializado = (async () => {
+/** Carrega (ou recarrega, depois de uma falha fatal) o OpenCascade. */
+async function carregarKernel() {
   const OC = await (opencascade as unknown as (o: object) => Promise<unknown>)({
     locateFile: () => wasmUrl,
   });
   setOC(OC as never);
-})();
+}
+
+const inicializado = carregarKernel();
 
 inicializado
   .then(() => enviar({ tipo: "pronto" }))
@@ -44,7 +47,7 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
     switch (p.tipo) {
       case "regenerar": {
         const t0 = performance.now();
-        const resultado = regenerar(p.features, 0.05, { planificar: p.planificar, previa: p.previa });
+        const resultado = await regenerarComRecuperacao(p.features, 0.05, { planificar: p.planificar, previa: p.previa }, carregarKernel);
         const ms = performance.now() - t0;
         const m = resultado.malha, pr = resultado.previaRemovido;
         enviar(
@@ -73,6 +76,8 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
         break;
     }
   } catch (e) {
-    enviar({ tipo: "erro", seq: p.seq, mensagem: e instanceof Error ? e.message : String(e) });
+    // exportar/medir/massa também podem derrubar o kernel: recarrega para a próxima vez
+    if (ehFatal(e)) await carregarKernel().catch(() => {});
+    enviar({ tipo: "erro", seq: p.seq, mensagem: ehFatal(e) ? "O kernel falhou nesta operação e foi reiniciado: tente de novo." : e instanceof Error ? e.message : String(e) });
   }
 };

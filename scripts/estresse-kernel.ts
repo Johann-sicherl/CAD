@@ -11,14 +11,20 @@ import opencascade from "replicad-opencascadejs";
 import { setOC } from "replicad";
 import { createRequire } from "node:module";
 import { novaFeature, novoEsboco, type Feature, type FeatureEsboco, type Referencia } from "../src/model";
-import { regenerar } from "../src/kernel/regenerar";
+import { regenerar, regenerarComRecuperacao } from "../src/kernel/regenerar";
 import { esquemaDe, type DadosEsquema } from "../src/ui/esquemas";
 import { gravar, ler, type Campo } from "../src/ui/formulario";
 import { aninhamento, encontrarLacos } from "../src/esboco/geometria";
 import * as op from "../src/esboco/operacoes";
 
 const require = createRequire(import.meta.url);
-setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
+const carregarKernel = async () => setOC(await (opencascade as any)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") }));
+await carregarKernel();
+let reinicios = 0;
+const reiniciar = async () => {
+  reinicios++;
+  await carregarKernel();
+};
 
 const rapido = process.argv.includes("rapido");
 const TEMPO_LENTO = 8000; // ms por regeneração
@@ -32,11 +38,14 @@ function achar(msg: string) {
 }
 
 /** Regenera e confere as regras; devolve o resultado (ou null se estourou). */
-function rodar(onde: string, feats: Feature[], alvo?: string, opcoes: { planificar?: boolean } = {}) {
+async function rodar(onde: string, feats: Feature[], alvo?: string, opcoes: { planificar?: boolean } = {}) {
   const t0 = performance.now();
   let r: ReturnType<typeof regenerar>;
   try {
-    r = regenerar(JSON.parse(JSON.stringify(feats)), 0.1, opcoes);
+    const antes = reinicios;
+    r = await regenerarComRecuperacao(JSON.parse(JSON.stringify(feats)), 0.1, { ...opcoes, previa: alvo }, reiniciar);
+    // o kernel quebrou e se recuperou: a peça aparece, mas o recurso precisa de proteção própria
+    if (reinicios > antes) achar(`KERNEL REINICIADO ${onde}: ${r.erros.filter((e) => /reiniciado/.test(e.mensagem)).map((e) => feats.find((f) => f.id === e.id)?.tipo).join(", ")}`);
   } catch (e) {
     achar(`ESTOUROU ${onde}: ${(e as Error).message}`);
     return null;
@@ -193,10 +202,10 @@ function valores(c: Extract<Campo<any>, { t: "num" }>, atual: number): number[] 
 }
 
 /** Percorre o painel inteiro do recurso `f0` sobre a peça `base`. */
-function varrerRecurso(f0: any, base: Feature[]) {
+async function varrerRecurso(f0: any, base: Feature[]) {
   const d = dados(base);
   const nome = `${f0.tipo}`;
-  const baseR = rodar(`${nome} (padrão)`, [...base, f0], f0.id);
+  const baseR = await rodar(`${nome} (padrão)`, [...base, f0], f0.id);
   if (baseR?.erros.some((e) => e.id === f0.id)) console.log(`  · ${nome} padrão com erro: ${baseR.erros.find((e) => e.id === f0.id)!.mensagem}`);
   let n0 = regeneracoes;
   const caixas = esquemaDe(f0, d).caixas;
@@ -231,9 +240,9 @@ function varrerRecurso(f0: any, base: Feature[]) {
         achar(`ESTOUROU ao mudar ${nome} › ${rot}: ${(e as Error).message}`);
         continue;
       }
-      const r = rodar(`${nome} › ${rot}`, [...base, f], f.id);
+      const r = await rodar(`${nome} › ${rot}`, [...base, f], f.id);
       // chapa: o planificado também precisa aguentar
-      if (r && CHAPA.has(f.tipo) && !rapido) rodar(`${nome} › ${rot} (planificado)`, [...base, f], f.id, { planificar: true });
+      if (r && CHAPA.has(f.tipo) && !rapido) await rodar(`${nome} › ${rot} (planificado)`, [...base, f], f.id, { planificar: true });
     }
   }
   console.log(`  ${nome}: ${regeneracoes - n0 + 1} regenerações`);
@@ -248,7 +257,10 @@ const TIPOS = [
 ] as const;
 const t0 = performance.now();
 console.log("1. painel de cada recurso");
+// pnpm estresse -- so=padraoLinear,espelhar  (só esses tipos)
+const so = process.argv.find((a) => a.startsWith("so="))?.slice(3).split(",");
 for (const tipo of TIPOS) {
+  if (so && !so.includes(tipo)) continue;
   const base = CHAPA.has(tipo) ? chapas : tipo === "flangeBase" ? [sPlaca] : solidos;
   const f = novaFeature(tipo as any, 9) as any;
   if (tipo === "flangeBase") f.esboco = sPlaca.id;
@@ -257,7 +269,7 @@ for (const tipo of TIPOS) {
     const c = novaFeature("extrusao", 9) as any;
     c.operacao = "cortar";
     preencher(c, base);
-    varrerRecurso(c, base);
+    await varrerRecurso(c, base);
   }
   try {
     preencher(f, base);
@@ -265,7 +277,7 @@ for (const tipo of TIPOS) {
     achar(`ESTOUROU preenchendo ${tipo}: ${(e as Error).message}`);
     continue;
   }
-  varrerRecurso(f, base);
+  await varrerRecurso(f, base);
 }
 
 // ---------- 2. peça longa com tudo junto, supressões e ordem ----------
@@ -276,18 +288,18 @@ for (const tipo of ["extrusao", "filete", "chanfro", "furo", "padraoLinear", "pa
   preencher(f, longa);
   longa.push(f);
 }
-const rl = rodar("peça longa", longa);
+const rl = await rodar("peça longa", longa);
 console.log(`  peça longa: ${rl?.erros.length ?? "?"} recurso(s) com erro: ${rl?.erros.map((e) => longa.find((f) => f.id === e.id)?.tipo + ": " + e.mensagem).join(" | ")}`);
 for (const f of longa) {
   if (f.tipo === "esboco") continue;
-  rodar(`peça longa sem ${f.tipo}`, longa.map((x) => (x === f ? { ...x, suprimida: true } : x)));
+  await rodar(`peça longa sem ${f.tipo}`, longa.map((x) => (x === f ? { ...x, suprimida: true } : x)));
 }
 // embaralha (determinístico): recursos fora de ordem não podem derrubar a regeneração
 let semente = 7;
 const aleat = () => ((semente = (semente * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
 for (let k = 0; k < (rapido ? 3 : 10); k++) {
   const ordem = [...longa].sort(() => aleat() - 0.5);
-  rodar(`peça longa embaralhada #${k + 1}`, ordem);
+  await rodar(`peça longa embaralhada #${k + 1}`, ordem);
 }
 // chapa com todos os recursos de chapa
 const chapaLonga: Feature[] = [...chapas];
@@ -296,10 +308,10 @@ for (const tipo of ["bainha", "abaChapa", "corteChapa", "fecharCanto", "alivioCa
   preencher(f, chapaLonga);
   chapaLonga.push(f);
 }
-const rc = rodar("chapa longa", chapaLonga);
+const rc = await rodar("chapa longa", chapaLonga);
 console.log(`  chapa longa: ${rc?.erros.map((e) => chapaLonga.find((f) => f.id === e.id)?.tipo + ": " + e.mensagem).join(" | ") || "sem erros"}`);
-rodar("chapa longa planificada", chapaLonga, undefined, { planificar: true });
-for (const f of chapaLonga) if (f.tipo !== "esboco") rodar(`chapa longa sem ${f.tipo}`, chapaLonga.map((x) => (x === f ? { ...x, suprimida: true } : x)));
+await rodar("chapa longa planificada", chapaLonga, undefined, { planificar: true });
+for (const f of chapaLonga) if (f.tipo !== "esboco") await rodar(`chapa longa sem ${f.tipo}`, chapaLonga.map((x) => (x === f ? { ...x, suprimida: true } : x)));
 
 // ---------- relatório ----------
 console.log(`\n${regeneracoes} regenerações em ${((performance.now() - t0) / 1000).toFixed(0)} s`);
