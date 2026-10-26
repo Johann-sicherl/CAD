@@ -45,6 +45,7 @@ async function rodar(onde: string, feats: Feature[], alvo?: string, opcoes: { pl
     const antes = reinicios;
     r = await regenerarComRecuperacao(JSON.parse(JSON.stringify(feats)), 0.1, { ...opcoes, previa: alvo }, reiniciar);
     // o kernel quebrou e se recuperou: a peça aparece, mas o recurso precisa de proteção própria
+    if (reinicios > antes && process.env.DESPEJAR) (await import("node:fs")).writeFileSync(`${process.env.DESPEJAR}/reinicio-${achados.length}.json`, JSON.stringify(feats));
     if (reinicios > antes) achar(`KERNEL REINICIADO ${onde}: ${r.erros.filter((e) => /reiniciado/.test(e.mensagem)).map((e) => feats.find((f) => f.id === e.id)?.tipo).join(", ")}`);
   } catch (e) {
     achar(`ESTOUROU ${onde}: ${(e as Error).message}`);

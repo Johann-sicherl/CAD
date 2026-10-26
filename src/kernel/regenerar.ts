@@ -1723,6 +1723,11 @@ function furo(f: FeatureFuro, ctx: Ctx): Ferramenta[] {
   if (!posicoes.length) throw new Error("Posicione os furos: aba Posições → toque na face para cada furo.");
   const m = medidasFuro(f);
   const cx = caixa(ctx)!;
+  // furo maior que a peça inteira é erro de digitação (e derruba o kernel)
+  const maior = Math.max(m.diametro, f.tipoFuro === "rebaixado" ? m.diamRebaixo : 0, f.tipoFuro === "escareado" ? m.diamEscareado : 0);
+  if (!(maior > 0)) throw new Error("O diâmetro do furo deve ser maior que zero.");
+  if (maior > 2 * cx.diag) throw new Error(`Furo de Ø${Number(maior.toFixed(2)).toLocaleString("pt-BR")} mm maior que a peça inteira: confira o diâmetro.`);
+  if (f.condicao.tipo === "cego" && f.condicao.profundidade > 20 * cx.diag) throw new Error("Profundidade do furo muito maior que a peça: use Passante.");
   const baixo = neg3(r.normal); // furo entra contra a normal da face
   let tool: Shape3D | null = null;
   for (const q of posicoes) {
@@ -1782,9 +1787,23 @@ function juntar(fs: Ferramenta[]): Ferramenta[] {
   const out: Ferramenta[] = [];
   for (const op of ["adicionar", "cortar"] as const) {
     const ts = fs.filter((f) => f.op === op).map((f) => f.tool);
-    if (ts.length) out.push({ op, tool: ts.slice(1).reduce((a, b) => a.fuse(b), ts[0]) });
+    if (ts.length) out.push({ op, tool: uniaoEmArvore(ts) });
   }
   return out;
+}
+
+/**
+ * União de muitos sólidos em pares (1+2, 3+4… depois os resultados): cada booleana opera em
+ * peças pequenas. Somar um a um faz o resultado crescer a cada passo (custo quadrático).
+ */
+function uniaoEmArvore(ts: Shape3D[]): Shape3D {
+  let lista = ts;
+  while (lista.length > 1) {
+    const prox: Shape3D[] = [];
+    for (let k = 0; k < lista.length; k += 2) prox.push(k + 1 < lista.length ? lista[k].fuse(lista[k + 1]) : lista[k]);
+    lista = prox;
+  }
+  return lista[0];
 }
 
 // ---------- regeneração ----------
