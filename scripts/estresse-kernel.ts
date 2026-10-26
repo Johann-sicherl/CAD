@@ -31,7 +31,7 @@ const TEMPO_LENTO = 8000; // ms por regeneração
 const achados: string[] = [];
 const lentos: string[] = [];
 let regeneracoes = 0;
-const ruim = /undefined|null\b|NaN|TypeError|ReferenceError|is not a function|Cannot read|\[object|WebAssembly\.|RuntimeError/;
+const ruim = /undefined|null\b|NaN|This shape|has not type|TypeError|ReferenceError|is not a function|Cannot read|\[object|WebAssembly\.|RuntimeError/;
 
 function achar(msg: string) {
   if (!achados.includes(msg)) achados.push(msg);

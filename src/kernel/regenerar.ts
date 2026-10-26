@@ -2275,7 +2275,8 @@ function traduzirErro(e: unknown, tipo?: Feature["tipo"]): string {
   if (/draft/i.test(msg)) return "Não foi possível inclinar essas faces (verifique o plano neutro).";
   if (/boolean|fuse|cut|intersect/i.test(msg)) return "Falha na operação booleana.";
   // Exceções C++ do OpenCascade chegam como números ou WebAssembly.Exception, sem texto útil.
-  if (typeof e === "number" || /WebAssembly|object/i.test(msg)) {
+  // forma vazia/nula devolvida pelo kernel (replicad em inglês): mesma dica da falha sem texto
+  if (typeof e === "number" || /WebAssembly|object|has not type|is null|null shape|not a valid/i.test(msg)) {
     return (tipo && DICA_FALHA[tipo]) ?? "O kernel não conseguiu gerar esta geometria (valor grande demais ou perfil inválido).";
   }
   return msg;

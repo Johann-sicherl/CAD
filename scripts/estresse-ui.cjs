@@ -50,7 +50,7 @@ const rapido = process.argv.includes("rapido");
   };
   const errosArvore = async () => {
     const t = await p.evaluate(() => [...document.querySelectorAll(".prop-erro")].map((x) => x.textContent));
-    for (const x of t) if (/undefined|null|NaN|TypeError|is not|Cannot|\[object|WebAssembly/i.test(x)) achar("erro de recurso", x);
+    for (const x of t) if (/undefined|null|NaN|TypeError|is not|Cannot|\[object|WebAssembly|This shape|has not type/i.test(x)) achar("erro de recurso", x);
   };
   const fecharTudo = async () => {
     for (let i = 0; i < 3; i++) {
@@ -111,6 +111,16 @@ const rapido = process.argv.includes("rapido");
   };
 
   /** Mexe em todos os campos do painel do comando (uma passada por campo). */
+  const docAberto = () => p.evaluate(() => !/Nenhum documento aberto/.test(document.querySelector("footer:last-of-type")?.textContent ?? ""));
+  let ultimaAcao = "";
+  const conferir = async (acao) => {
+    ultimaAcao = acao;
+    if (!(await docAberto())) {
+      achar("estado", `o documento foi fechado depois de: ${acao}`);
+      await abrirExemplo();
+      throw new Error("documento fechado");
+    }
+  };
   const exercitarPainel = async (sel = "#painel-comando:not([hidden])") => {
     const painel = p.locator(sel);
     if (!(await painel.count())) return;
@@ -123,6 +133,7 @@ const rapido = process.argv.includes("rapido");
       for (const v of (rapido ? valores.slice(0, 2) : valores).slice(0, 10)) {
         await painel.locator("select").nth(s).selectOption(v).catch(() => {});
         await pronto();
+        await conferir(`lista ${s} = ${v}`);
         await errosArvore();
       }
     }
@@ -133,6 +144,7 @@ const rapido = process.argv.includes("rapido");
       if (!(await cb.isVisible().catch(() => false))) continue;
       await cb.click({ timeout: 1500 }).catch(() => {});
       await pronto();
+      await conferir(`caixa ${k}`);
       await errosArvore();
     }
     // botões + e − dos números e inverter
@@ -144,6 +156,7 @@ const rapido = process.argv.includes("rapido");
       await pronto();
       await g.locator("button").first().click({ timeout: 1500 }).catch(() => {});
       await pronto();
+      await conferir(`± do número ${k}`);
       // valores extremos digitados
       if (!rapido) {
         for (const v of ["0", "-5", "99999", "abc", "=1/0"]) {
@@ -152,6 +165,7 @@ const rapido = process.argv.includes("rapido");
           await inp.fill(v).catch(() => {});
           await inp.press("Enter").catch(() => {});
           await pronto();
+          await conferir(`número ${k} = ${v}`);
           await errosArvore();
         }
       }
@@ -172,6 +186,7 @@ const rapido = process.argv.includes("rapido");
     console.log(`${nomeAba}: ${lista.length} comandos`);
     for (const c of lista) {
       onde = `${perfil} › ${nomeAba} › ${c.nome}`;
+      if (process.env.SO && !c.nome.includes(process.env.SO)) continue;
       if (process.env.VERBOSO) console.log(onde);
       await aba(nomeAba);
       try {
