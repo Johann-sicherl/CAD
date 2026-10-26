@@ -12,6 +12,24 @@
 > importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
 > risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
 
+## Regras 001 (definidas pelo Johann, 26/10/2026 — valem sempre)
+
+1. **Postura de otimização e melhor experiência de uso (UX):** propor o caminho mais simples,
+   rápido e leve para o usuário e para o código.
+2. **Discordar quando fizer sentido:** se um pedido não tiver lógica operacional ou impactar
+   muito o projeto (desempenho, arquitetura, manutenção), dizer isso claramente, explicar o
+   motivo e propor uma alternativa antes de implementar.
+3. **Perguntar quando houver dúvida** real de requisito, em vez de supor.
+4. **Cautela e precisão:** validar cada mudança (testes, build, verificação no navegador quando
+   for interface) e relatar o resultado com fidelidade.
+5. **Eficiência e desempenho** em tudo: código enxuto, sem trabalho desnecessário na thread da UI,
+   sem dependências supérfluas.
+6. **Publicação até o fim, sem trabalho manual do Johann:** depois de `pnpm check && pnpm teste &&
+   pnpm build`, fazer commit, push, abrir o PR para `main`, acompanhar o CI, corrigir o que falhar
+   e **fazer o merge** quando estiver verde (isso publica no GitHub Pages e no Cloudflare Pages).
+   Ele não deve precisar entrar no GitHub nem no Cloudflare. Só parar para perguntar se algo
+   exigir decisão dele ou acesso que a sessão não tem.
+
 Responda sempre em **português (Brasil)**. O dono do projeto é o Johann, engenheiro mecânico
 que usa CAD paramétrico profissionalmente; trate-o como usuário avançado de CAD.
 Ele prefere receber **arquivos/blocos de código completos** após cada mudança, não diffs parciais.
