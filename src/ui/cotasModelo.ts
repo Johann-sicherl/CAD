@@ -29,6 +29,11 @@ export class CotasNoModelo {
     return this.itens.length > 0;
   }
 
+  /** Uma das cotas está aberta para digitar (não refazer os rótulos por baixo dela). */
+  get editando(): boolean {
+    return this.itens.some(({ el }) => !el.isConnected);
+  }
+
   mostrar(rotulos: RotuloModelo[]) {
     this.limpar();
     for (const r of rotulos) {

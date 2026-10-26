@@ -948,3 +948,17 @@ textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-mo
 .tabela-config input.invalido { border-color: var(--erro); }
 .st-filtro { border: 1px solid #f0c27a; background: #fff4e0; color: #8a5a00; border-radius: 10px; padding: 0 8px; min-height: 22px; font: inherit; font-size: 12px; cursor: pointer; }
 .st-filtro[hidden] { display: none; }
+
+/* caixa flutuante do comando (celular/tablet): opções principais perto da peça, arrastável */
+.caixa-flutuante {
+  position: absolute; z-index: 7; width: min(290px, calc(100% - 12px)); max-height: calc(100% - 70px); overflow-y: auto;
+  padding: 0 8px 8px; border: 1px solid var(--linha); border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.caixa-flutuante[hidden] { display: none; }
+.caixa-flutuante .pc-cabecalho { top: 0; margin: 0 -8px 6px; border-radius: 10px 10px 0 0; }
+.caixa-flutuante .cf-alca { cursor: grab; touch-action: none; }
+.caixa-flutuante .pc-titulo { font-size: 15px; }
+.caixa-flutuante .pc-caixa { margin: 4px 0; }
+.cf-tudo { min-width: 44px; padding: 0; font-size: 18px; }
+.opcoes-toque { display: grid; gap: 8px; padding: 0 16px 12px; }

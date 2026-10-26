@@ -46,7 +46,7 @@ import { aninhamento, encontrarLacos } from "./esboco/geometria";
 import * as op from "./esboco/operacoes";
 import wasmPlaneGcs from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
 import { esquemaDe, esquemaParametrosChapa, type DadosEsquema } from "./ui/esquemas";
-import { ler, renderizarFormulario, type Esquema, type TipoSel } from "./ui/formulario";
+import { ler, renderizarFormulario, type ContextoFormulario, type Esquema, type TipoSel } from "./ui/formulario";
 import { aplicarEquacoes, avaliarExpressao, resolverVariaveis } from "./equacoes";
 import type { Analise } from "./analises";
 import { absorvidosDe, excluirRecursos, filhosDe } from "./dependencias";
@@ -83,6 +83,12 @@ interface Prefs {
   /** Filtro de seleção: só estes tipos podem ser tocados no modelo (vazio = desligado). */
   filtroSelecao?: TipoFiltro[];
   filtroAnterior?: TipoFiltro[];
+  /** Toque longo (caneta/dedo parado) abre o menu de contexto: tempo em ms (0 = desligado). */
+  toqueLongoMs?: number;
+  /** Comandos com caixa flutuante perto da peça (padrão: celular e tablet). */
+  caixaFlutuante?: boolean;
+  /** Onde a caixa flutuante foi largada pela última vez (px dentro do viewport). */
+  posCaixaFlutuante?: { x: number; y: number };
 }
 type TipoFiltro = "face" | "aresta" | "vertice" | "plano" | "eixo" | "curva";
 type TipoItem = "planos" | "eixos" | "origem" | "esbocos";
@@ -247,7 +253,8 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   }
   if (avaliacao?.tipo === "analise") mostrarLegendaAnalise();
   // cotas abertas sobre o modelo: refeitas na peça nova (posições mudam com os valores)
-  if (recursoComCotas) {
+  if (recursoComCotas === TODAS_AS_COTAS) mostrarTodasAsCotas();
+  else if (recursoComCotas) {
     const f = doc.features.find((x) => x.id === recursoComCotas);
     if (f) mostrarCotasNoModelo(f);
     else fecharCotasNoModelo();
@@ -801,7 +808,7 @@ function renderizarComando() {
   if (!comando) return;
   const c = comando;
   const esq = esquemaComando(c);
-  renderizarFormulario($("painel-comando"), c.f, esq, {
+  const ctx: ContextoFormulario = {
     erro: errosPorFeature.get(c.f.id),
     aoMudar: (final) => {
       salvarAutosave();
@@ -834,9 +841,98 @@ function renderizarComando() {
       renderizarComando();
     },
     recolhidas: c.recolhidas,
-  });
+  };
+  renderizarFormulario($("painel-comando"), c.f, esq, ctx);
+  const apareceu = renderizarCaixaFlutuante(esq, ctx);
   atualizarDestaques();
   atualizarAlcas();
+  if (apareceu) posicionarCaixaFlutuante();
+}
+
+// ---------- caixa flutuante do comando (celular/tablet: opções perto da peça) ----------
+
+/** Comandos com caixa flutuante (piloto: extrusão) e as caixas do painel que ela repete. */
+const CAIXAS_FLUTUANTES: Partial<Record<Feature["tipo"], string[]>> = { extrusao: ["Direção 1", "Direção 2"] };
+
+const caixaFlutuante = Object.assign(document.createElement("div"), { className: "caixa-flutuante", hidden: true });
+$("viewport").parentElement!.appendChild(caixaFlutuante);
+
+function caixasFlutuantesDoComando(): string[] | undefined {
+  return comando && !comando.modo && caixaFlutuanteLigada() ? CAIXAS_FLUTUANTES[comando.f.tipo] : undefined;
+}
+
+/** Desenha a caixa com as opções principais do comando; true se ela acabou de aparecer. */
+function renderizarCaixaFlutuante(esq: Esquema<Feature>, ctx: ContextoFormulario): boolean {
+  const titulos = caixasFlutuantesDoComando();
+  if (!comando || !titulos) {
+    esconderCaixaFlutuante();
+    return false;
+  }
+  const estava = !caixaFlutuante.hidden;
+  renderizarFormulario(caixaFlutuante, comando.f, { titulo: esq.titulo, caixas: esq.caixas.filter((x) => titulos.includes(x.titulo)) }, ctx);
+  const cab = caixaFlutuante.querySelector<HTMLElement>(".pc-cabecalho")!;
+  cab.classList.add("cf-alca");
+  cab.title = "Arraste para mudar a caixa de lugar";
+  if (prefs.dispositivo === "celular") {
+    const tudo = document.createElement("button");
+    tudo.className = "cf-tudo";
+    tudo.textContent = "☰";
+    tudo.title = "Todas as opções (painel completo)";
+    tudo.onclick = () => abrirGaveta(true);
+    cab.insertBefore(tudo, cab.querySelector(".pc-ok"));
+  }
+  arrastarCaixaFlutuante(cab);
+  caixaFlutuante.hidden = false;
+  $("canto-confirmacao").hidden = true; // ✓/✕ já estão na caixa
+  return !estava;
+}
+
+function esconderCaixaFlutuante() {
+  if (!caixaFlutuante.hidden && comando) $("canto-confirmacao").hidden = false;
+  caixaFlutuante.hidden = true;
+  caixaFlutuante.innerHTML = "";
+}
+
+/** Na posição largada da última vez; sem ela, ao lado da peça na tela (sem cobri-la), na altura da seta. */
+function posicionarCaixaFlutuante() {
+  if (prefs.posCaixaFlutuante) return colocarCaixaFlutuante(prefs.posCaixaFlutuante.x, prefs.posCaixaFlutuante.y);
+  const area = caixaFlutuante.parentElement!.getBoundingClientRect();
+  const w = caixaFlutuante.offsetWidth, h = caixaFlutuante.offsetHeight;
+  const peca = viewport.retanguloDaPeca();
+  const alca = posicaoDaAlca ? viewport.mundoParaTela(posicaoDaAlca) : null;
+  const y = (alca?.y ?? (peca ? (peca.y0 + peca.y1) / 2 : 64)) - h / 2;
+  // direita da peça (abaixo do canto ✓/✕), senão esquerda, senão canto inferior direito
+  const direita = Math.max(peca?.x1 ?? 0, alca?.x ?? 0) + 24;
+  const esquerda = Math.min(peca?.x0 ?? area.width, alca?.x ?? area.width) - 24 - w;
+  if (direita + w <= area.width - 70) colocarCaixaFlutuante(direita, y);
+  else if (esquerda >= 6) colocarCaixaFlutuante(esquerda, y);
+  else colocarCaixaFlutuante(area.width - w - 12, area.height - h - 12);
+}
+
+function colocarCaixaFlutuante(x: number, y: number) {
+  const area = caixaFlutuante.parentElement!.getBoundingClientRect();
+  const w = caixaFlutuante.offsetWidth, h = caixaFlutuante.offsetHeight;
+  x = Math.max(6, Math.min(x, area.width - w - 6));
+  y = Math.max(56, Math.min(y, area.height - h - 6));
+  caixaFlutuante.style.left = `${x}px`;
+  caixaFlutuante.style.top = `${y}px`;
+  return { x, y };
+}
+
+/** O cabeçalho arrasta a caixa (dedo, caneta ou mouse); a posição fica guardada nas preferências. */
+function arrastarCaixaFlutuante(cab: HTMLElement) {
+  cab.onpointerdown = (e) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    cab.setPointerCapture(e.pointerId);
+    const x0 = caixaFlutuante.offsetLeft - e.clientX, y0 = caixaFlutuante.offsetTop - e.clientY;
+    cab.onpointermove = (m) => colocarCaixaFlutuante(x0 + m.clientX, y0 + m.clientY);
+    cab.onpointerup = cab.onpointercancel = () => {
+      cab.onpointermove = cab.onpointerup = cab.onpointercancel = null;
+      prefs.posCaixaFlutuante = { x: caixaFlutuante.offsetLeft, y: caixaFlutuante.offsetTop };
+      salvarPrefs();
+    };
+  };
 }
 
 function confirmarComando() {
@@ -876,6 +972,8 @@ function cancelarComando() {
 
 function fecharComando() {
   comando = null;
+  esconderCaixaFlutuante();
+  cotasDoComando.limpar();
   viewport.mostrarPrevia(null);
   viewport.mostrarAlcas([]);
   mostrarPainel(editor ? "esboco" : "arvore");
@@ -891,8 +989,8 @@ function mostrarPainel(modo: "arvore" | "comando" | "esboco") {
   $("arvore-mini").hidden = true;
   $("canto-confirmacao").hidden = !emComando;
   if (!emComando) $("painel-comando").innerHTML = "";
-  // celular: o painel do comando abre a gaveta; esboço e árvore deixam o modelo livre
-  abrirGaveta(modo === "comando");
+  // celular: o painel do comando abre a gaveta (menos com a caixa flutuante); esboço e árvore deixam o modelo livre
+  abrirGaveta(modo === "comando" && !caixasFlutuantesDoComando());
 }
 
 $("st-filtro").onclick = () => {
@@ -1357,7 +1455,12 @@ viewport.aoMenuContexto = (e) => {
     ? [{ rotulo: "Selecionar outro…", icone: "selecionar" as NomeIcone, acao: () => selecionarOutro(outros, e.clientX, e.clientY) }]
     : [];
   if (comando) {
-    if (itemOutro.length) mostrarBarra(itemOutro, e.clientX, e.clientY);
+    mostrarBarra([
+      { rotulo: "OK", icone: "concluir", acao: confirmarComando },
+      { rotulo: "Cancelar", icone: "fechar", acao: cancelarComando },
+      ...itemOutro,
+      { rotulo: "Enquadrar", icone: "enquadrar", acao: () => viewport.enquadrar() },
+    ], e.clientX, e.clientY);
     return;
   }
   const ent = viewport.picarEntidade(e.clientX, e.clientY, filtrar(TODAS), 9);
@@ -1369,8 +1472,13 @@ viewport.aoMenuContexto = (e) => {
   mostrarBarra([
     ...(selPeca.length ? acoesDoModelo() : []),
     ...itemOutro,
+    recursoComCotas === TODAS_AS_COTAS
+      ? { rotulo: "Esconder cotas", icone: "cota", acao: () => fecharCotasNoModelo() }
+      : { rotulo: "Todas as cotas", icone: "cota", acao: () => mostrarTodasAsCotas() },
     { rotulo: "Enquadrar", icone: "enquadrar", acao: () => viewport.enquadrar() },
     { rotulo: "Orientação…", icone: "vistas", acao: () => abrirSeletorVistas($("barra-vistas")) },
+    { rotulo: "Medir", icone: "medir", acao: () => comandoAvaliar("medir") },
+    { rotulo: "Desfazer", icone: "desfazer", acao: () => desfazer() },
   ], e.clientX, e.clientY);
 };
 
@@ -1637,10 +1745,40 @@ function fecharCotasNoModelo() {
   viewport.pedirRender();
 }
 
+/** "Exibir todas as cotas": em vez de um recurso, todos os ativos (esboços e valores dos recursos). */
+const TODAS_AS_COTAS = "*todas*";
+
 function mostrarCotasNoModelo(f: Feature) {
   fecharCotasNoModelo();
   if (editor) return; // editando um esboço, as cotas aparecem no próprio editor
   recursoComCotas = f.id;
+  const rotulos = rotulosDoRecurso(f, new Set());
+  if (!rotulos.length) {
+    recursoComCotas = null;
+    return avisar(`${f.nome}: sem cotas para mostrar.`);
+  }
+  cotasNoModelo.mostrar(rotulos);
+  viewport.pedirRender();
+}
+
+/** Cotas de todos os esboços e recursos ativos, editáveis no lugar (sem caçar recurso por recurso). */
+function mostrarTodasAsCotas() {
+  fecharCotasNoModelo();
+  if (editor) return;
+  recursoComCotas = TODAS_AS_COTAS;
+  const vistos = new Set<string>();
+  const rotulos = ativas().flatMap((f) => rotulosDoRecurso(f, vistos));
+  if (!rotulos.length) {
+    recursoComCotas = null;
+    return avisar("O modelo não tem cotas para mostrar.");
+  }
+  cotasNoModelo.mostrar(rotulos);
+  viewport.pedirRender();
+  avisar(`${rotulos.length} cota(s) no modelo: toque numa para editar. Toque no vazio para esconder.`);
+}
+
+/** Rótulos de um recurso: cotas dos esboços que ele usa (os de `vistos` são pulados) e os próprios valores. */
+function rotulosDoRecurso(f: Feature, vistos: Set<string>): RotuloModelo[] {
   const valores = () => resolverVariaveis(doc.variaveis).valores;
   const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
   const rotulos: RotuloModelo[] = [];
@@ -1649,6 +1787,8 @@ function mostrarCotasNoModelo(f: Feature) {
   // cotas dos esboços usados pelo recurso (ou do próprio esboço)
   const ids = f.tipo === "esboco" ? [f.id] : esbocosAbsorvidos(f);
   for (const id of ids) {
+    if (vistos.has(id)) continue;
+    vistos.add(id);
     const esb = doc.features.find((x): x is FeatureEsboco => x.id === id && x.tipo === "esboco");
     if (!esb) continue;
     let ref;
@@ -1685,7 +1825,6 @@ function mostrarCotasNoModelo(f: Feature) {
       });
     }
   }
-
   // valores do recurso, no centro das faces dele
   const centro = viewport.centroFaces(facesPorRecurso[f.id] ?? []);
   const params = (PARAMETROS_NO_MODELO[f.tipo] ?? []).filter(([, , , vis]) => !vis || vis(f as never));
@@ -1710,33 +1849,41 @@ function mostrarCotasNoModelo(f: Feature) {
       },
     });
   });
-  if (!rotulos.length) {
-    recursoComCotas = null;
-    return avisar(`${f.nome}: sem cotas para mostrar.`);
-  }
-  cotasNoModelo.mostrar(rotulos);
-  viewport.pedirRender();
+  return rotulos;
 }
 
 // ---------- alças de arrasto do comando (profundidade da extrusão) ----------
 
 let valorNoInicioDaAlca = 0;
 
+/** Cotas do próprio comando sobre o modelo (D1/D2 da extrusão), editáveis no lugar. */
+const camadaCotasComando = Object.assign(document.createElement("div"), { className: "camada-cotas-modelo" });
+$("viewport").parentElement!.appendChild(camadaCotasComando);
+const cotasDoComando = new CotasNoModelo(viewport, camadaCotasComando);
+/** Ponta da seta D1 (a caixa flutuante aparece ao lado dela). */
+let posicaoDaAlca: Vec3 | null = null;
+
+function semAlcas() {
+  posicaoDaAlca = null;
+  cotasDoComando.limpar();
+  viewport.mostrarAlcas([]);
+}
+
 /** Setas nas pontas da extrusão (direção 1 e 2), em cego ou plano médio. */
 function atualizarAlcas() {
   const f = comando?.f;
-  if (!f || f.tipo !== "extrusao" || !f.esboco) return viewport.mostrarAlcas([]);
+  if (!f || f.tipo !== "extrusao" || !f.esboco) return semAlcas();
   const esb = doc.features.find((x): x is FeatureEsboco => x.id === f.esboco && x.tipo === "esboco");
-  if (!esb) return viewport.mostrarAlcas([]);
+  if (!esb) return semAlcas();
   let ref, lacos;
   try {
     ref = referencial(esb.suporte);
     lacos = encontrarLacos(esb);
   } catch {
-    return viewport.mostrarAlcas([]);
+    return semAlcas();
   }
   const pts = lacos.flatMap((l) => l.poligono);
-  if (!pts.length) return viewport.mostrarAlcas([]);
+  if (!pts.length) return semAlcas();
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const c2 = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
   const de = f.de ?? { tipo: "plano", dist: 0, inverter: false };
@@ -1754,6 +1901,36 @@ function atualizarAlcas() {
     alcas.push({ id: "direcao2.condicao.dist", pos: em(s0 - sentido * f.direcao2.condicao.dist), dir: dir(-sentido) });
   }
   viewport.mostrarAlcas(alcas);
+  posicaoDaAlca = alcas[0]?.pos ?? null;
+
+  // cotas D1/D2 no meio de cada direção: tocar edita (aceita "=expressão"), como no painel
+  if (cotasDoComando.editando) return cotasDoComando.posicionar();
+  const fmt = (v: number) => Number(v.toFixed(3)).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+  const cota = (cam: "profundidade" | "direcao2.condicao.dist", rot: string, meio: number): RotuloModelo => {
+    const v = ler(f, cam) as number;
+    return {
+      texto: `${rot} ${fmt(v)} mm`,
+      edicao: doc.equacoes?.[`${f.id}.${cam}`] ?? String(v),
+      pos: em(meio),
+      aplicar: (t) => {
+        const n = avaliarExpressao(t, resolverVariaveis(doc.variaveis).valores);
+        if (!Number.isFinite(n) || n <= 0) return false;
+        gravarCaminho(f as unknown as Record<string, unknown>, cam, Number(n.toFixed(4)));
+        doc.equacoes ??= {};
+        if (t.trim().startsWith("=")) doc.equacoes[`${f.id}.${cam}`] = t.trim();
+        else delete doc.equacoes[`${f.id}.${cam}`];
+        salvarAutosave();
+        renderizarComando();
+        regenerarPrevia(0);
+        return true;
+      },
+    };
+  };
+  const rotulos: RotuloModelo[] = [];
+  if (cond === "cego") rotulos.push(cota("profundidade", "D1", s0 + (sentido * f.profundidade) / 2));
+  else if (cond === "planoMedio") rotulos.push(cota("profundidade", "D1", s0 + (sentido * f.profundidade) / 4));
+  if (alcas.length > 1) rotulos.push(cota("direcao2.condicao.dist", "D2", s0 - (sentido * f.direcao2!.condicao.dist) / 2));
+  cotasDoComando.mostrar(rotulos);
 }
 
 viewport.aoArrastarAlca = (id, delta, fim) => {
@@ -3222,6 +3399,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
+  cotas: { rotulo: "Exibir todas as cotas", icone: "cota", fazer: () => (recursoComCotas === TODAS_AS_COTAS ? fecharCotasNoModelo() : mostrarTodasAsCotas()) },
   reconstruir: { rotulo: "Reconstruir (Ctrl+B)", icone: "desempenho", fazer: () => regenerar() },
   fechar: { rotulo: "Fechar documento", icone: "fechar", fazer: fecharDocumento },
   dispositivo: { rotulo: "Dispositivo (celular, tablet, computador)…", icone: "tablet", fazer: () => escolherDispositivo(false) },
@@ -3395,8 +3573,12 @@ function dispositivoProvavel(): Dispositivo {
   return Math.min(screen.width, screen.height) < 600 ? "celular" : "tablet";
 }
 
+/** Caixa flutuante nos comandos: escolha do usuário ou, sem escolha, só em celular e tablet. */
+const caixaFlutuanteLigada = () => prefs.caixaFlutuante ?? (prefs.dispositivo ?? "tablet") !== "computador";
+
 function aplicarDispositivo() {
   const d = prefs.dispositivo ?? "tablet";
+  viewport.tempoToqueLongo = prefs.toqueLongoMs ?? 600;
   for (const x of DISPOSITIVOS) document.body.classList.toggle(`disp-${x.id}`, x.id === d);
   if (d !== "celular") document.body.classList.remove("lateral-aberta");
   if (editor) {
@@ -3416,6 +3598,12 @@ function escolherDispositivo(obrigatorio: boolean) {
     <div class="dialogo" role="dialog" aria-modal="true">
       <header><strong>Onde você vai usar o WJProMaster?</strong></header>
       <div class="ambientes dispositivos"></div>
+      <div class="opcoes-toque">
+        <label class="campo"><span class="campo-rotulo">Segurar a caneta/dedo parado abre o menu</span>
+          <select data-c="longo">${[[0, "Desligado"], [400, "0,4 s"], [600, "0,6 s (padrão)"], [1000, "1 s"], [1500, "1,5 s"], [3000, "3 s"], [5000, "5 s"]]
+            .map(([v, r]) => `<option value="${v}"${v === (prefs.toqueLongoMs ?? 600) ? " selected" : ""}>${r}</option>`).join("")}</select></label>
+        <label class="interruptor"><input type="checkbox" data-c="caixa"${caixaFlutuanteLigada() ? " checked" : ""}><span>Comandos com caixa flutuante perto da peça</span></label>
+      </div>
       <p class="dialogo-nota">A interface se adapta só ao aparelho escolhido. Dá para trocar depois no menu (Ferramentas → Dispositivo).</p>
       <footer>${obrigatorio ? "" : `<button data-b="cancelar">Cancelar</button>`}<button data-b="ok" class="destaque">OK</button></footer>
     </div>`;
@@ -3436,14 +3624,20 @@ function escolherDispositivo(obrigatorio: boolean) {
     fundo.remove();
     document.removeEventListener("keydown", teclas, true);
   };
+  const caixa = fundo.querySelector<HTMLInputElement>('[data-c="caixa"]')!;
+  const caixaAntes = caixa.checked;
   const ok = () => {
     prefs.dispositivo = escolhido;
+    prefs.toqueLongoMs = Number(fundo.querySelector<HTMLSelectElement>('[data-c="longo"]')!.value);
+    // só grava a caixa se o usuário mexeu: senão ela segue o aparelho escolhido
+    if (caixa.checked !== caixaAntes) prefs.caixaFlutuante = caixa.checked;
     salvarPrefs();
     fechar();
     aplicarDispositivo();
     atualizarAreaDeTrabalho();
     renderizarAbas();
     if (editor) renderizarPainelEdicaoEsboco();
+    if (comando) renderizarComando();
   };
   const teclas = (e: KeyboardEvent) => {
     if (e.key === "Enter") ok();
