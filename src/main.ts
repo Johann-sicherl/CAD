@@ -454,6 +454,7 @@ const TIPO_POR_COMANDO: Record<string, Exclude<Feature["tipo"], "esboco">> = {
   plano: "planoRef", eixo: "eixoRef", varredura: "varredura", "corte-varredura": "varredura",
   loft: "loft", "corte-loft": "loft",
   "flange-base": "flangeBase", "flange-aresta": "flangeAresta", bainha: "bainha", "aba-chapa": "abaChapa", "corte-chapa": "corteChapa", dobra: "dobraEsboco", junta: "junta", "meia-esquadria": "meiaEsquadria",
+  "fechar-canto": "fecharCanto", "alivio-canto": "alivioCanto", "quebrar-canto": "quebrarCanto",
   helice: "curva", "curva-xyz": "curva", "curva-pontos": "curva", "curva-composta": "curva", "curva-projetada": "curva",
 };
 
@@ -597,6 +598,9 @@ function criarRecurso(id: string) {
     case "flangeAresta":
     case "bainha":
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
+      break;
+    case "quebrarCanto":
+      f.arestas = selPeca.filter((r) => r.tipo === "aresta" || r.tipo === "vertice");
       break;
     case "meiaEsquadria": {
       f.arestas = selPeca.filter((r) => r.tipo === "aresta");
@@ -838,6 +842,9 @@ function confirmarComando() {
   }
   if ((f.tipo === "flangeAresta" || f.tipo === "bainha") && !f.arestas.length) {
     return avisar(`${ROTULO_TIPO[f.tipo]}: toque nas arestas da chapa.`);
+  }
+  if (f.tipo === "quebrarCanto" && !f.arestas.length) {
+    return avisar("Quebrar canto: toque nas arestas da espessura (ou nos vértices) dos cantos da chapa.");
   }
   if (f.tipo === "meiaEsquadria" && (!f.esboco || !f.arestas.length)) {
     return avisar("Flange de meia-esquadria: escolha o esboço do perfil e as arestas.");
@@ -1773,6 +1780,7 @@ const ICONE_FEATURE: Record<Feature["tipo"], NomeIcone> = {
   padraoCircular: "padraoCircular", espelhar: "espelhar", planoRef: "plano", eixoRef: "eixoRef",
   varredura: "varredura", loft: "loft", curva: "helice",
   flangeBase: "flangeBase", flangeAresta: "flangeAresta", bainha: "bainha", abaChapa: "aba", corteChapa: "corteChapa", dobraEsboco: "dobra", junta: "junta", meiaEsquadria: "meiaEsquadria",
+  fecharCanto: "fecharCanto", alivioCanto: "alivioCanto", quebrarCanto: "quebrarCanto",
 };
 
 function iconeFeature(f: Feature): NomeIcone {

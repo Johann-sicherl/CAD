@@ -10,7 +10,7 @@
 // Planificado: a filha é posta no plano da mãe, a uma distância BA = θ·(r + K·t) da aresta
 // (comprimento da linha neutra), sem girar. O 3D e o planificado saem da mesma árvore.
 
-import { draw, drawRectangle, Plane, type Drawing, type Shape3D } from "replicad";
+import { draw, drawCircle, drawRectangle, Plane, type Drawing, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
 import type { P2 } from "../esboco/geometria";
 
@@ -45,6 +45,32 @@ interface Plano2 {
 export interface Corte {
   p: Vec3;
   m: Vec3;
+  /** Canto que gerou o corte ("idDobraA|idDobraB"): o Fechar canto troca os cortes desse canto. */
+  canto?: string;
+}
+
+/**
+ * Alívio (recorte na região da dobra), nas coordenadas locais da parede-mãe — as mesmas do
+ * planificado em volta da dobra. `poli` serve para o 3D (fatias da dobra); `desenho`, exato, para
+ * o planificado.
+ */
+export interface Alivio {
+  poli: P2[];
+  desenho: Drawing;
+}
+
+/** Canto entre duas dobras da mesma parede cujas pontas se encontram (abas vizinhas). */
+export interface Canto {
+  a: Dobra;
+  b: Dobra;
+  /** Encontro das linhas de início das dobras (coordenadas locais da mãe). */
+  c: P2;
+  /** Ponta de cada dobra que fica no canto (s0 ou s1). */
+  pontaA: "s0" | "s1";
+  pontaB: "s0" | "s1";
+  /** Posição do canto ao longo de cada dobra. */
+  sa: number;
+  sb: number;
 }
 
 export interface Parede {
@@ -77,6 +103,9 @@ export interface Dobra {
   /** Para cima (+) ou para baixo (−) visto do planificado. */
   sentidoPlano: 1 | -1;
   cortes?: Corte[];
+  /** Parede criada pela dobra (ausente na bainha enrolada, que é só dobra). */
+  filha?: string;
+  alivios?: Alivio[];
 }
 
 // ---------- vetores ----------
@@ -207,7 +236,7 @@ export class ModeloChapa {
     this.orient.set(o.idFilha, (oriP * espelhoLocal) as 1 | -1);
     this.dobras.push({
       id: o.idDobra, pai: P.id, e0: o.e0, e: o.e, d: o.d, s0: o.s0, s1: o.s1, theta, r, paraMaterial: o.paraMaterial, ba,
-      sentidoPlano: ((o.paraMaterial ? P.s : -P.s) * oriP) as 1 | -1,
+      sentidoPlano: ((o.paraMaterial ? P.s : -P.s) * oriP) as 1 | -1, filha: o.forma ? o.idFilha : undefined,
     });
     const filha: Parede = { id: o.idFilha, q: { o: oC, u: e3, v: vC, n: nC }, s: sC, plano, forma: o.forma ?? retanguloDesenho(0, 0, 0, 0), contornos: o.forma ? o.contornos : [] };
     if (o.forma) this.paredes.push(filha);
@@ -339,11 +368,98 @@ export class ModeloChapa {
     const t = this.p.t;
     const { P, E0, e3, d3, A, phi } = this.geomDobra(b);
     // seção da chapa na aresta (retângulo largura × espessura) girada em torno do eixo
-    const plano = new Plane(soma(E0, mul(e3, b.s0)), e3, d3);
     const yN = esc(P.q.n, cruz(d3, e3)); // ±1: n no eixo y do plano
-    const sec = retanguloDesenho(0, b.s1 - b.s0, 0, P.s * t * yN);
-    const sk = sec.sketchOnPlane(plano) as unknown as { revolve(e: Vec3, o: { origin: Vec3; angle: number }): Shape3D };
-    return sk.revolve(e3, { origin: A, angle: (phi * 180) / Math.PI });
+    const fatia = (lo: number, hi: number, psi0: number, psi1: number): Shape3D => {
+      const sec = retanguloDesenho(0, hi - lo, 0, P.s * t * yN);
+      const sk = sec.sketchOnPlane(new Plane(soma(E0, mul(e3, lo)), e3, d3)) as unknown as { revolve(e: Vec3, o: { origin: Vec3; angle: number }): Shape3D };
+      const x = sk.revolve(e3, { origin: A, angle: ((psi1 - psi0) * 180) / Math.PI });
+      return Math.abs(psi0) > 1e-12 ? x.rotate((psi0 * 180) / Math.PI, A, e3) : x;
+    };
+    if (!b.alivios?.length) return fatia(b.s0, b.s1, 0, phi);
+    // com alívio: em cada fatia de ângulo tira o trecho (ao longo da aresta) que cai dentro do
+    // alívio na posição correspondente do planificado. Só os trechos atingidos (um por alívio) são
+    // fatiados; fatias seguidas iguais (alívio retangular ou rasgado) viram uma revolução só.
+    const N = 8;
+    const hs = Array.from({ length: N }, (_, i) => (b.ba * (i + 0.5)) / N);
+    const regioes: [number, number][] = [];
+    for (const al of b.alivios) {
+      let ra = Infinity, rb = -Infinity;
+      for (const h of hs) {
+        let cur = b.s0;
+        for (const [lo, hi] of [...this.trechosLivres({ ...b, alivios: [al] }, h), [b.s1, b.s1] as [number, number]]) {
+          if (lo > cur + 1e-9) (ra = Math.min(ra, cur)), (rb = Math.max(rb, lo));
+          cur = Math.max(cur, hi);
+        }
+      }
+      if (rb > ra) regioes.push([ra, rb]);
+    }
+    regioes.sort((x, y) => x[0] - y[0]);
+    const juntas: [number, number][] = [];
+    for (const r of regioes) {
+      const u = juntas[juntas.length - 1];
+      if (u && r[0] <= u[1] + 1e-9) u[1] = Math.max(u[1], r[1]);
+      else juntas.push([...r]);
+    }
+    if (!juntas.length) return fatia(b.s0, b.s1, 0, phi);
+    const partes: Shape3D[] = [];
+    // trechos fora dos alívios: dobra inteira
+    let cur = b.s0;
+    for (const [ra, rb] of juntas) {
+      if (ra > cur + 1e-6) partes.push(fatia(cur, ra, 0, phi));
+      cur = Math.max(cur, rb);
+    }
+    if (b.s1 > cur + 1e-6) partes.push(fatia(cur, b.s1, 0, phi));
+    const livres = hs.map((h) => this.trechosLivres(b, h));
+    const iguais = (x: [number, number][], y: [number, number][]) => x.length === y.length && x.every((v, k) => Math.abs(v[0] - y[k][0]) < 1e-6 && Math.abs(v[1] - y[k][1]) < 1e-6);
+    for (const [ra, rb] of juntas) {
+      const recorte = (ls: [number, number][]) => ls.map(([lo, hi]): [number, number] => [Math.max(lo, ra), Math.min(hi, rb)]).filter(([lo, hi]) => hi - lo > 1e-6);
+      for (let i = 0; i < N; ) {
+        const ls = recorte(livres[i]);
+        let j = i + 1;
+        while (j < N && iguais(recorte(livres[j]), ls)) j++;
+        for (const [lo, hi] of ls) partes.push(fatia(lo, hi, (phi * i) / N, (phi * j) / N));
+        i = j;
+      }
+    }
+    if (!partes.length) throw new Error("O alívio de canto tirou a dobra inteira (diminua o tamanho).");
+    // união em árvore (pares), mais rápida que somar uma a uma
+    let lista = partes;
+    while (lista.length > 1) {
+      const prox: Shape3D[] = [];
+      for (let k = 0; k < lista.length; k += 2) prox.push(k + 1 < lista.length ? lista[k].fuse(lista[k + 1]) : lista[k]);
+      lista = prox;
+    }
+    return lista[0];
+  }
+
+  /** Trechos [lo, hi] da dobra, na altura h da faixa do planificado, fora dos alívios. */
+  private trechosLivres(b: Dobra, h: number): [number, number][] {
+    let livres: [number, number][] = [[b.s0, b.s1]];
+    for (const al of b.alivios ?? []) {
+      // linha X(s) = e0 + h·d + s·e cruzando o polígono do alívio: trechos dentro (par a par)
+      const o = s2(b.e0, m2(b.d, h)), cruzes: number[] = [];
+      const c = al.poli;
+      for (let i = 0; i < c.length; i++) {
+        const p = c[i], q = c[(i + 1) % c.length];
+        const fp = (p.x - o.x) * b.d.x + (p.y - o.y) * b.d.y, fq = (q.x - o.x) * b.d.x + (q.y - o.y) * b.d.y;
+        if ((fp > 0) === (fq > 0)) continue;
+        const k = fp / (fp - fq);
+        const X = { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
+        cruzes.push((X.x - o.x) * b.e.x + (X.y - o.y) * b.e.y);
+      }
+      cruzes.sort((x, y) => x - y);
+      for (let k = 0; k + 1 < cruzes.length; k += 2) {
+        const [a, z] = [cruzes[k], cruzes[k + 1]];
+        livres = livres.flatMap(([lo, hi]): [number, number][] => {
+          if (z <= lo || a >= hi) return [[lo, hi]];
+          const r: [number, number][] = [];
+          if (a > lo + 1e-6) r.push([lo, a]);
+          if (z < hi - 1e-6) r.push([z, hi]);
+          return r;
+        });
+      }
+    }
+    return livres;
   }
 
   // ---------- planificado ----------
@@ -360,6 +476,25 @@ export class ModeloChapa {
     for (const b of this.dobras) {
       const P = this.parede(b.pai)!;
       const ponto = (s: number, h: number) => plano2(P.plano, s2(b.e0, s2(m2(b.e, s), m2(b.d, h))));
+      const noPlano = (x: Drawing) => transformarDesenho(x, P.plano.u.x, P.plano.v.x, P.plano.u.y, P.plano.v.y, P.plano.o.x, P.plano.o.y);
+      if (b.alivios?.length) {
+        // região da dobra (com os cortes de canto) menos os alívios; linha de dobra só onde há material
+        const N = 16, esq: P2[] = [], dir: P2[] = [];
+        const phi = this.geomDobra(b).phi;
+        for (let i = 0; i <= N; i++) {
+          const [lo, hi] = this.faixaDobra(b, (phi * i) / N);
+          esq.push(ponto(lo, (b.ba * i) / N));
+          dir.push(ponto(hi, (b.ba * i) / N));
+        }
+        let R = poligonoDesenho([...esq, ...dir.reverse()]);
+        for (const al of b.alivios) R = R.cut(noPlano(al.desenho));
+        juntar(R);
+        const [lo, hi] = this.faixaDobra(b, phi / 2);
+        for (const [a, z] of this.trechosLivres({ ...b, s0: lo, s1: hi }, b.ba / 2)) {
+          linhas.push({ a: ponto(a, b.ba / 2), b: ponto(z, b.ba / 2), cima: b.sentidoPlano > 0, angulo: (b.theta * 180) / Math.PI, raio: b.r });
+        }
+        continue;
+      }
       if (b.cortes?.length) {
         // região da dobra aparada pelo canto: contorno por amostras do ângulo (linha neutra)
         const N = 16, esq: P2[] = [], dir: P2[] = [];
@@ -397,6 +532,75 @@ export class ModeloChapa {
     const sk = desenho.sketchOnPlane(new Plane(raiz.q.o, raiz.q.u, raiz.q.n)) as unknown as { extrude(d: number): Shape3D };
     const z = raiz.s * this.p.t * 1.001; // linhas de dobra sobre a face de cima
     return { solido: sk.extrude(raiz.s * this.p.t), linhas3D: dobras.map((l) => [local3(raiz.q, l.a, z), local3(raiz.q, l.b, z)]) };
+  }
+
+  // ---------- cantos entre abas ----------
+
+  /**
+   * Cantos: pares de dobras da mesma parede (com parede-filha), não paralelas, cujas linhas de
+   * início se cruzam perto de uma ponta de cada uma (abas vizinhas, do mesmo recurso ou não).
+   */
+  cantos(): Canto[] {
+    const r: Canto[] = [];
+    const t = this.p.t;
+    const ds = this.dobras.filter((b) => b.filha);
+    for (let i = 0; i < ds.length; i++) {
+      for (let j = i + 1; j < ds.length; j++) {
+        const a = ds[i], b = ds[j];
+        if (a.pai !== b.pai) continue;
+        const cr = a.e.x * b.e.y - a.e.y * b.e.x;
+        if (Math.abs(cr) < 0.05) continue;
+        // e0a + sa·ea = e0b + sb·eb
+        const dx = b.e0.x - a.e0.x, dy = b.e0.y - a.e0.y;
+        const sa = (dx * b.e.y - dy * b.e.x) / cr, sb = (dx * a.e.y - dy * a.e.x) / cr;
+        const tol = a.ba + b.ba + 2 * (t + a.r + b.r);
+        const perto = (s: number, d: Dobra): "s0" | "s1" | null => {
+          const d0 = Math.abs(s - d.s0), d1 = Math.abs(s - d.s1);
+          return Math.min(d0, d1) > tol ? null : d0 < d1 ? "s0" : "s1";
+        };
+        const pa = perto(sa, a), pb = perto(sb, b);
+        if (!pa || !pb) continue;
+        // as duas abas saem para o lado de fora do canto (cada uma além da linha da outra)
+        const meioA = s2(a.e0, m2(a.e, (a.s0 + a.s1) / 2)), meioB = s2(b.e0, m2(b.e, (b.s0 + b.s1) / 2));
+        const ladoB = (meioA.x - b.e0.x) * b.d.x + (meioA.y - b.e0.y) * b.d.y;
+        const ladoA = (meioB.x - a.e0.x) * a.d.x + (meioB.y - a.e0.y) * a.d.y;
+        if (ladoA > 1e-6 || ladoB > 1e-6) continue;
+        r.push({ a, b, c: s2(a.e0, m2(a.e, sa)), pontaA: pa, pontaB: pb, sa, sb });
+      }
+    }
+    return r;
+  }
+
+  /**
+   * Estende a dobra e a parede-filha, pela ponta do canto, até `ate` (posição ao longo da dobra):
+   * o Fechar canto estende tudo além do canto e depois apara pelos planos do canto.
+   */
+  estender(b: Dobra, ponta: "s0" | "s1", ate: number) {
+    const velho = b[ponta];
+    const novo = ponta === "s1" ? Math.max(velho, ate) : Math.min(velho, ate);
+    if (Math.abs(novo - velho) < 1e-9) return;
+    b[ponta] = novo;
+    const f = b.filha && this.parede(b.filha);
+    if (!f) return;
+    const H = Math.max(0, ...f.contornos.flat().map((p) => p.y));
+    if (H < 1e-9) return;
+    f.forma = f.forma.fuse(retanguloDesenho(Math.min(velho, novo), Math.max(velho, novo), 0, H));
+    f.contornos = f.contornos.map((c) => c.map((p) => (Math.abs(p.x - velho) < 1e-6 ? { x: novo, y: p.y } : p)));
+  }
+
+  /**
+   * Alívio de canto: recorte (polígono para o 3D, desenho exato para o planificado) em
+   * coordenadas da parede-mãe. Tira da mãe, das duas dobras e das paredes-filhas.
+   */
+  aliviar(k: Canto, poli: P2[], desenho: Drawing) {
+    const mae = this.parede(k.a.pai)!;
+    mae.forma = mae.forma.cut(desenho);
+    for (const b of [k.a, k.b]) {
+      (b.alivios ??= []).push({ poli, desenho });
+      const f = b.filha && this.parede(b.filha);
+      // filha: x ao longo de e a partir de e0, y a partir do fim da dobra (BA)
+      if (f) f.forma = f.forma.cut(transformarDesenho(desenho, b.e.x, b.e.y, b.d.x, b.d.y, -(b.e0.x * b.e.x + b.e0.y * b.e.y), -(b.e0.x * b.d.x + b.e0.y * b.d.y) - b.ba));
+    }
   }
 
   // ---------- arestas tocadas no modelo ----------
@@ -485,4 +689,15 @@ export function comprimentoReto(medicao: "externoVirtual" | "internoVirtual" | "
   if (medicao === "externoVirtual") return Math.max(0, L - (r + t) * tg);
   if (medicao === "internoVirtual") return Math.max(0, L - r * tg);
   return Math.max(0, L);
+}
+
+/** Polígono convexo/qualquer como desenho fechado (para alívios e quebra de canto). */
+export function desenhoDoPoligono(pts: P2[]): Drawing {
+  return poligonoDesenho(pts);
+}
+
+/** Círculo como desenho e como polígono (48 lados, para o 3D da dobra). */
+export function circuloAlivio(c: P2, r: number): { poli: P2[]; desenho: Drawing } {
+  const poli = Array.from({ length: 48 }, (_, i) => ({ x: c.x + r * Math.cos((i * Math.PI) / 24), y: c.y + r * Math.sin((i * Math.PI) / 24) }));
+  return { poli, desenho: drawCircle(r).translate(c.x, c.y) };
 }

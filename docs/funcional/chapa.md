@@ -5,7 +5,7 @@ de **paredes** planas (contorno 2D + referencial) ligadas por **dobras** (aresta
 fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o planificado é exato
 (margem de dobra = ângulo × (R + K·t)). DXF em `src/kernel/dxf.ts`. Testes em `scripts/teste-recursos.ts`.
 
-## Estado (24/10/2026)
+## Estado (26/10/2026)
 
 | Comando | Status |
 |---|---|
@@ -24,7 +24,10 @@ fator K). O sólido dobrado e o planificado saem do mesmo modelo, então o plani
 | **Dobra esboçada**: linha(s) de esboço numa face plana; lado fixo = o maior (ou inverter); posição: linha de centro, material interno, material externo, dobra externa; ângulo, inverter direção, raio próprio; o planificado não muda de tamanho | ✅ (só linhas retas; flanges já feitas precisam estar no lado fixo) |
 | **Junta**: degrau (dobra θ + trecho reto + dobra −θ) a partir de linha(s) de esboço numa face; deslocamento entre faces do mesmo lado / interno (vão) / total; posição da junta como na dobra esboçada; ângulo; raio próprio; lado fixo | ✅ (fixar comprimento projetado: F4) |
 | **Flange de meia-esquadria**: perfil aberto (linhas) num plano perpendicular à 1ª aresta, começando nela; levado ao longo das arestas escolhidas; cada linha medida até o canto vivo virtual externo; raio próprio, posição da flange, inverter, distância de folga; cantos entre arestas vizinhas aparados pelo plano bissetor; com uma aresta selecionada e sem esboço, abre o esboço perpendicular na ponta da aresta | ✅ (perfil com arcos, deslocamentos inicial/final e aparar dobras laterais: F4) |
-| Cantos, desdobrar/dobrar, converter em chapa, rasgar | F4 |
+| **Fechar canto**: todos os cantos entre abas vizinhas, também de recursos diferentes (estende as duas abas além do canto e apara); **meia-esquadria** (plano bissetor), **sobreposto** (a 1ª aba vai até a face de fora da 2ª; a 2ª para na face de dentro da 1ª menos a folga) ou **subposto**; distância de folga; dobras sempre em meia-esquadria | ✅ (escolher cantos/faces a estender um a um, proporção de sobreposição: F4) |
+| **Alívio de canto** (2 dobras), em todos os cantos: **retangular** e **circular** centrados no encontro das linhas de centro das dobras (tamanho = lado/diâmetro; automático = maior BA + 2t), **rasgado** (só a região onde as dobras se cruzam); recorta parede-mãe, dobras e abas, igual no planificado | ✅ (3 dobras, oblongo, largura constante: F4) |
+| **Quebrar canto**: chanfro (distância) ou filete (raio) em cantos do contorno das paredes, escolhidos pela aresta da espessura ou pelo vértice; canto convexo perde material, côncavo ganha; vale no planificado | ✅ (só cantos entre retas) |
+| Desdobrar/dobrar, converter em chapa, rasgar | F4 |
 | Margem/dedução/tabela de dobra (só fator K hoje), alívio rasgado/oblongo | F4 |
 
 Limitações conhecidas: extrusões e cortes comuns entre recursos de chapa são reaplicados quando a
@@ -100,7 +103,7 @@ Face, direção, raio, ângulo (apenas visual/cosmético).
 ## 8. Dobras em loft / Flange varrida — ⏸
 Loft entre dois perfis abertos (conformada / dobrada com nº de facetas); flange varrida por trajetória.
 
-## 9. Cantos
+## 9. Cantos — ✅ fechar canto, alívio de 2 dobras e quebrar canto (ver Estado)
 ### Fechar canto (Closed Corner)
 - Faces a estender · faces correspondentes (automático)
 - **Tipo de canto**: Topo (butt) · Sobreposto · Subposto; **distância de folga**;

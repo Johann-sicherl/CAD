@@ -19,7 +19,7 @@ import {
   type Shape3D,
 } from "replicad";
 import type {
-  Condicao, Feature, FeatureAbaChapa, FeatureBainha, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
+  Condicao, Feature, FeatureAbaChapa, FeatureAlivioCanto, FeatureBainha, FeatureFecharCanto, FeatureQuebrarCanto, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria, FeatureCurva, FeatureEsboco, FeatureFlangeAresta, FeatureFlangeBase, FeatureExtrusao, FeatureFuro, FeatureNervura, FeatureRevolucao, FeatureVarredura, FeatureLoft,
   Inclinacao, Perfil, Plano, Referencia, RecursoFino, Vec3,
 } from "../model";
 import { aninhamento, cadeiaAberta, encontrarLacos, mapaPontos, pontoNoPoligono, type Laco, type P2 } from "../esboco/geometria";
@@ -27,8 +27,11 @@ import { cruz, eixoXParaNormal, normalizar, paraMundo, referencial, type Referen
 import { medidasFuro } from "./furos";
 import { RastreadorFaces } from "./facesRecurso";
 import { arestaDe, encadear, trechoDaAresta, trechosDoEsboco, varrer, type Trecho } from "./varredura";
-import { areaContorno, comprimentoReto, local3, ModeloChapa, normalExterna, recortarPoligono, recuo, retanguloDesenho, transformarDesenho, type Dobra, type Parede } from "./chapa";
-import { dxfDoPlanificado, type ResumoPlanificado } from "./dxf";
+import {
+  areaContorno, circuloAlivio, comprimentoReto, desenhoDoPoligono, local3, ModeloChapa, normalExterna, recortarPoligono, recuo, retanguloDesenho,
+  transformarDesenho, type Canto, type Corte, type Dobra, type Parede,
+} from "./chapa";
+import { dxfDoPlanificado, lacosDoDesenho, type ResumoPlanificado } from "./dxf";
 import { cruzarEsbocos, curvaPorPontos, lerPontosXYZ, pontosHelice, polilinhasDe, projetarEmFaces } from "./curvas";
 import { lofting } from "./loft";
 import {
@@ -774,8 +777,9 @@ function cantosAutomaticos(m: ModeloChapa, feitas: AbaFeita[], folga: number) {
         p0 = local3(W.q, canto, 0);
         n = sub3(local3(W.q, { x: d.x / l, y: d.y / l }, 0), local3(W.q, { x: 0, y: 0 }, 0));
       }
-      const corteA = { p: soma3(p0, mul3(n, folga / 2)), m: n };
-      const corteB = { p: soma3(p0, mul3(n, -folga / 2)), m: mul3(n, -1) };
+      const chave = `${A.dobra.id}|${B.dobra.id}`;
+      const corteA = { p: soma3(p0, mul3(n, folga / 2)), m: n, canto: chave };
+      const corteB = { p: soma3(p0, mul3(n, -folga / 2)), m: mul3(n, -1), canto: chave };
       for (const [f, c] of [[A, corteA], [B, corteB]] as const) {
         (f.filha.cortes ??= []).push(c);
         (f.dobra.cortes ??= []).push(c);
@@ -901,7 +905,8 @@ function meiaEsquadria(f: FeatureMeiaEsquadria, ctx: Ctx) {
       const p0 = local3(W.q, canto, 0);
       const n = sub3(local3(W.q, dl, 0), local3(W.q, { x: 0, y: 0 }, 0));
       const g = Math.max(0, f.folga) / 2;
-      const cA = { p: soma3(p0, mul3(n, g)), m: n }, cB = { p: soma3(p0, mul3(n, -g)), m: mul3(n, -1) };
+      const chave = `${A.dobras[0].id}|${B.dobras[0].id}`;
+      const cA = { p: soma3(p0, mul3(n, g)), m: n, canto: chave }, cB = { p: soma3(p0, mul3(n, -g)), m: mul3(n, -1), canto: chave };
       for (const [cad, c] of [[A, cA], [B, cB]] as const) {
         for (const w of cad.paredes) (w.cortes ??= []).push(c);
         for (const b of cad.dobras) (b.cortes ??= []).push(c);
@@ -933,6 +938,201 @@ function bainha(f: FeatureBainha, ctx: Ctx) {
   dobrarArestas(m, f, arestas, {
     theta, r, inverter: f.inverter, setback: f.posicao === "materialInterno" ? r + t : 0, compReto, desloc0: 0, desloc1: 0, folga: 0.25,
   });
+}
+
+// ---------- cantos (docs/funcional/chapa.md §9) ----------
+
+/** Cantos entre abas vizinhas; sem nenhum, explica o que falta. */
+function cantosDaChapa(m: ModeloChapa, oque: string): Canto[] {
+  const ks = m.cantos();
+  if (!ks.length) throw new Error(`${oque}: não há cantos entre abas vizinhas (flanges em arestas que se encontram).`);
+  return ks;
+}
+
+/**
+ * Fecha um canto entre as paredes-filhas das duas dobras. As dobras são sempre aparadas pelo
+ * plano bissetor (afastadas pela folga). As paredes: meia-esquadria (mesmo plano) ou
+ * sobreposta/subposta (uma vai até a face de fora da outra; a outra para na face de dentro da
+ * primeira, menos a folga). Os cortes anteriores desse canto são trocados.
+ */
+function tratarCanto(m: ModeloChapa, k: Canto, tipo: FeatureFecharCanto["tipoCanto"], folga: number): boolean {
+  const t = m.p.t;
+  const wA = m.parede(k.a.filha!), wB = m.parede(k.b.filha!), mae = m.parede(k.a.pai)!;
+  if (!wA || !wB) return false;
+  // abas com mais paredes depois (perfil de meia-esquadria): ficam como estão
+  if (m.dobras.some((d) => d.pai === wA.id || d.pai === wB.id)) return false;
+  const chaves = [`${k.a.id}|${k.b.id}`, `${k.b.id}|${k.a.id}`];
+  for (const x of [wA, wB, k.a, k.b]) x.cortes = x.cortes?.filter((c) => !c.canto || !chaves.includes(c.canto));
+  // estende as duas abas além do canto (fecha frestas de abas feitas em recursos diferentes);
+  // os planos do canto aparam o excesso
+  const alem = (outra: Dobra) => 2 * (outra.ba + outra.r + t) + 1;
+  m.estender(k.a, k.pontaA, k.pontaA === "s1" ? k.sa + alem(k.b) : k.sa - alem(k.b));
+  m.estender(k.b, k.pontaB, k.pontaB === "s1" ? k.sb + alem(k.a) : k.sb - alem(k.a));
+  const canto = chaves[0];
+  const meio = (w: Parede) => ({ p: local3(w.q, { x: 0, y: 0 }, (w.s * t) / 2), n: w.q.n });
+  const longe = (w: Parede, b: Dobra) => local3(w.q, { x: (b.s0 + b.s1) / 2, y: 0 }, (w.s * t) / 2);
+  const mA = meio(wA), mB = meio(wB), fA = longe(wA, k.a), fB = longe(wB, k.b);
+  // plano bissetor das linhas médias que deixa cada aba de um lado
+  let melhor: { N: Vec3; K: number; sep: number; lado: number } | null = null;
+  for (const sg of [1, -1]) {
+    const N = sub3(mA.n, mul3(mB.n, sg));
+    const l = Math.hypot(...N);
+    if (l < 1e-6) continue;
+    const K = esc3(mA.n, mA.p) - sg * esc3(mB.n, mB.p);
+    const vA = (esc3(N, fA) - K) / l, vB = (esc3(N, fB) - K) / l;
+    if (vA * vB >= 0) continue;
+    const sep = Math.min(Math.abs(vA), Math.abs(vB));
+    if (!melhor || sep > melhor.sep) melhor = { N, K, sep, lado: Math.sign(vA) };
+  }
+  let p0: Vec3, n: Vec3;
+  if (melhor) {
+    const l2 = esc3(melhor.N, melhor.N);
+    p0 = mul3(melhor.N, melhor.K / l2);
+    n = mul3(melhor.N, melhor.lado / Math.sqrt(l2));
+  } else {
+    // paredes paralelas (bainhas): plano perpendicular à mãe pela bissetriz do canto
+    const sai = (b: Dobra, ponta: "s0" | "s1") => (ponta === "s1" ? { x: -b.e.x, y: -b.e.y } : b.e);
+    const uA = sai(k.a, k.pontaA), uB = sai(k.b, k.pontaB);
+    const dl = unit2({ x: uA.x - uB.x, y: uA.y - uB.y });
+    p0 = local3(mae.q, k.c, 0);
+    n = sub3(local3(mae.q, dl, 0), local3(mae.q, { x: 0, y: 0 }, 0));
+  }
+  const g = folga / 2;
+  const miterA: Corte = { p: soma3(p0, mul3(n, g)), m: n, canto }, miterB: Corte = { p: soma3(p0, mul3(n, -g)), m: mul3(n, -1), canto };
+  (k.a.cortes ??= []).push(miterA);
+  (k.b.cortes ??= []).push(miterB);
+  if (tipo === "meiaEsquadria" || !melhor) {
+    (wA.cortes ??= []).push(miterA);
+    (wB.cortes ??= []).push(miterB);
+    return true;
+  }
+  // sobreposta: "cobre" vai até a face de fora da "coberta"; a coberta para na face de dentro
+  const [cobre, coberta, fCobre, fCoberta] = tipo === "sobreposto" ? [wA, wB, fA, fB] : [wB, wA, fB, fA];
+  const faces = (w: Parede) => [local3(w.q, { x: 0, y: 0 }, 0), local3(w.q, { x: 0, y: 0 }, w.s * t)];
+  const dist = (w: Parede, P: Vec3, X: Vec3) => esc3(w.q.n, sub3(X, P));
+  const [c0, c1] = faces(coberta);
+  const fora = Math.abs(dist(coberta, c0, fCobre)) > Math.abs(dist(coberta, c1, fCobre)) ? c0 : c1;
+  const mCobre = mul3(coberta.q.n, Math.sign(dist(coberta, fora, fCobre)) || 1);
+  const [k0, k1] = faces(cobre);
+  const dentro = Math.abs(dist(cobre, k0, fCoberta)) < Math.abs(dist(cobre, k1, fCoberta)) ? k0 : k1;
+  const mCoberta = mul3(cobre.q.n, Math.sign(dist(cobre, dentro, fCoberta)) || 1);
+  (cobre.cortes ??= []).push({ p: fora, m: mCobre, canto });
+  (coberta.cortes ??= []).push({ p: soma3(dentro, mul3(mCoberta, folga)), m: mCoberta, canto });
+  return true;
+}
+
+function fecharCanto(f: FeatureFecharCanto, ctx: Ctx) {
+  const m = exigirChapa(ctx, "Fechar canto");
+  if (!(f.folga >= 0)) throw new Error("A distância de folga não pode ser negativa.");
+  let n = 0;
+  for (const k of cantosDaChapa(m, "Fechar canto")) if (tratarCanto(m, k, f.tipoCanto, f.folga)) n++;
+  if (!n) throw new Error("Fechar canto: os cantos encontrados são de flanges de meia-esquadria (já fechados pelo perfil).");
+}
+
+/**
+ * Alívio de canto (2 dobras): recorte centrado no encontro das linhas de centro das dobras
+ * (retangular ou circular, tamanho = lado/diâmetro; automático = maior BA + 2t) ou só a região
+ * onde as duas dobras se cruzam (rasgado). Tira da parede-mãe, das dobras e das abas — o
+ * planificado mostra o mesmo recorte.
+ */
+function alivioCanto(f: FeatureAlivioCanto, ctx: Ctx) {
+  const m = exigirChapa(ctx, "Alívio de canto");
+  const t = m.p.t;
+  for (const k of cantosDaChapa(m, "Alívio de canto")) {
+    const { a, b } = k;
+    // ponto em que dA·(X − e0A) = u e dB·(X − e0B) = v
+    const det = a.d.x * b.d.y - a.d.y * b.d.x;
+    const ponto = (u: number, v: number): P2 => {
+      const ra = u + a.d.x * a.e0.x + a.d.y * a.e0.y, rb = v + b.d.x * b.e0.x + b.d.y * b.e0.y;
+      return { x: (ra * b.d.y - rb * a.d.y) / det, y: (a.d.x * rb - b.d.x * ra) / det };
+    };
+    if (f.tipoAlivio === "rasgado") {
+      const poli = [ponto(0, 0), ponto(a.ba, 0), ponto(a.ba, b.ba), ponto(0, b.ba)];
+      m.aliviar(k, poli, desenhoDoPoligono(poli));
+      continue;
+    }
+    const lado = f.tamanho > 0 ? f.tamanho : Math.max(a.ba, b.ba) + 2 * t;
+    const X = ponto(a.ba / 2, b.ba / 2);
+    if (f.tipoAlivio === "circular") {
+      const c = circuloAlivio(X, lado / 2);
+      m.aliviar(k, c.poli, c.desenho);
+    } else {
+      const h = lado / 2;
+      const q = (i: number, j: number): P2 => ({ x: X.x + i * h * a.e.x + j * h * b.e.x, y: X.y + i * h * a.e.y + j * h * b.e.y });
+      const poli = [q(-1, -1), q(1, -1), q(1, 1), q(-1, 1)];
+      m.aliviar(k, poli, desenhoDoPoligono(poli));
+    }
+  }
+}
+
+/**
+ * Quebrar canto: chanfro (distância) ou filete (raio) num canto do contorno de uma parede,
+ * escolhido pela aresta da espessura (ou por um vértice). Canto convexo: tira material;
+ * côncavo: completa. Vale no 3D e no planificado.
+ */
+function quebrarCanto(f: FeatureQuebrarCanto, ctx: Ctx) {
+  const m = exigirChapa(ctx, "Quebrar canto");
+  const t = m.p.t;
+  if (!f.arestas.length) throw new Error("Quebrar canto: toque nas arestas da espessura (ou nos vértices) dos cantos.");
+  if (!(f.distancia > 0)) throw new Error(`Quebrar canto: ${f.tipoQuebra === "filete" ? "o raio" : "a distância"} deve ser maior que zero.`);
+  const peca = exigirPeca(ctx, "Quebrar canto");
+  for (const ref of f.arestas) {
+    let pts: Vec3[];
+    if (ref.tipo === "vertice") pts = [ref.p];
+    else if (ref.tipo === "aresta") {
+      const ass = assinaturaAresta(acharAresta(peca, ref.ass));
+      pts = [ass.a, ass.b];
+    } else throw new Error("Quebrar canto: escolha arestas da espessura ou vértices.");
+    // parede em que os pontos caem nas faces de cima/baixo com o mesmo (x, y) local
+    let achou: { w: Parede; V: P2 } | null = null;
+    for (const w of m.paredes) {
+      const loc = pts.map((P) => ({ x: esc3(sub3(P, w.q.o), w.q.u), y: esc3(sub3(P, w.q.o), w.q.v), z: esc3(sub3(P, w.q.o), w.q.n) }));
+      if (!loc.every((l) => Math.abs(l.z) < 1e-3 || Math.abs(l.z - w.s * t) < 1e-3)) continue;
+      if (loc.some((l) => Math.hypot(l.x - loc[0].x, l.y - loc[0].y) > 1e-3)) continue;
+      if (ref.tipo === "aresta" && Math.abs(Math.abs(loc[0].z - loc[1].z) - t) > 1e-3) continue;
+      achou = { w, V: { x: loc[0].x, y: loc[0].y } };
+      break;
+    }
+    if (!achou) throw new Error("Quebrar canto: escolha a aresta da espessura num canto de uma parede plana da chapa (ou o vértice do canto).");
+    const { w, V } = achou;
+    // as duas bordas que chegam ao canto (no contorno atual da parede)
+    const lacos = lacosDoDesenho(w.forma);
+    const lados: { dir: P2; L: number }[] = [];
+    for (const l of lacos) {
+      for (const e of l.ents) {
+        if (e.tipo !== "linha") {
+          const toca = [e.p0, e.p1].some((p) => Math.hypot(p.x - V.x, p.y - V.y) < 1e-3);
+          if (toca) throw new Error("Quebrar canto: um dos lados do canto é curvo (só cantos entre retas).");
+          continue;
+        }
+        for (const [p, q] of [[e.a, e.b], [e.b, e.a]] as const) {
+          if (Math.hypot(p.x - V.x, p.y - V.y) > 1e-3) continue;
+          const L = Math.hypot(q.x - p.x, q.y - p.y);
+          if (L > 1e-6) lados.push({ dir: { x: (q.x - p.x) / L, y: (q.y - p.y) / L }, L });
+        }
+      }
+    }
+    if (lados.length !== 2) throw new Error("Quebrar canto: o ponto escolhido não é um canto do contorno da parede.");
+    const [t1, t2] = lados.map((x) => x.dir);
+    const alfa = Math.acos(Math.max(-1, Math.min(1, t1.x * t2.x + t1.y * t2.y)));
+    if (alfa < 1e-3 || alfa > Math.PI - 1e-3) throw new Error("Quebrar canto: o canto escolhido é reto (180°) ou fechado demais.");
+    const ub = unit2({ x: t1.x + t2.x, y: t1.y + t2.y });
+    const dentro = (P: P2) => lacos.reduce((n, l) => n + (pontoNoPoligono(P, l.pol) ? 1 : 0), 0) % 2 === 1;
+    const convexo = dentro({ x: V.x + ub.x * 1e-3, y: V.y + ub.y * 1e-3 });
+    const d = f.tipoQuebra === "filete" ? f.distancia / Math.tan(alfa / 2) : f.distancia;
+    if (d >= Math.min(lados[0].L, lados[1].L) - 1e-6) throw new Error(`Quebrar canto: ${f.tipoQuebra === "filete" ? "raio" : "distância"} grande demais para os lados do canto.`);
+    const T1 = { x: V.x + t1.x * d, y: V.y + t1.y * d }, T2 = { x: V.x + t2.x * d, y: V.y + t2.y * d };
+    const fim = convexo ? { x: V.x - ub.x * (d + t), y: V.y - ub.y * (d + t) } : V;
+    let D;
+    if (f.tipoQuebra === "chanfro") D = desenhoDoPoligono([T1, T2, fim]);
+    else {
+      const R = f.distancia, C = { x: V.x + (ub.x * R) / Math.sin(alfa / 2), y: V.y + (ub.y * R) / Math.sin(alfa / 2) };
+      const M = { x: C.x - ub.x * R, y: C.y - ub.y * R };
+      D = draw([T1.x, T1.y]).threePointsArcTo([T2.x, T2.y], [M.x, M.y]).lineTo([fim.x, fim.y]).close();
+    }
+    if (convexo) m.recortar(w.id, D);
+    else m.somar(w.id, D, []);
+  }
 }
 
 /** Linhas (não de construção) do esboço da dobra, no espaço. */
@@ -1617,6 +1817,18 @@ function regenerarFeature(f: Feature, ctx: Ctx) {
     case "meiaEsquadria":
       meiaEsquadria(f, ctx);
       return reconstruirChapa(ctx);
+    case "fecharCanto":
+      fecharCanto(f, ctx);
+      reconstruirChapa(ctx);
+      return;
+    case "alivioCanto":
+      alivioCanto(f, ctx);
+      reconstruirChapa(ctx);
+      return;
+    case "quebrarCanto":
+      quebrarCanto(f, ctx);
+      reconstruirChapa(ctx);
+      return;
     case "abaChapa":
     case "corteChapa":
       abaOuCorte(f, ctx);

@@ -5,6 +5,7 @@ import type {
   FeatureFuro, FeatureInclinacao, FeatureNervura, FeaturePadraoCircular, FeaturePadraoLinear, FeaturePlanoRef,
   FeatureRevolucao, FeatureVarredura, FeatureLoft, RestricaoLoft, TipoCondicao,
   FeatureFlangeBase, FeatureFlangeAresta, FeatureBainha, FeatureAbaChapa, FeatureDobraEsboco, FeatureJunta, FeatureMeiaEsquadria,
+  FeatureFecharCanto, FeatureAlivioCanto, FeatureQuebrarCanto,
 } from "../model";
 import { TABELA_CHAPA } from "../model";
 import { FIXADORES, medidasFuro, notaFuro, TAMANHOS } from "../kernel/furos";
@@ -105,6 +106,12 @@ export function esquemaDe(f: Feature, d: DadosEsquema): Esquema<Feature> {
       return junta(d) as Esquema<Feature>;
     case "meiaEsquadria":
       return meiaEsquadria(d) as Esquema<Feature>;
+    case "fecharCanto":
+      return fecharCanto() as Esquema<Feature>;
+    case "alivioCanto":
+      return alivioCanto() as Esquema<Feature>;
+    case "quebrarCanto":
+      return quebrarCanto() as Esquema<Feature>;
     case "esboco":
       return { titulo: "Esboço", caixas: [] };
   }
@@ -286,6 +293,55 @@ function meiaEsquadria(d: DadosEsquema): Esquema<FeatureMeiaEsquadria> {
         { t: "num", rot: "Distância de folga", cam: "folga", un: "mm", min: 0, passo: 0.05 },
       ] },
       { titulo: "Deslocamentos inicial/final", campos: [{ t: "info", texto: () => "Próxima versão (hoje a aba vai de ponta a ponta de cada aresta)." }] },
+    ],
+  };
+}
+
+function fecharCanto(): Esquema<FeatureFecharCanto> {
+  return {
+    titulo: "Fechar canto",
+    caixas: [
+      { titulo: "Cantos", campos: [
+        { t: "info", texto: () => "Vale para todos os cantos entre abas vizinhas da chapa (flanges em arestas que se encontram), do mesmo recurso ou de recursos diferentes." },
+        { t: "sel", rot: "Tipo de canto", cam: "tipoCanto", opcoes: [
+          ["meiaEsquadria", "Meia-esquadria"], ["sobreposto", "Sobreposto (a 1ª aba cobre a ponta da 2ª)"], ["subposto", "Subposto (a 2ª aba cobre a 1ª)"],
+        ] },
+        { t: "num", rot: "Distância de folga", cam: "folga", un: "mm", min: 0, passo: 0.05 },
+        { t: "info", texto: (f) => (f.tipoCanto === "meiaEsquadria"
+          ? "Paredes e dobras aparadas pelo plano bissetor, afastadas pela folga."
+          : "A aba que cobre vai até a face de fora da outra; a outra para na face de dentro dela, menos a folga. As dobras ficam em meia-esquadria (use Alívio de canto para abrir a região das dobras).") },
+      ] },
+    ],
+  };
+}
+
+function alivioCanto(): Esquema<FeatureAlivioCanto> {
+  return {
+    titulo: "Alívio de canto",
+    caixas: [
+      { titulo: "Alívio (cantos de 2 dobras)", campos: [
+        { t: "info", texto: () => "Vale para todos os cantos entre abas vizinhas. O recorte aparece igual no planificado (DXF)." },
+        { t: "sel", rot: "Tipo de alívio", cam: "tipoAlivio", opcoes: [["retangular", "Retangular"], ["circular", "Circular"], ["rasgado", "Rasgado"]] },
+        { t: "num", rot: "Tamanho (lado ou diâmetro)", cam: "tamanho", un: "mm", min: 0, passo: 0.5, vis: (f) => f.tipoAlivio !== "rasgado" },
+        { t: "info", texto: (f) => (f.tipoAlivio === "rasgado"
+          ? "Tira só a região onde as duas dobras se cruzam: cada dobra termina na linha de início da outra."
+          : f.tamanho > 0 ? "Centrado no encontro das linhas de centro das dobras." : "Tamanho 0 = automático: maior largura de dobra (BA) + 2 × espessura, centrado no encontro das linhas de centro.") },
+      ] },
+    ],
+  };
+}
+
+function quebrarCanto(): Esquema<FeatureQuebrarCanto> {
+  return {
+    titulo: "Quebrar canto",
+    caixas: [
+      { titulo: "Cantos", campos: [
+        { t: "refs", rot: "Arestas / vértices", cam: "arestas", aceita: ["aresta", "vertice"], multiplo: true, dica: "Toque a aresta da espessura (ou o vértice) de cada canto" },
+        { t: "sel", rot: "Tipo", cam: "tipoQuebra", opcoes: [["chanfro", "Chanfro"], ["filete", "Filete"]] },
+        { t: "num", rot: "Distância", cam: "distancia", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.tipoQuebra === "chanfro" },
+        { t: "num", rot: "Raio", cam: "distancia", un: "mm", min: 0.01, passo: 0.5, vis: (f) => f.tipoQuebra === "filete" },
+        { t: "info", texto: () => "Canto convexo perde material; côncavo (canto interno) ganha. Aparece no planificado." },
+      ] },
     ],
   };
 }
