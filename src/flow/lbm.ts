@@ -269,13 +269,48 @@ export type Precisao = "fp32" | "fp16";
  */
 export const ESCALA_FP16 = 16384;
 
-/** Arredonda para FP16 (ao par mais próximo), opcionalmente zerando subnormais como a GPU. */
-export function meia(v: number, zerarSubnormais = false): number {
+/**
+ * Arredonda para FP16. Padrão: ao par mais próximo (IEEE). `zerarSubnormais` e `truncar` imitam
+ * o que a Adreno 613 faz no pack2x16float (medido no tablet do Johann), para os testes.
+ */
+export function meia(v: number, zerarSubnormais = false, truncar = false): number {
   const a = Math.abs(v);
   if (a === 0 || !Number.isFinite(v)) return v;
-  if (a < 2 ** -14) return zerarSubnormais ? 0 : Math.sign(v) * Math.round(a * 2 ** 24) * 2 ** -24;
-  const q = 2 ** (Math.floor(Math.log2(a)) - 10);
-  return Math.sign(v) * Math.round(a / q) * q;
+  const sub = a < 2 ** -14;
+  if (sub && zerarSubnormais) return 0;
+  const q = sub ? 2 ** -24 : 2 ** (Math.floor(Math.log2(a)) - 10);
+  const r = a / q;
+  let k = Math.floor(r);
+  if (!truncar && (r - k > 0.5 || (r - k === 0.5 && k % 2 === 1))) k++;
+  return Math.sign(v) * k * q;
+}
+
+/**
+ * f32 → bits FP16 só com operações inteiras, ao par mais próximo, zerando o que ficaria
+ * subnormal e saturando no maior finito. Espelho exato da função `meiaBits` do shader
+ * (src/flow/gpu.ts): a conversão do driver (pack2x16float) não é confiável em GPUs móveis.
+ */
+export function meiaBits(v: number): number {
+  const u = new Uint32Array(new Float32Array([v]).buffer)[0];
+  const s = (u >>> 16) & 0x8000;
+  const e = ((u >>> 23) & 0xff) - 112; // −127 + 15
+  if (e <= 0) return s;
+  if (e >= 31) return s | 0x7bff;
+  const m = u & 0x7fffff;
+  let h = (e << 10) | (m >>> 13);
+  const resto = m & 0x1fff;
+  if (resto > 0x1000 || (resto === 0x1000 && (h & 1) === 1)) h++;
+  return s | Math.min(h, 0x7bff);
+}
+
+/** Bits FP16 → número. */
+export function meiaParaFloat(h: number): number {
+  const s = h & 0x8000 ? -1 : 1;
+  const e = (h >> 10) & 0x1f;
+  const m = h & 0x3ff;
+  if (e === 0) return s * m * 2 ** -24;
+  if (e === 31) return m ? NaN : s * Infinity;
+  return s * (1 + m / 1024) * 2 ** (e - 15);
 }
 
 /** Bytes por célula: dois buffers de 19 populações + 4 bytes de tipo. */
