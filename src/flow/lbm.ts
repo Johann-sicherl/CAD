@@ -313,5 +313,8 @@ export function meiaParaFloat(h: number): number {
   return s * (1 + m / 1024) * 2 ** (e - 15);
 }
 
-/** Bytes por célula: dois buffers de 19 populações + 4 bytes de tipo. */
-export const bytesPorCelula = (p: Precisao) => 2 * Q * (p === "fp32" ? 4 : 2) + 4;
+/**
+ * Bytes por célula: dois buffers + tipo. FP32: 19 floats; FP16: 10 palavras de 32 bits (pares de
+ * direções opostas e a de repouso sozinha, para cada thread gravar só a própria célula).
+ */
+export const bytesPorCelula = (p: Precisao) => 2 * (p === "fp32" ? Q * 4 : 10 * 4) + 1;

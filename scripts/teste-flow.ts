@@ -185,8 +185,8 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
   perto("τ₀ do carro ≈ ½ (exige LES)", e.tau, 0.5 + (3 * AR.nu * e.dt) / (e.dx * e.dx), 1e-12);
   perto("passos por comprimento", e.passosPorL, 4000, 0);
   perto("Re de tubo 50 mm a 10 m/s", reynolds(10, 0.05), 32982, 1);
-  perto("bytes por célula FP32", bytesPorCelula("fp32"), 156, 0);
-  perto("bytes por célula FP16", bytesPorCelula("fp16"), 80, 0);
+  perto("bytes por célula FP32", bytesPorCelula("fp32"), 153, 0);
+  perto("bytes por célula FP16", bytesPorCelula("fp16"), 81, 0);
 }
 
 if (falhas) {
