@@ -21,3 +21,6 @@ body { overflow-y: auto; height: auto; min-height: 100%; }
 .af-canvas { width: 100%; height: auto; margin-top: 10px; border: 1px solid var(--linha); border-radius: 8px; background: #fff; image-rendering: pixelated; }
 .af-escala { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--texto-2); margin-top: 4px; }
 .af-escala i { flex: 1; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2e4dbf, #33b3d9, #66cc59, #fad140, #d9382e); }
+.af-progresso { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; font-weight: 600; background: var(--acento-suave); color: var(--acento); }
+.af-progresso.ok { background: #e4f4ea; color: var(--ok); }
+.af-progresso.erro { background: #fbe6e4; color: var(--erro); }

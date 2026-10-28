@@ -60,17 +60,34 @@ async function mostrarAparelho() {
   if (!gpu) for (const b of ["af-verificar", "af-medir", "af-vivo"]) $<HTMLButtonElement>(b).disabled = true;
 }
 
-/** Roda uma tarefa exclusiva (um teste por vez), com os botões travados. */
-async function exclusivo(f: () => Promise<void>) {
+/** Faixa de andamento acima do relatório: "em andamento", "concluído" ou "erro". */
+function progresso(texto: string, tipo: "" | "ok" | "erro" = "") {
+  const p = $<HTMLParagraphElement>("af-progresso");
+  p.hidden = false;
+  p.className = `af-progresso ${tipo}`;
+  p.textContent = texto;
+}
+
+/**
+ * Roda uma tarefa exclusiva (um teste por vez), com os botões travados. Mantém a tela acesa:
+ * com a tela apagada o Android pausa a página e a medição sairia errada.
+ */
+async function exclusivo(nome: string, f: () => Promise<void>) {
   if (ocupado) return;
   ocupado = true;
   pararVivo();
   document.querySelectorAll<HTMLButtonElement>(".af-botoes button").forEach((b) => (b.disabled = true));
+  progresso(`⏳ ${nome} em andamento… não saia desta tela.`);
+  const tela = await navigator.wakeLock?.request("screen").catch(() => null);
   try {
     await f();
+    progresso(`✓ ${nome} concluída. Toque em "Copiar resultados" e cole na conversa.`, "ok");
   } catch (e) {
     escrever(`!! erro: ${(e as Error).message}`);
+    progresso(`✗ ${nome} parou com erro (detalhe no relatório abaixo).`, "erro");
   } finally {
+    void tela?.release().catch(() => {});
+    navigator.vibrate?.(200);
     ocupado = false;
     document.querySelectorAll<HTMLButtonElement>(".af-botoes button").forEach((b) => (b.disabled = !gpu && b.id !== "af-cpu" && b.id !== "af-copiar"));
   }
@@ -109,6 +126,7 @@ async function verificar() {
     }
   }
   escrever(ok ? "Autoverificação: a GPU deste aparelho calcula igual à referência ✓\n" : "Autoverificação FALHOU: o driver desta GPU não calcula igual à referência.\n");
+  if (!ok) throw new Error("a GPU não calculou igual à referência");
 }
 
 function canal(nx: number, ny: number, nz: number): Uint8Array {
@@ -142,9 +160,11 @@ async function medir() {
   escrever("== Desempenho (esfera no túnel, BGK + LES, u = 0,05) ==");
   escrever("malha              células  prec.  memória   passos/s   MLUPS   1 travessia");
   const resultados: { celulas: number; prec: Precisao; mlups: number }[] = [];
+  let etapa = 0;
   externo: for (const [nx, ny, nz] of MALHAS) {
     const n = nx * ny * nz;
     for (const prec of ["fp32", "fp16"] as Precisao[]) {
+      progresso(`⏳ Medindo ${nx}×${ny}×${nz} ${prec.toUpperCase()} (etapa ${++etapa} de até ${MALHAS.length * 2})… não saia desta tela.`);
       const mem = n * bytesPorCelula(prec);
       const nome = `${nx}×${ny}×${nz}`.padEnd(16);
       if (!cabe(dev, n, prec)) {
@@ -172,7 +192,8 @@ async function medir() {
   }
   const melhor = resultados.reduce((a, b) => (b.mlups > a.mlups ? b : a), resultados[0]);
   if (melhor) escrever(`Pico: ${fmt(melhor.mlups, 1)} MLUPS (${melhor.prec}, ${fmt(melhor.celulas / 1e6, 2)} M células).`);
-  escrever("1 travessia = tempo para o ar cruzar o túnel uma vez; um resultado estável pede de 2 a 4.\n");
+  escrever("1 travessia = tempo para o ar cruzar o túnel uma vez; um resultado estável pede de 2 a 4.");
+  escrever("== Medição concluída ==\n");
 }
 
 function baseCpu(): Promise<void> {
@@ -251,9 +272,9 @@ function iniciarVivo() {
   vivo.quadro = requestAnimationFrame(laco);
 }
 
-$("af-verificar").onclick = () => void exclusivo(verificar);
-$("af-medir").onclick = () => void exclusivo(medir);
-$("af-cpu").onclick = () => void exclusivo(baseCpu);
+$("af-verificar").onclick = () => void exclusivo("Autoverificação", verificar);
+$("af-medir").onclick = () => void exclusivo("Medição de desempenho", medir);
+$("af-cpu").onclick = () => void exclusivo("Base em CPU", baseCpu);
 $("af-vivo").onclick = () => (ocupado ? undefined : iniciarVivo());
 $("af-copiar").onclick = async () => {
   try {
