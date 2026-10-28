@@ -105,7 +105,7 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
     }
     if (publicar) {
       if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) repos.push(nuvem.repositorio());
-      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Sincronizar agora)");
+      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Cofre → Sincronizar agora)");
     }
     if (repos.length === 1) {
       const t = publicar ? "Nenhuma cópia conectada: conecte o pendrive ou o Google Drive (📁 Cópias do cofre)." : "Salvo só no banco do app: escolha a pasta padrão do dispositivo (📁 Cópias do cofre).";
@@ -117,6 +117,26 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
   fila = tarefa.catch(() => {});
   return tarefa;
 }
+
+let abriu = false;
+/**
+ * Sincronia global ao abrir (cada recarregar do app): dispositivo, pendrive e Drive, sem pedir nada
+ * (não há toque): cópias que precisam de permissão ou de novo login ficam para o próximo toque.
+ * Roda depois de `espera` (o app termina de abrir antes) e só uma vez por página.
+ */
+export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve()): Promise<string> | undefined {
+  if (abriu) return;
+  abriu = true;
+  return espera
+    .catch(() => {})
+    .then(() => new Promise((r) => setTimeout(r, 800)))
+    .then(() => sincronizarCofre({ pedir: false, publicar: true }))
+    .then((m) => (avisarMudanca(), m));
+}
+/** A sincronia ou outro salvar mudou o cofre (para recarregar listas). */
+export const aoMudarCofre = (f: () => void) => ouvintes.add(f);
+/** Mensagem da sincronia ao abrir que merece aviso: algo pede um toque ou houve conflito. */
+export const precisaToque = (m: string) => /sem permissão|vencido|conflito|desconectado/.test(m);
 
 function resumo(r: ResultadoSincronia, repos: Repositorio[], ausentes: string[]): string {
   const ok = repos.filter((x) => x.nome !== "aparelho" && !r.falhas.some((f) => f.repo === x.nome)).map((x) => x.nome);
@@ -639,8 +659,8 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
           <p>O GO-IN cria a versão e publica no pendrive e no Google Drive.</p>`
         : "<p>Nenhum arquivo em GO-OUT com você.</p>"}
       </section>
-      <section><p class="wjc-msg ${/desconectado|não encontrado|sem permissão|vencido|Sem GO-IN|Não foi|cancelado|Nenhuma cópia/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última sincronia: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p>
-        <div class="wjc-botoes"><button data-b="copias">Cópias do cofre…</button><button data-b="pdm">Abrir o WJPDM</button></div></section>`;
+      <section><p class="wjc-msg ${/desconectado|não encontrado|sem permissão|vencido|Sem GO-IN|Não foi|cancelado|Nenhuma cópia|conflito/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última sincronia: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p>
+        <div class="wjc-botoes"><button data-b="sinc">Sincronizar agora</button><button data-b="copias">Cópias do cofre…</button><button data-b="pdm">Abrir o WJPDM</button></div></section>`;
 
     const executar = async (f: () => Promise<unknown>) => {
       if (ocupado) return;
@@ -677,6 +697,10 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
         const ids = [...corpo.querySelectorAll<HTMLInputElement>("[data-x]:checked")].map((x) => x.dataset.x!);
         if (!ids.length) return void (msg = "Marque ao menos um arquivo.", desenhar());
         return publicar(ids);
+      },
+      sinc: () => {
+        const renovacao = renovarNuvem(true); // janela do Google no toque
+        return executar(() => sincronizarCofre({ publicar: true, renovacao }));
       },
       copias: () => void abrirCopias(() => void desenhar()),
       pdm: () => (location.href = new URL(`${import.meta.env.BASE_URL}pdm/`, location.href).href),

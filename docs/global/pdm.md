@@ -26,6 +26,9 @@ cada app. WJPDM e WJERP (cópias de segurança) entram direto na pasta da face, 
 versão, GO-OUT; botões GO-OUT / GO-IN (comentário, manter em GO-OUT; salva antes de publicar) /
 Desfazer GO-OUT / Salvar; lista **Meus arquivos em GO-OUT** de todos os apps com GO-IN por item ou
 dos marcados; número de arquivos em GO-OUT na própria aba.
+✅ **Sincronia global a cada abertura** de qualquer app (WJCAD depois do kernel carregar): iguala
+dispositivo, pendrive e Drive sem pedir nada; pendrive sem permissão ou Drive com login vencido
+(1 h) ficam para o próximo toque (salvar, GO-IN ou **Sincronizar agora** na aba Cofre), com aviso.
 ✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
 dispositivo e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
 que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a

@@ -4,7 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, APPS, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -998,6 +998,8 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
+// a sincronia ao abrir trouxe novidades (outro aparelho, pendrive, Drive): recarrega a lista
+aoMudarCofre(() => db && void carregar().catch(() => {}));
 // outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM
 addEventListener("focus", () => db && void carregar().catch(() => {}));
 document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && db && void carregar().catch(() => {}));

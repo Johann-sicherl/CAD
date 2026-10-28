@@ -3,7 +3,7 @@
 // dispositivo, desfazer/refazer por fotografias do documento, salvar/abrir arquivos.
 
 import { botaoDiagnostico } from "./diagnostico";
-import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, salvarNoCofre, type ChaveApp } from "./cofre";
+import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, precisaToque, salvarNoCofre, sincronizarAoAbrir, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
 
@@ -131,6 +131,8 @@ export class Casca {
     };
     topo.querySelector<HTMLElement>('[data-a="salvar"]')!.onclick = () => o.salvar();
     topo.querySelector<HTMLElement>('[data-a="locais"]')!.onclick = () => void abrirCopias();
+    // sincronia global do cofre a cada abertura (dispositivo, pendrive, Drive)
+    void sincronizarAoAbrir()?.then((m) => precisaToque(m) && this.avisar(`Sincronia ao abrir: ${m}`, 7000), () => {});
     // painel lateral do cofre (GO-OUT / GO-IN) nos apps de documento
     if (ehDocumento)
       instalarPainelCofre(chave, () => {
