@@ -35,7 +35,7 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
-import { abrirCopias, abrirDoCofre, desligar, salvarNoCofre } from "./comum/cofre";
+import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, precisaToque, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import { Armazem } from "./comum/armazem";
 import {
@@ -3410,6 +3410,22 @@ nomeDoc.onchange = () => {
   alterou(true);
 };
 
+/** Salva no cofre do WJPDM: no dispositivo, em GO-OUT (o GO-IN publica no pendrive e no Drive). */
+function salvarPeca(): Promise<string> {
+  capturarAtiva(doc);
+  limparConfiguracoes(doc);
+  const dados = new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" });
+  avisar("Salvando no cofre…");
+  const p = salvarNoCofre("cad", `${doc.nome}.wjcad`, dados, (nome) => {
+    doc.nome = nome;
+    nomeDoc.value = nome;
+    salvarAutosave();
+    renderizarArvore();
+  });
+  p.then(avisar, (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
+  return p;
+}
+
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
   abrir: { rotulo: "Abrir arquivo do aparelho…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
@@ -3417,14 +3433,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     rotulo: "Salvar (.wjcad)",
     icone: "salvar",
     // octet-stream: o Android não troca a extensão .wjcad por .json
-    fazer: () => {
-      capturarAtiva(doc);
-      limparConfiguracoes(doc);
-      // no cofre do WJPDM (cópia de trabalho) e iguala pendrive, Drive e pasta do tablet
-      const dados = new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" });
-      avisar("Salvando no cofre…");
-      void salvarNoCofre("cad", `${doc.nome}.wjcad`, dados).then(avisar, (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
-    },
+    fazer: () => void salvarPeca(),
   },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, tablet)…", icone: "pasta", fazer: () => void abrirCopias() },
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad") },
@@ -3904,6 +3913,10 @@ if (location.hash === "#abrir-autosave") {
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();
+// painel do cofre na lateral direita: GO-OUT / GO-IN e arquivos em GO-OUT
+instalarPainelCofre("cad", salvarPeca);
+// sincronia global do cofre a cada abertura, depois que o kernel carregou (não disputa a rede)
+void sincronizarAoAbrir(kernel.pronto)?.then((m) => precisaToque(m) && avisar(`Sincronia ao abrir: ${m}`), () => {});
 
 // diagnóstico do aparelho (só onde o Johann ligou o modo: ?diag=1)
 {

@@ -4,7 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, APPS, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -120,7 +120,7 @@ $("#pd-pastas").onclick = () => document.body.classList.toggle("pd-arvore-aberta
 // ---------- lista ----------
 
 function travaHtml(a: Arquivo) {
-  const trab = a.trabalho ? `<span class="pd-trabalho-ic" title="Cópia de trabalho salva em ${quando(a.trabalho.data)} (ainda sem GO-IN)">✎</span>` : "";
+  const trab = (a.trabalho ? `<span class="pd-trabalho-ic" title="Cópia de trabalho salva em ${quando(a.trabalho.data)} (ainda sem GO-IN)">✎</span>` : "") + (a.soLocal ? `<span class="pd-trabalho-ic" title="Só no dispositivo: nunca teve GO-IN (não está no pendrive nem no Drive)">⌂</span>` : "");
   if (!a.checkout) return trab;
   const minha = a.checkout.usuario === usuario();
   return `<span class="pd-trava ${minha ? "minha" : "outro"}" title="GO-OUT de ${escapar(a.checkout.usuario)} em ${quando(a.checkout.data)}">${IC.cadeado}</span>${trab}`;
@@ -310,7 +310,7 @@ function renderizarPainel() {
   const tot = arquivos.filter((x) => !x.lixeira);
   conteudo.innerHTML = `<p class="pd-dica">Selecione um arquivo para ver o cartão de dados, a visualização, as versões e o histórico.</p>
     <p class="pd-dica">${tot.length} arquivo(s) · ${pastas.length} pasta(s) · ${itens.length} item(ns) · usuário: <b>${escapar(usuario())}</b></p>
-    <p class="pd-dica">O cofre fica <b>neste aparelho</b> (funciona sem internet). Faça cópias de segurança em <b>Ferramentas → Exportar cofre</b>; o cofre no servidor, compartilhado pela equipe, chega na fase G5.</p>`;
+    <p class="pd-dica">Salvar nos apps grava <b>no dispositivo</b> (em GO-OUT, funciona sem internet); o <b>GO-IN</b> cria a versão e publica no pendrive e no Google Drive (💾 / Cópias do cofre). O cofre no servidor, compartilhado pela equipe, chega na fase G5.</p>`;
 }
 abasEl.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-aba]");
@@ -320,8 +320,8 @@ abasEl.addEventListener("click", (e) => {
 function painelCartao(a: Arquivo) {
   const editavel = a.checkout?.usuario === usuario();
   conteudo.innerHTML = `<div class="pd-cab"><strong>${escapar(a.nome)}</strong>${estadoHtml(a)}<span>versão ${versaoAtual(a).n} · revisão ${a.revisao || "—"}</span>
-      ${a.checkout ? `<span class="pd-trava ${editavel ? "minha" : "outro"}">${IC.cadeado} check-out de ${escapar(a.checkout.usuario)}</span>` : ""}</div>
-    ${editavel ? "" : `<p class="pd-dica">${a.checkout ? "Outro usuário está com o arquivo." : "Faça <b>check-out</b> para editar o cartão de dados."}</p>`}
+      ${a.checkout ? `<span class="pd-trava ${editavel ? "minha" : "outro"}">${IC.cadeado} GO-OUT de ${escapar(a.checkout.usuario)}</span>` : ""}</div>
+    ${editavel ? "" : `<p class="pd-dica">${a.checkout ? "Outro usuário está com o arquivo." : "Faça o <b>GO-OUT</b> para editar o cartão de dados."}</p>`}
     <div class="pd-cartao">${CAMPOS_CARTAO.map((c) => `<div class="wj-campo"><label>${c.nome}${c.obrigatorioNaRevisao ? " *" : ""}</label>${
       c.lista
         ? `<select data-campo="${c.id}" ${editavel ? "" : "disabled"}>${c.lista.map((o) => `<option${(a.cartao[c.id] ?? "") === o ? " selected" : ""}>${escapar(o)}</option>`).join("")}</select>`
@@ -652,10 +652,11 @@ function checkin(a: Arquivo) {
         const finalizar = async (dados?: Blob | { trabalho: true }) => {
           if (dados) await novaVersao(a, dados, com);
           else historico(a, `GO-IN sem versão nova${com ? ` — ${com}` : ""}`);
+          if (a.soLocal) delete a.soLocal, historico(a, "Publicado (primeiro GO-IN)");
           if (!manter) delete a.checkout, historico(a, "GO-IN");
           await gravarArquivo(a);
           renderizar();
-          void sincronizarCofre(false).then((m) => casca.avisar(m, 5000));
+          void sincronizarCofre({ pedir: false, publicar: true }).then((m) => casca.avisar(m, 5000));
         };
         if (fonte === "trabalho") void finalizar({ trabalho: true });
         else if (fonte === "aparelho") {
@@ -810,7 +811,7 @@ async function excluirPasta(id: string) {
 
 function configurar(primeiraVez = false) {
   janela(primeiraVez ? "Bem-vindo ao WJPDM" : "Usuário e cofre", `
-    ${primeiraVez ? `<p>O cofre guarda seus arquivos de engenharia <b>neste aparelho</b>, com versões, revisões, GO-OUT/GO-IN (retirar para editar e devolver ao cofre) e aprovação. Informe seu nome: ele aparece no histórico e nos GO-OUTs.</p>` : ""}
+    ${primeiraVez ? `<p>O cofre guarda os arquivos de todos os apps no dispositivo (em GO-OUT ao salvar) e os publica no pendrive e no Google Drive no GO-IN, com versões, revisões, GO-OUT/GO-IN (retirar para editar e devolver ao cofre) e aprovação. Informe seu nome: ele aparece no histórico e nos GO-OUTs.</p>` : ""}
     <div class="wj-campo"><label>Seu nome (usuário)</label><input id="cf-u" value="${escapar(meta.usuario)}" placeholder="ex.: Johann" /></div>
     <div class="wj-campo"><label>Nome do cofre</label><input id="cf-n" value="${escapar(meta.nome)}" /></div>
     <div class="wj-campo"><label>Máscara de código dos itens (# = dígito)</label><input id="cf-m" value="${escapar(meta.mascara)}" /></div>`, [
@@ -970,7 +971,7 @@ document.addEventListener("keydown", (e) => {
 /** Iguala o cofre com pendrive, pasta do tablet e Drive (💾 / Ctrl+S). */
 async function sincronizarAgora() {
   casca.avisar("Sincronizando o cofre…", 20000);
-  const m = await sincronizarCofre(true);
+  const m = await sincronizarCofre({ publicar: true });
   await carregar();
   casca.avisar(m, 7000);
 }
@@ -997,6 +998,8 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
+// a sincronia ao abrir trouxe novidades (outro aparelho, pendrive, Drive): recarrega a lista
+aoMudarCofre(() => db && void carregar().catch(() => {}));
 // outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM
 addEventListener("focus", () => db && void carregar().catch(() => {}));
 document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && db && void carregar().catch(() => {}));

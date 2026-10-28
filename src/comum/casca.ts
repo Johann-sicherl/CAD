@@ -3,7 +3,7 @@
 // dispositivo, desfazer/refazer por fotografias do documento, salvar/abrir arquivos.
 
 import { botaoDiagnostico } from "./diagnostico";
-import { abrirCopias, abrirDoCofre, APPS, desligar, salvarNoCofre, type ChaveApp } from "./cofre";
+import { abrirCopias, abrirDoCofre, APPS, desligar, instalarPainelCofre, precisaToque, salvarNoCofre, sincronizarAoAbrir, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
 
@@ -93,7 +93,7 @@ export class Casca {
       <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>${o.app}</span></a>
       <button class="wj-ic" data-a="novo" title="Novo (Ctrl+N)">${IC.novo}</button>
       <button class="wj-ic" data-a="abrir" title="Abrir (Ctrl+O)">${IC.abrir}</button>
-      <button class="wj-ic" data-a="salvar" title="Salvar no cofre (Ctrl+S): pendrive, Drive e tablet">${IC.salvar}</button>
+      <button class="wj-ic" data-a="salvar" title="Salvar no cofre (Ctrl+S): no dispositivo, em GO-OUT; o GO-IN publica">${IC.salvar}</button>
       <button class="wj-ic" data-a="locais" title="Cópias do cofre (pendrive, Google Drive, tablet)">${IC.pasta}</button>
       ${o.desfazer ? `<span class="wj-sep"></span><button class="wj-ic" data-a="desfazer" title="Desfazer (Ctrl+Z)">${IC.desfazer}</button><button class="wj-ic" data-a="refazer" title="Refazer (Ctrl+Y)">${IC.refazer}</button>` : ""}
       <input class="wj-nome" aria-label="Nome do documento" />
@@ -131,6 +131,15 @@ export class Casca {
     };
     topo.querySelector<HTMLElement>('[data-a="salvar"]')!.onclick = () => o.salvar();
     topo.querySelector<HTMLElement>('[data-a="locais"]')!.onclick = () => void abrirCopias();
+    // sincronia global do cofre a cada abertura (dispositivo, pendrive, Drive)
+    void sincronizarAoAbrir()?.then((m) => precisaToque(m) && this.avisar(`Sincronia ao abrir: ${m}`, 7000), () => {});
+    // painel lateral do cofre (GO-OUT / GO-IN) nos apps de documento
+    if (ehDocumento)
+      instalarPainelCofre(chave, () => {
+        ultimoSalvar = undefined;
+        o.salvar();
+        return ultimoSalvar ?? Promise.resolve();
+      });
     cascaAtual = this;
     if (o.desfazer) {
       topo.querySelector<HTMLElement>('[data-a="desfazer"]')!.onclick = () => o.desfazer!();
@@ -317,6 +326,8 @@ export class Historico<T> {
 const CHAVES: Record<string, ChaveApp> = { wjpl: "plan", wjdoc: "word", wjapn: "apn", wjcron: "cron", wjpdm: "pdm", wjerp: "erp", wjcad: "cad", wjflow: "flow" };
 const chaveDaExtensao = (ext: string): ChaveApp => CHAVES[ext] ?? "word";
 let cascaAtual: Casca | null = null;
+/** Último salvamento no cofre (o painel do cofre espera por ele antes do GO-IN). */
+let ultimoSalvar: Promise<string> | undefined;
 
 /**
  * Salva o documento do app no cofre do WJPDM (cópia de trabalho; versão só no GO-IN) e iguala as
@@ -324,10 +335,15 @@ let cascaAtual: Casca | null = null;
  */
 export function salvarArquivo(conteudo: BlobPart, nome: string, extensao: string, tipo = "application/octet-stream") {
   const dados = new Blob([conteudo], { type: tipo });
-  void salvarNoCofre(chaveDaExtensao(extensao), `${nome}.${extensao}`, dados).then(
+  ultimoSalvar = salvarNoCofre(chaveDaExtensao(extensao), `${nome}.${extensao}`, dados, (n) => {
+    cascaAtual?.o.renomear(n);
+    cascaAtual?.renderizar();
+  });
+  ultimoSalvar.then(
     (msg) => cascaAtual?.avisar(msg, 6000),
     (e) => cascaAtual?.avisar(`Não foi possível salvar: ${(e as Error).message}`, 6000),
   );
+  return ultimoSalvar;
 }
 
 /** Baixa um arquivo (octet-stream: o Android não troca a extensão). */

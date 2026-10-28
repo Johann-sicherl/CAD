@@ -40,6 +40,8 @@ const q = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 export class RepositorioDrive implements Repositorio {
   nome = "Google Drive";
+  /** O Drive é cópia de publicação: só recebe o que passou por GO-IN. */
+  publicado = true;
   private ids = new Map<string, string>(); // caminho de pasta → id
   private blobIds: Map<string, string> | null = null;
   constructor(private token: () => string, private buscar: Buscar = (...a) => fetch(...a)) {}

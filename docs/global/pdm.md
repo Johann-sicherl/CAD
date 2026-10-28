@@ -15,15 +15,26 @@ Status de tudo: **G5** salvo indicação.
 
 ## Cofre único e cópias (28/10/2026)
 
-✅ Todo arquivo dos apps vive no cofre (`src/comum/cofre.ts`): salvar no app grava a **cópia de
-trabalho** (✎ na lista); arquivo novo entra na pasta da face (CAD, Planilhas, Documentos,
-Apresentações, Cronogramas, ERP) já em GO-OUT; **GO-IN** cria a versão a partir da cópia de trabalho;
-desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em cada app.
+✅ Todo arquivo dos apps vive no cofre (`src/comum/cofre.ts`). **Salvar grava só no dispositivo**
+(banco do app + pasta padrão do dispositivo), em GO-OUT: o primeiro salvar abre "Salvar no cofre"
+(pasta, Nova pasta, nome; lembra a última pasta de cada app) e o arquivo fica **só no dispositivo**
+(`soLocal`, ⌂ na lista) até o primeiro GO-IN, que publica a versão 1; depois, salvar grava a
+**cópia de trabalho** (✎). **GO-IN** cria a versão e **publica no pendrive e no Drive**, que só
+recebem o que passou por GO-IN. Desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em
+cada app. WJPDM e WJERP (cópias de segurança) entram direto na pasta da face, sem perguntar.
+✅ Aba **Cofre** na lateral direita de cada app de documento: arquivo, pasta, estado, revisão,
+versão, GO-OUT; botões GO-OUT / GO-IN (comentário, manter em GO-OUT; salva antes de publicar) /
+Desfazer GO-OUT / Salvar; lista **Meus arquivos em GO-OUT** de todos os apps com GO-IN por item ou
+dos marcados; número de arquivos em GO-OUT na própria aba.
+✅ **Sincronia global a cada abertura** de qualquer app (WJCAD depois do kernel carregar): iguala
+dispositivo, pendrive e Drive sem pedir nada; pendrive sem permissão ou Drive com login vencido
+(1 h) ficam para o próximo toque (salvar, GO-IN ou **Sincronizar agora** na aba Cofre), com aviso.
 ✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
-tablet e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
+dispositivo e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
 que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a
 outra vira cópia na lixeira ("(conflito AAAA-MM-DD)"); exclusões e lixeira propagam; lixeira se
-esvazia após 30 dias. Cada cópia guarda `WJPDM/<pastas>/<arquivo>` (legível em qualquer
+esvazia após 30 dias. Salvar seguido (cópia de trabalho ou rascunho nunca publicado trocado) não
+é conflito: só uma versão publicada perdida gera a cópia na lixeira. Cada cópia guarda `WJPDM/<pastas>/<arquivo>` (legível em qualquer
 computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
 ✅ Google Drive (`src/comum/drive.ts`): "Conectar ao Google Drive" na tela de cópias; cofre em
 Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuário).

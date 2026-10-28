@@ -104,7 +104,8 @@ type Visiveis = Record<string, { caminho: string[]; blob: string }>;
 
 export class RepositorioPasta implements Repositorio {
   private dirs?: Promise<{ cofre: FileSystemDirectoryHandle; sis: FileSystemDirectoryHandle; blobs: FileSystemDirectoryHandle }>;
-  constructor(public nome: string, private raiz: PastaDisco) {}
+  /** `publicado`: pendrive (só o que passou por GO-IN); a pasta do dispositivo recebe tudo. */
+  constructor(public nome: string, private raiz: PastaDisco, public publicado = false) {}
 
   private pastas() {
     return (this.dirs ??= (async () => {
