@@ -96,7 +96,7 @@ export interface Preparo {
   areaRef: number;
   /** área de referência em células² (para os coeficientes) */
   areaRefCelulas: number;
-  esponja: { x0: number; dtau: number };
+  esponja: { x0: number; dtau: number; sigma: number; entrada: number };
   precisao: Precisao;
   /** comprimento da peça na direção do ar (m) */
   comprimento: number;
@@ -129,7 +129,8 @@ export function preparar(e: Estudo, malha: Malha): Preparo {
     passosTravessia, passosTotal,
     inicioMedia: Math.max(0, passosTotal - passosTravessia),
     areaRef, areaRefCelulas: areaRef / (dx * dx),
-    esponja: { x0: dominio.nx - 1 - larguraEsponja, dtau: 0.5 },
+    // zona esponja na saída e camadas absorventes nas duas pontas (ondas de pressão)
+    esponja: { x0: dominio.nx - 1 - larguraEsponja, dtau: 0.5, sigma: 0.1, entrada: Math.max(4, Math.round(0.06 * dominio.nx)) },
     precisao: modo.precisao,
     comprimento: dominio.comprimento,
   };

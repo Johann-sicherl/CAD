@@ -33,8 +33,8 @@ export interface ConfigGpu {
   forca?: boolean;
   /** Threads por grupo em x (padrão 64). */
   grupo?: number;
-  /** Zona esponja antes da saída (ver lbm.ts). */
-  esponja?: { x0: number; dtau: number };
+  /** Zona esponja e camadas absorventes (ver lbm.ts). */
+  esponja?: { x0: number; dtau: number; sigma?: number; entrada?: number };
   /** Colisão regularizada (ver lbm.ts): estável com τ → ½. */
   regularizado?: boolean;
 }
@@ -83,7 +83,7 @@ function gravar(precisao: Precisao, v: string, c: string): string {
 function wgslBase(precisao: Precisao, leituraEscrita: boolean): string {
   const tipo = precisao === "fp32" ? "f32" : "u32";
   return `
-struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, esX0: u32, gxf: f32, gyf: f32, gzf: f32, corte: u32, escala: f32, esDt: f32, plano: u32, grandeza: u32, escalaVort: f32, pad: u32 };
+struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, esX0: u32, gxf: f32, gyf: f32, gzf: f32, corte: u32, escala: f32, esDt: f32, plano: u32, grandeza: u32, escalaVort: f32, esSig: f32, esEnt: u32, pad1: u32, pad2: u32, pad3: u32 };
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> tipo: array<u32>;
 @group(0) @binding(2) var<storage, read> fa: array<${tipo}>;
@@ -115,13 +115,13 @@ function soma(coef: (i: number) => number): string {
 }
 
 /** Expressão c_i·u. */
-const cu = (i: number) =>
-  [CX[i] ? `${CX[i] > 0 ? "+" : "-"}ux` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}uy` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}uz` : ""].join("").replace(/^\+/, "") || "0.0";
+const cu = (i: number, [a, b, c] = ["ux", "uy", "uz"]) =>
+  [CX[i] ? `${CX[i] > 0 ? "+" : "-"}${a}` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}${b}` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}${c}` : ""].join("").replace(/^\+/, "") || "0.0";
 
-/** Linhas WGSL com e0..e18 = f̃ᵉᵠ(δρ = 0, u) para as variáveis ux, uy, uz já definidas. */
-function linhasEquilibrio(): string {
-  const L = ["  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);"];
-  for (let i = 0; i < Q; i++) L.push(`  let e${i} = ${num(W[i])} * (3.0 * (${cu(i)}) + 4.5 * (${cu(i)}) * (${cu(i)}) - uu);`);
+/** Linhas WGSL com e0..e18 = f̃ᵉᵠ(δρ = 0, u) para as variáveis ux, uy, uz (ou `u`) já definidas. */
+function linhasEquilibrio(e = "e", u: [string, string, string] = ["ux", "uy", "uz"]): string {
+  const L = [`  let ${e}uu = 1.5 * (${u[0]} * ${u[0]} + ${u[1]} * ${u[1]} + ${u[2]} * ${u[2]});`];
+  for (let i = 0; i < Q; i++) L.push(`  let ${e}${i} = ${num(W[i])} * (3.0 * (${cu(i, u)}) + 4.5 * (${cu(i, u)}) * (${cu(i, u)}) - ${e}uu);`);
   return L.join("\n");
 }
 
@@ -193,7 +193,7 @@ ${linhasEquilibrio()}
   }
   let w = 1.0 / tau;`);
   if (forca) L.push(`  let kf = 1.0 - 0.5 * w;`);
-  if (regularizado) L.push(`  let kr = 1.0 - w; let t3 = (xx + yy + zz) * ${num(1 / 3)};${forca ? " let jnx = -0.5 * p.gxf; let jny = -0.5 * p.gyf; let jnz = -0.5 * p.gzf;" : ""}`);
+  if (regularizado) L.push(`  let kr = 1.0 - w; let t3 = (xx + yy + zz) * ${num(1 / 3)}; let vol = (w - 1.0) * t3;${forca ? " let jnx = -0.5 * p.gxf; let jny = -0.5 * p.gyf; let jnz = -0.5 * p.gzf;" : ""}`);
   const qpi = (i: number) => {
     const t: string[] = [];
     if (CX[i]) t.push("xx");
@@ -207,11 +207,19 @@ ${linhasEquilibrio()}
   const cj = (i: number) => [CX[i] ? `${CX[i] > 0 ? "+" : "-"}jnx` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}jny` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}jnz` : ""].join("").replace(/^\+/, "") || "0.0";
   for (let i = 0; i < Q; i++) {
     const colisao = regularizado
-      ? `f${i} = ${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) + kr * ${num(W[i])} * (${forca ? `3.0 * (${cj(i)}) + ` : ""}4.5 * ${qpi(i)});`
+      ? `f${i} = ${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) + ${num(W[i])} * (${forca ? `kr * 3.0 * (${cj(i)}) + ` : ""}4.5 * (kr * ${qpi(i)}${[" - vol", "", " + vol"][CX[i] ** 2 + CY[i] ** 2 + CZ[i] ** 2]}));`
       : `f${i} += w * (${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) - f${i});`;
     L.push(`  { let e = ${cu(i)}; ${colisao}${forca ? ` f${i} += kf * ${num(W[i])} * ((3.0 * (${num(CX[i])} - ux) + 9.0 * e * ${num(CX[i])}) * p.gxf + (3.0 * (${num(CY[i])} - uy) + 9.0 * e * ${num(CY[i])}) * p.gyf + (3.0 * (${num(CZ[i])} - uz) + 9.0 * e * ${num(CZ[i])}) * p.gzf);` : ""} }`);
   }
-  L.push(`  ${gravar(precisao, "f", "c")}
+  L.push(`  // camadas absorventes nas pontas do túnel: puxa para o equilíbrio da corrente livre
+  var sg = 0.0;
+  if (p.esEnt > 0u && x <= p.esEnt) { let se = f32(p.esEnt + 1u - x) / f32(p.esEnt); sg = p.esSig * se * se; }
+  else if (x > p.esX0) { let se = f32(x - p.esX0) / f32(p.nx - 1u - p.esX0); sg = p.esSig * se * se; }
+  if (sg > 0.0) {
+${linhasEquilibrio("a", ["p.ux", "p.uy", "p.uz"])}
+${Array.from({ length: Q }, (_, i) => `    f${i} -= sg * (f${i} - a${i});`).join("\n")}
+  }
+  ${gravar(precisao, "f", "c")}
 }
 @compute @workgroup_size(${grupo})
 fn iniciar(@builtin(global_invocation_id) g: vec3<u32>) {
@@ -370,7 +378,7 @@ export class LbmGpu {
     this.tipos = device.createBuffer({ size: Math.ceil(this.n / 4) * 4, usage: USO.STORAGE | USO.COPY_DST });
     const tipos = marcarVizinhos(cfg);
     device.queue.writeBuffer(this.tipos, 0, tipos);
-    this.uniforme = device.createBuffer({ size: 80, usage: USO.UNIFORM | USO.COPY_DST });
+    this.uniforme = device.createBuffer({ size: 96, usage: USO.UNIFORM | USO.COPY_DST });
     this.corte.indice = Math.floor(cfg.nz / 2);
     this.escreverUniforme();
     const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao, !!cfg.forca, tamGrupo, !!cfg.regularizado) });
@@ -413,12 +421,13 @@ export class LbmGpu {
 
   private escreverUniforme() {
     const { nx, ny, nz, tau, cs, u, esponja } = this.cfg;
-    const b = new ArrayBuffer(80);
+    const b = new ArrayBuffer(96);
     const ui = new Uint32Array(b);
     const fl = new Float32Array(b);
     ui[0] = nx; ui[1] = ny; ui[2] = nz; ui[3] = this.n;
     fl[4] = tau; fl[5] = smagorinsky(cs); fl[6] = u[0]; fl[7] = u[1]; fl[8] = u[2];
     ui[9] = esponja ? esponja.x0 : nx; fl[15] = esponja?.dtau ?? 0;
+    fl[19] = esponja?.sigma ?? 0; ui[20] = esponja?.entrada ?? 0;
     fl[10] = this.g[0]; fl[11] = this.g[1]; fl[12] = this.g[2];
     const k = this.corte;
     ui[13] = k.indice; fl[14] = k.escala; ui[16] = k.plano; ui[17] = GRANDEZAS.findIndex(([g]) => g === k.grandeza); fl[18] = k.escalaVort;

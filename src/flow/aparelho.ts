@@ -96,12 +96,12 @@ async function exclusivo(nome: string, f: () => Promise<void>) {
 
 /** Compara GPU × CPU no mesmo caso: túnel com esfera (LES) e canal com força (Guo). */
 async function verificar() {
-  type Caso = { nome: string; nx: number; ny: number; nz: number; tau: number; cs: number; u: [number, number, number]; g: [number, number, number]; tipo: Uint8Array; passos: number; esponja?: { x0: number; dtau: number }; regularizado?: boolean };
+  type Caso = { nome: string; nx: number; ny: number; nz: number; tau: number; cs: number; u: [number, number, number]; g: [number, number, number]; tipo: Uint8Array; passos: number; esponja?: { x0: number; dtau: number; sigma?: number; entrada?: number }; regularizado?: boolean };
   const casos: Caso[] = [
     { nome: "túnel com esfera + LES", nx: 32, ny: 16, nz: 16, tau: 0.56, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: tunelEsfera(32, 16, 16, 6, 10), passos: 60 },
     { nome: "canal periódico com força", nx: 16, ny: 12, nz: 8, tau: 0.8, cs: 0, u: [0, 0, 0], g: [2e-5, 0, 0], tipo: canal(16, 12, 8), passos: 60 },
     { nome: "túnel com saída e esponja", nx: 40, ny: 16, nz: 16, tau: 0.53, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: comSaida(tunelEsfera(40, 16, 16, 6, 10), 40, 16, 16), passos: 80, esponja: { x0: 30, dtau: 0.4 } },
-    { nome: "túnel regularizado (Re alto)", nx: 40, ny: 16, nz: 16, tau: 0.5001, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: comSaida(tunelEsfera(40, 16, 16, 6, 10), 40, 16, 16), passos: 80, esponja: { x0: 30, dtau: 0.4 }, regularizado: true },
+    { nome: "túnel regularizado (Re alto)", nx: 40, ny: 16, nz: 16, tau: 0.5001, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: comSaida(tunelEsfera(40, 16, 16, 6, 10), 40, 16, 16), passos: 80, esponja: { x0: 30, dtau: 0.4, sigma: 0.1, entrada: 5 }, regularizado: true },
     { nome: "canal regularizado com força", nx: 16, ny: 12, nz: 8, tau: 0.6, cs: 0, u: [0, 0, 0], g: [2e-5, 0, 0], tipo: canal(16, 12, 8), passos: 60, regularizado: true },
   ];
   escrever("== Autoverificação (GPU × referência em CPU) ==");

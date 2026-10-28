@@ -84,6 +84,29 @@ function taylorGreen(tau: number, cs: number, passos: number, regularizado = fal
   perto("LES de Smagorinsky dissipa mais que o BGK puro", les.medido < tg2.medido ? 1 : 0, 1, 0);
 }
 
+// --- onda de pressão (acústica) com τ ≈ ½: o BGK quase não amortece; o regularizado com ω_b = 1, sim
+{
+  const onda = (regularizado: boolean) => {
+    const L = 32;
+    const s = new LbmCpu({ nx: L, ny: 2, nz: 2, tau: 0.5001, regularizado });
+    for (let c = 0; c < s.n; c++) s.definir(c, 1 + 0.001 * Math.cos((2 * Math.PI * (c % L)) / L), 0, 0, 0);
+    const amp = () => {
+      let m = 0;
+      for (let c = 0; c < L; c++) m = Math.max(m, Math.abs(s.macro(c).rho - 1));
+      return m;
+    };
+    const a0 = amp();
+    let maxDepois = 0;
+    for (let t = 0; t < 600; t++) {
+      s.passo();
+      if (t > 500) maxDepois = Math.max(maxDepois, amp());
+    }
+    return maxDepois / a0;
+  };
+  perto("acústica: BGK com τ ≈ ½ mantém a onda (sem amortecimento)", onda(false) > 0.9 ? 1 : 0, 1, 0);
+  perto("acústica: regularizado com ω_b = 1 amortece a onda", onda(true) < 0.5 ? 1 : 0, 1, 0);
+}
+
 // --- Poiseuille plano com força de corpo e paredes por bounce-back ---
 {
   const ny = 21, tau = 0.9, gx = 1e-6;
@@ -208,6 +231,29 @@ function taylorGreen(tau: number, cs: number, passos: number, regularizado = fal
   perto("esponja: τ cresce até τ₀ + Δτ na saída", s.tauEm(nx - 1), 1.02, 1e-12);
   const [fx] = s.forcaNosSolidos();
   perto("esfera: arrasto no sentido do ar", fx > 0 ? 1 : 0, 1, 0);
+}
+
+// --- camadas absorventes: partida brusca num túnel vazio (entrada EQ, saída SAIDA) ---
+{
+  const tunelVazio = (sigma: number) => {
+    const nx = 96, ny = 2, nz = 2;
+    const tipo = new Uint8Array(nx * ny * nz);
+    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) {
+      tipo[nx * (y + ny * z)] = EQ;
+      tipo[nx - 1 + nx * (y + ny * z)] = SAIDA;
+    }
+    const s = new LbmCpu({ nx, ny, nz, tau: 0.5001, u: [0.05, 0, 0], regularizado: true, esponja: { x0: 84, dtau: 0.5, sigma, entrada: 8 } }, tipo);
+    for (let c = 0; c < s.n; c++) if (tipo[c] === 0) s.definir(c, 1, 0, 0, 0); // ar parado: partida brusca
+    let pico = 0;
+    for (let t = 0; t < 3000; t++) {
+      s.passo();
+      if (t > 2000) for (let x = 10; x < 80; x++) pico = Math.max(pico, Math.abs(s.macro(x).rho - 1));
+    }
+    return pico;
+  };
+  const sem = tunelVazio(0), com = tunelVazio(0.1);
+  perto("camadas absorventes: onda de pressão residual 10× menor", com < sem / 10 ? 1 : 0, 1, 0);
+  console.log(`     (δρ residual: sem camadas ${sem.toExponential(2)}, com camadas ${com.toExponential(2)})`);
 }
 
 // --- geometria: STL, orientação, voxelização, túnel, ar ---

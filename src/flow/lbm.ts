@@ -47,12 +47,19 @@ export interface ParametrosLbm {
   u?: [number, number, number];
   /** Força de corpo por volume (unidades de rede), uniforme. */
   g?: [number, number, number];
-  /** Zona esponja: de x0 até a saída, τ₀ cresce até τ₀ + dtau (quadrático), amortecendo a esteira. */
-  esponja?: { x0: number; dtau: number };
+  /**
+   * Zona esponja: de x0 até a saída, τ₀ cresce até τ₀ + dtau (quadrático), amortecendo a esteira.
+   * Com `sigma`, vira também camada absorvente nas duas pontas do túnel (as `entrada` primeiras
+   * colunas e a zona da saída): f ← f − σ(x)·(f − fᵉᵠ∞), com σ crescendo até `sigma` na borda.
+   * Absorve as ondas de pressão, que sem isso ficam ricocheteando entre a entrada e a saída
+   * (modo de ¼ de onda: o Cd oscila).
+   */
+  esponja?: { x0: number; dtau: number; sigma?: number; entrada?: number };
   /**
    * Colisão regularizada (Latt & Chopard, 2006): a parte fora do equilíbrio é projetada no tensor
    * de tensões, f̃ⁿᵉᵠ ≈ wᵢ·(3·cᵢ·Jⁿᵉᵠ + (9/2)·Qᵢ:Π), com Qᵢ = cᵢcᵢ − cs²·I (Jⁿᵉᵠ = −g/2 só com
-   * força). Mesma viscosidade do BGK, mas sem os
+   * força). A parte volumétrica (traço de Π) relaxa com ω_b = 1, o que amortece as ondas de
+   * pressão. Mesma viscosidade de cisalhamento do BGK, mas sem os
    * modos "fantasma" que viram ruído em xadrez e instabilidade quando τ → ½ (Re alto).
    */
   regularizado?: boolean;
@@ -78,7 +85,7 @@ export class LbmCpu {
   cs: number;
   u: [number, number, number];
   forca: [number, number, number];
-  esponja: { x0: number; dtau: number } | null;
+  esponja: { x0: number; dtau: number; sigma?: number; entrada?: number } | null;
   regularizado: boolean;
   passos = 0;
 
@@ -148,6 +155,8 @@ export class LbmCpu {
             fi[i] = tipo[s] === SOLIDO ? f[opp(i) * n + c] : f[i * n + s];
           }
           this.colidir(fi, fe, this.tauEm(x), k, comForca, gx, gy, gz);
+          const sg = this.absorcaoEm(x);
+          if (sg > 0) for (let i = 0; i < Q; i++) fi[i] -= sg * (fi[i] - equilibrio(i, 0, ux0, uy0, uz0));
           for (let i = 0; i < Q; i++) g[i * n + c] = fi[i];
         }
       }
@@ -163,6 +172,22 @@ export class LbmCpu {
     if (!e || x <= e.x0) return this.tau;
     const s = (x - e.x0) / (this.nx - 1 - e.x0);
     return this.tau + e.dtau * s * s;
+  }
+
+  /** Força da camada absorvente na coluna x (0 fora das camadas). */
+  absorcaoEm(x: number): number {
+    const e = this.esponja;
+    if (!e?.sigma) return 0;
+    const ent = e.entrada ?? 0;
+    if (ent > 0 && x <= ent) {
+      const s = (ent + 1 - x) / ent;
+      return e.sigma * s * s;
+    }
+    if (x > e.x0) {
+      const s = (x - e.x0) / (this.nx - 1 - e.x0);
+      return e.sigma * s * s;
+    }
+    return 0;
   }
 
   /** Velocidade (sem a correção de força) da célula c, no estado atual. */
@@ -239,9 +264,13 @@ export class LbmCpu {
     // 1º momento fora do equilíbrio (= −g/2 com a força de Guo): a projeção precisa mantê-lo,
     // senão parte da força some (o impulso efetivo viraria g·(1,5 − ω/2))
     const nx = jx - rho * ux, ny = jy - rho * uy, nz = jz - rho * uz;
+    // parte volumétrica (traço de Π) relaxada com ω_b = 1: amortece as ondas de pressão (a
+    // viscosidade volumétrica do BGK some quando τ → ½) sem mexer no escoamento incompressível
+    const vol = (w - 1) * tr;
     for (let i = 0; i < Q; i++) {
+      const c2 = CX[i] * CX[i] + CY[i] * CY[i] + CZ[i] * CZ[i];
       let s = this.regularizado
-        ? fe[i] + (1 - w) * W[i] * (3 * (CX[i] * nx + CY[i] * ny + CZ[i] * nz) + 4.5 * (CX[i] * CX[i] * xx + CY[i] * CY[i] * yy + CZ[i] * CZ[i] * zz + 2 * (CX[i] * CY[i] * xy + CX[i] * CZ[i] * xz + CY[i] * CZ[i] * yz) - tr))
+        ? fe[i] + W[i] * ((1 - w) * 3 * (CX[i] * nx + CY[i] * ny + CZ[i] * nz) + 4.5 * ((1 - w) * (CX[i] * CX[i] * xx + CY[i] * CY[i] * yy + CZ[i] * CZ[i] * zz + 2 * (CX[i] * CY[i] * xy + CX[i] * CZ[i] * xz + CY[i] * CZ[i] * yz) - tr) + vol * (c2 - 1)))
         : fi[i] + w * (fe[i] - fi[i]);
       if (comForca) {
         const cu = CX[i] * ux + CY[i] * uy + CZ[i] * uz;
