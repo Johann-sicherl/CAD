@@ -113,7 +113,7 @@ export const TRANSICOES: Transicao[] = [
 /** Motivo pelo qual a transição não pode ser feita agora (ou null). */
 export function bloqueioDaTransicao(a: Arquivo, t: Transicao): string | null {
   if (!t.de.includes(a.estado)) return `O arquivo está em "${ESTADOS[a.estado].nome}".`;
-  if (a.checkout) return `Está com check-out de ${a.checkout.usuario}: faça o check-in antes.`;
+  if (a.checkout) return `Está em GO-OUT com ${a.checkout.usuario}: faça o GO-IN antes.`;
   if (a.lixeira) return "O arquivo está na lixeira.";
   if (t.id === "enviar") {
     const faltam = CAMPOS_CARTAO.filter((c) => c.obrigatorioNaRevisao && !a.cartao[c.id]?.trim()).map((c) => c.nome);
@@ -136,10 +136,10 @@ export function aplicarTransicao(a: Arquivo, t: Transicao, usuario: string, agor
   a.historico.push({ data: agora, usuario, texto: `${t.nome}: ${ESTADOS[de].nome} → ${ESTADOS[t.para].nome}${t.sobeRevisao ? ` (revisão ${a.revisao})` : ""}${comentario ? ` — ${comentario}` : ""}` });
 }
 
-/** Check-out: null se pode, ou o motivo. */
+/** GO-OUT (retirar para editar, o check-out dos PDMs): null se pode, ou o motivo. */
 export function bloqueioDoCheckout(a: Arquivo, usuario: string): string | null {
   if (a.lixeira) return "O arquivo está na lixeira.";
-  if (a.checkout) return a.checkout.usuario === usuario ? "Você já tem o check-out deste arquivo." : `Check-out de ${a.checkout.usuario} desde ${a.checkout.data.slice(0, 10)}.`;
+  if (a.checkout) return a.checkout.usuario === usuario ? "Este arquivo já está em GO-OUT com você." : `Em GO-OUT com ${a.checkout.usuario} desde ${a.checkout.data.slice(0, 10)}.`;
   if (ESTADOS[a.estado].bloqueado) return `Arquivo "${ESTADOS[a.estado].nome}" não pode ser alterado${a.estado === "liberado" ? ": crie uma nova revisão (Alterar estado)" : ""}.`;
   return null;
 }

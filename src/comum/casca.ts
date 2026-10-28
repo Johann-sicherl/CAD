@@ -2,6 +2,7 @@
 // de arquivo), faixa de comandos por abas, barra de status, avisos, janelas, menus, perfil de
 // dispositivo, desfazer/refazer por fotografias do documento, salvar/abrir arquivos.
 
+import { abrirLocais, salvarNosLocais, type ChaveApp } from "./locais";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
 
@@ -89,7 +90,8 @@ export class Casca {
       <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>${o.app}</span></a>
       <button class="wj-ic" data-a="novo" title="Novo (Ctrl+N)">${IC.novo}</button>
       <button class="wj-ic" data-a="abrir" title="Abrir (Ctrl+O)">${IC.abrir}</button>
-      <button class="wj-ic" data-a="salvar" title="Salvar (Ctrl+S)">${IC.salvar}</button>
+      <button class="wj-ic" data-a="salvar" title="Salvar (Ctrl+S): pendrive + Drive">${IC.salvar}</button>
+      <button class="wj-ic" data-a="locais" title="Locais de salvamento (pendrive, Google Drive, aparelho)">${IC.pasta}</button>
       ${o.desfazer ? `<span class="wj-sep"></span><button class="wj-ic" data-a="desfazer" title="Desfazer (Ctrl+Z)">${IC.desfazer}</button><button class="wj-ic" data-a="refazer" title="Refazer (Ctrl+Y)">${IC.refazer}</button>` : ""}
       <input class="wj-nome" aria-label="Nome do documento" />
       <div class="wj-direita"></div>`;
@@ -107,6 +109,8 @@ export class Casca {
     topo.querySelector<HTMLElement>('[data-a="novo"]')!.onclick = () => o.novo();
     topo.querySelector<HTMLElement>('[data-a="abrir"]')!.onclick = () => o.abrir();
     topo.querySelector<HTMLElement>('[data-a="salvar"]')!.onclick = () => o.salvar();
+    topo.querySelector<HTMLElement>('[data-a="locais"]')!.onclick = () => void abrirLocais(chaveDaExtensao(o.extensao));
+    cascaAtual = this;
     if (o.desfazer) {
       topo.querySelector<HTMLElement>('[data-a="desfazer"]')!.onclick = () => o.desfazer!();
       topo.querySelector<HTMLElement>('[data-a="refazer"]')!.onclick = () => o.refazer!();
@@ -285,6 +289,22 @@ export class Historico<T> {
     this.passos = [JSON.stringify(doc)];
     this.refeitos = [];
   }
+}
+
+const CHAVES: Record<string, ChaveApp> = { wjpl: "plan", wjdoc: "word", wjapn: "apn", wjcron: "cron", wjpdm: "pdm", wjerp: "erp", wjcad: "cad" };
+const chaveDaExtensao = (ext: string): ChaveApp => CHAVES[ext] ?? "word";
+let cascaAtual: Casca | null = null;
+
+/**
+ * Salva o arquivo do app nos locais escolhidos (pendrive + Google Drive; sem os dois, janela
+ * "Salvar como") e avisa onde gravou. Exportações (CSV, HTML…) continuam sendo baixadas.
+ */
+export function salvarArquivo(conteudo: BlobPart, nome: string, extensao: string, tipo = "application/octet-stream") {
+  const dados = new Blob([conteudo], { type: tipo });
+  void salvarNosLocais(chaveDaExtensao(extensao), `${nome}.${extensao}`, dados).then(
+    (msg) => cascaAtual?.avisar(msg, 4500),
+    (e) => cascaAtual?.avisar(`Não foi possível salvar: ${(e as Error).message}`, 6000),
+  );
 }
 
 /** Baixa um arquivo (octet-stream: o Android não troca a extensão). */

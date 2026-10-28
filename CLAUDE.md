@@ -107,6 +107,12 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
+- **Locais de salvamento** (todas as faces, `src/comum/locais.ts`; tela em Ferramentas/📁): Salvar grava
+  no **pendrive** (pasta escolhida por face) **e no Google Drive**; se um faltar, grava no outro; se os
+  dois faltarem, abre a janela "Salvar como" (começa na pasta do aparelho escolhida). Cópias no Drive:
+  **5 últimas** por arquivo. Drive: aguarda o cliente OAuth (Google Cloud do Johann, escopo `drive.file`).
+  Drive **não** é banco de dados do WJPDM/WJERP: banco local + retrato no Drive; banco de verdade na G5.
+- **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
 - **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.

@@ -35,6 +35,7 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
+import { abrirLocais, salvarNosLocais } from "./comum/locais";
 import {
   ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
   excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
@@ -3411,9 +3412,12 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     fazer: () => {
       capturarAtiva(doc);
       limparConfiguracoes(doc);
-      baixar(new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" }), "wjcad");
+      // pendrive + Drive; sem os dois, janela "Salvar como" (Ferramentas → Locais de salvamento)
+      const dados = new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" });
+      void salvarNosLocais("cad", `${doc.nome}.wjcad`, dados).then(avisar, (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
     },
   },
+  locais: { rotulo: "Locais de salvamento…", icone: "pasta", fazer: () => void abrirLocais("cad") },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },

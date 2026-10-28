@@ -4,7 +4,7 @@
 // localizar/substituir, contagem de palavras, arquivos .wjdoc, HTML, Markdown e PDF (impressão).
 
 import "./documento.css";
-import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, janela, menu, registrarOffline, type Aba } from "../comum/casca";
+import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, janela, menu, registrarOffline, type Aba, salvarArquivo } from "../comum/casca";
 
 interface Pagina {
   tamanho: "A4" | "Carta" | "Oficio" | "A5";
@@ -492,7 +492,7 @@ async function abrir() {
 
 function salvar() {
   doc.html = texto.innerHTML;
-  baixar(JSON.stringify(doc), doc.nome, "wjdoc");
+  salvarArquivo(JSON.stringify(doc), doc.nome, "wjdoc");
   casca.avisar("Documento salvo (.wjdoc).");
 }
 

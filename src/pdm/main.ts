@@ -3,7 +3,7 @@
 // Regras puras em src/pdm/regras.ts; especificação em docs/global/pdm.md.
 
 import "./pdm.css";
-import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline } from "../comum/casca";
+import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -170,7 +170,7 @@ function renderizarLista() {
     const msg = local.tipo === "lixeira" ? "A lixeira está vazia." : local.tipo === "busca" ? "Nada encontrado." : "Pasta vazia. Arraste arquivos para cá ou use <b>Adicionar</b>.";
     corpo = `<tr><td class="pd-vazio" colspan="11">${msg}</td></tr>`;
   }
-  lista.innerHTML = cab(["", "Nome", "Versão", "Rev.", "Estado", "·Check-out", "·Código", "·Descrição", ...(colPasta ? ["·Pasta"] : []), "·Tamanho", "·Modificado"]) + `<tbody>${corpo}</tbody>`;
+  lista.innerHTML = cab(["", "Nome", "Versão", "Rev.", "Estado", "·GO-OUT", "·Código", "·Descrição", ...(colPasta ? ["·Pasta"] : []), "·Tamanho", "·Modificado"]) + `<tbody>${corpo}</tbody>`;
 }
 
 let ultimoClique = { t: 0, id: "" };
@@ -240,9 +240,9 @@ function menuArquivo(x: number, y: number) {
     ...(app ? [{ rotulo: `Abrir no ${app.app}`, icone: "abrir" as const, acao: () => void abrirNoApp(a) }] : []),
     { rotulo: "Obter (baixar)", icone: "exportar", acao: () => void obter(a) },
     "-",
-    { rotulo: "Check-out", icone: "checkout", acao: () => void checkout(a) },
-    { rotulo: "Check-in…", icone: "checkin", acao: () => checkin(a) },
-    { rotulo: "Desfazer check-out", icone: "desfazer", acao: () => void desfazerCheckout(a) },
+    { rotulo: "GO-OUT (retirar para editar)", icone: "checkout", acao: () => void checkout(a) },
+    { rotulo: "GO-IN… (devolver ao cofre)", icone: "checkin", acao: () => checkin(a) },
+    { rotulo: "Desfazer GO-OUT", icone: "desfazer", acao: () => void desfazerCheckout(a) },
     { rotulo: "Alterar estado…", icone: "estado", acao: () => alterarEstado(a) },
     "-",
     { rotulo: "Renomear", icone: "editar", acao: () => renomearArquivo(a) },
@@ -599,7 +599,7 @@ async function checkout(a: Arquivo) {
   const b = bloqueioDoCheckout(a, usuario());
   if (b) return casca.avisar(b, 5000);
   a.checkout = { usuario: usuario(), data: agora() };
-  historico(a, "Check-out");
+  historico(a, "GO-OUT");
   await gravarArquivo(a);
   renderizar();
 }
@@ -627,22 +627,22 @@ function checkin(a: Arquivo) {
   if (a.checkout?.usuario !== usuario()) return casca.avisar(a.checkout ? `O check-out é de ${a.checkout.usuario}.` : "Faça o check-out antes do check-in.");
   const app = APPS[extensao(a.nome)];
   const temNoApp = app && localStorage.getItem(app.chave);
-  const { corpo } = janela(`Check-in — ${a.nome}`, `
+  const { corpo } = janela(`GO-IN — ${a.nome}`, `
     <div class="wj-campo"><label>Conteúdo da nova versão</label>
       <label><input type="radio" name="fonte" value="aparelho" ${temNoApp ? "" : "checked"}/> Arquivo do aparelho…</label>
       ${app ? `<label><input type="radio" name="fonte" value="app" ${temNoApp ? "checked" : "disabled"}/> Documento aberto no ${app.app}${temNoApp ? "" : " (nenhum)"}</label>` : ""}
       <label><input type="radio" name="fonte" value="nada"/> Só o cartão de dados (sem versão nova)</label></div>
     <div class="wj-campo"><label>Comentário</label><input id="ck-com" placeholder="O que mudou?" /></div>
-    <label><input id="ck-manter" type="checkbox"/> Manter o check-out</label>`, [
+    <label><input id="ck-manter" type="checkbox"/> Manter em GO-OUT (continuar editando)</label>`, [
     { rotulo: "Cancelar" },
     {
-      rotulo: "Check-in", destaque: true, acao: (b) => {
+      rotulo: "GO-IN", destaque: true, acao: (b) => {
         const fonte = (b.querySelector('input[name="fonte"]:checked') as HTMLInputElement | null)?.value ?? "aparelho";
         const com = (b.querySelector("#ck-com") as HTMLInputElement).value.trim();
         const manter = (b.querySelector("#ck-manter") as HTMLInputElement).checked;
         const finalizar = async (dados?: Blob) => {
           if (dados) await novaVersao(a, dados, com);
-          else historico(a, `Check-in sem versão nova${com ? ` — ${com}` : ""}`);
+          else historico(a, `GO-IN sem versão nova${com ? ` — ${com}` : ""}`);
           if (!manter) delete a.checkout, historico(a, "Check-in");
           await gravarArquivo(a);
           renderizar();
@@ -652,7 +652,7 @@ function checkin(a: Arquivo) {
           if (!txt) return void casca.avisar(`Não há documento aberto no ${app!.app}.`), false;
           void finalizar(new Blob([txt], { type: "application/json" }));
         } else if (fonte === "aparelho") {
-          void escolherVarios().then((fs) => (fs[0] ? finalizar(fs[0]) : casca.avisar("Nenhum arquivo escolhido: check-in cancelado.")));
+          void escolherVarios().then((fs) => (fs[0] ? finalizar(fs[0]) : casca.avisar("Nenhum arquivo escolhido: GO-IN cancelado.")));
         } else void finalizar();
       },
     },
@@ -812,7 +812,7 @@ async function excluirPasta(id: string) {
 
 function configurar(primeiraVez = false) {
   janela(primeiraVez ? "Bem-vindo ao WJPDM" : "Usuário e cofre", `
-    ${primeiraVez ? `<p>O cofre guarda seus arquivos de engenharia <b>neste aparelho</b>, com versões, revisões, check-out/check-in e aprovação. Informe seu nome: ele aparece no histórico e nos check-outs.</p>` : ""}
+    ${primeiraVez ? `<p>O cofre guarda seus arquivos de engenharia <b>neste aparelho</b>, com versões, revisões, GO-OUT/GO-IN (retirar para editar e devolver ao cofre) e aprovação. Informe seu nome: ele aparece no histórico e nos GO-OUTs.</p>` : ""}
     <div class="wj-campo"><label>Seu nome (usuário)</label><input id="cf-u" value="${escapar(meta.usuario)}" placeholder="ex.: Johann" /></div>
     <div class="wj-campo"><label>Nome do cofre</label><input id="cf-n" value="${escapar(meta.nome)}" /></div>
     <div class="wj-campo"><label>Máscara de código dos itens (# = dígito)</label><input id="cf-m" value="${escapar(meta.mascara)}" /></div>`, [
@@ -837,7 +837,7 @@ async function exportarCofre() {
     if (b) blobs[v.blob] = { t: b.type, d: await paraBase64(b) };
   }
   const dados = { formato: "wjpdm-copia", versao: 1, data: agora(), meta, pastas, arquivos, itens, blobs };
-  baixar(JSON.stringify(dados), `${meta.nome} ${agora().slice(0, 10)}`, "wjpdm", "application/json");
+  salvarArquivo(JSON.stringify(dados), `${meta.nome} ${agora().slice(0, 10)}`, "wjpdm", "application/json");
 }
 
 async function importarCofre() {
@@ -879,7 +879,7 @@ function renderizar() {
   casca.renderizar();
   const tot = arquivos.filter((a) => !a.lixeira).length;
   const meus = arquivos.filter((a) => a.checkout?.usuario === usuario()).length;
-  casca.definirStatus(`${tot} arquivo(s) · ${pastas.length} pasta(s) · ${itens.length} item(ns)${meus ? ` · ${meus} com check-out seu` : ""}`);
+  casca.definirStatus(`${tot} arquivo(s) · ${pastas.length} pasta(s) · ${itens.length} item(ns)${meus ? ` · ${meus} em GO-OUT com você` : ""}`);
   casca.statusDireita.innerHTML = `<span>👤 ${escapar(usuario())}</span>`;
 }
 
@@ -911,9 +911,9 @@ const casca: Casca = new Casca({
           { id: "abrirApp", rotulo: "Abrir no app", icone: "abrir", dica: "Abrir no WJCAD, WJPlan, WJWord, WJApresentation ou WJCronProject", acao: exigeArquivo((a) => void abrirNoApp(a)) },
         ],
         [
-          { id: "co", rotulo: "Check-out", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },
-          { id: "ci", rotulo: "Check-in", icone: "checkin", acao: exigeArquivo((a) => checkin(a)) },
-          { id: "dco", rotulo: "Desfazer check-out", icone: "desfazer", peq: true, acao: exigeArquivo((a) => void desfazerCheckout(a)) },
+          { id: "co", rotulo: "GO-OUT", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },
+          { id: "ci", rotulo: "GO-IN", icone: "checkin", acao: exigeArquivo((a) => checkin(a)) },
+          { id: "dco", rotulo: "Desfazer GO-OUT", icone: "desfazer", peq: true, acao: exigeArquivo((a) => void desfazerCheckout(a)) },
         ],
         [{ id: "estado", rotulo: "Alterar estado", icone: "estado", dica: "Enviar para revisão, aprovar, nova revisão…", acao: exigeArquivo(alterarEstado) }],
         [
