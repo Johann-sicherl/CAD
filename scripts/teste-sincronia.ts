@@ -12,6 +12,7 @@ function igual(nome: string, obtido: unknown, esperado: unknown) {
 }
 
 class Memoria implements Repositorio {
+  publicado = false;
   indice: Indice | null = null;
   blobs = new Map<string, string>();
   visiveis = new Map<string, string>();
@@ -141,6 +142,49 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   com(tab, [arq("Eixo", ["b1"], "2026-10-28T11:00:00.000Z", { trabalho: { blob: "w1", tamanho: 1, data: "2026-10-28T11:00:00.000Z", autor: "J" } })], { b1: "v1", w1: "trabalho" });
   await sincronizar([tab, pen], AGORA);
   igual("pendrive tem a cópia de trabalho", [pen.blobs.get("w1"), pen.visiveis.get("CAD/Eixo.wjcad")], ["trabalho", "w1"]);
+}
+
+// 9. GO-OUT fica no dispositivo: pendrive (publicação) não recebe arquivo novo nem cópia de trabalho
+{
+  const ap = new Memoria("aparelho"), tab = new Memoria("tablet"), pen = new Memoria("pendrive");
+  pen.publicado = true;
+  com(ap, [
+    arq("Novo", ["n1"], "2026-10-28T11:00:00.000Z", { soLocal: true, checkout: { usuario: "J", data: "x" } }),
+    arq("Eixo", ["b1"], "2026-10-28T11:00:00.000Z", { trabalho: { blob: "w1", tamanho: 1, data: "x", autor: "J" } }),
+  ], { n1: "novo", b1: "v1", w1: "trabalho" });
+  await sincronizar([ap, tab, pen], AGORA);
+  igual("pasta do dispositivo recebe tudo", [tab.indice!.arquivos.length, tab.blobs.has("n1"), tab.blobs.has("w1")], [2, true, true]);
+  igual("pendrive só recebe o publicado", [pen.indice!.arquivos.map((a) => a.id), pen.blobs.has("n1"), pen.blobs.has("w1")], [["Eixo"], false, false]);
+  igual("pendrive mostra a versão publicada", [pen.indice!.arquivos[0].trabalho, pen.visiveis.get("CAD/Eixo.wjcad")], [undefined, "b1"]);
+  const r2 = await sincronizar([ap, tab, pen], AGORA);
+  igual("cópia de trabalho continua no aparelho (sem conflito)", [ap.indice!.arquivos.find((a) => a.id === "Eixo")!.trabalho?.blob, r2.conflitos.length], ["w1", 0]);
+  // GO-IN: vira versão 2, sai do "só no dispositivo" e chega ao pendrive
+  const novo = ap.indice!.arquivos.find((a) => a.id === "Novo")!;
+  novo.soLocal = undefined;
+  novo.mod = "2026-10-28T11:30:00.000Z";
+  const eixo = ap.indice!.arquivos.find((a) => a.id === "Eixo")!;
+  eixo.versoes.push({ ...eixo.versoes[0], n: 2, blob: "w1" });
+  eixo.trabalho = undefined;
+  eixo.mod = "2026-10-28T11:30:00.000Z";
+  await sincronizar([ap, tab, pen], AGORA);
+  igual("depois do GO-IN o pendrive tem os dois", [pen.indice!.arquivos.map((a) => a.id).sort(), pen.blobs.has("n1"), pen.blobs.has("w1")], [["Eixo", "Novo"], true, true]);
+}
+
+// 10. salvar de novo (cópia de trabalho ou rascunho nunca publicado substituídos) não é conflito
+{
+  const ap = new Memoria("aparelho"), tab = new Memoria("tablet");
+  com(ap, [
+    arq("Novo", ["n1"], "2026-10-28T11:00:00.000Z", { soLocal: true }),
+    arq("Eixo", ["b1"], "2026-10-28T11:00:00.000Z", { trabalho: { blob: "w1", tamanho: 1, data: "x", autor: "J" } }),
+  ], { n1: "rascunho 1", b1: "v1", w1: "trabalho 1" });
+  await sincronizar([ap, tab], AGORA);
+  const novo = ap.indice!.arquivos.find((a) => a.id === "Novo")!, eixo = ap.indice!.arquivos.find((a) => a.id === "Eixo")!;
+  novo.versoes[0].blob = "n2"; novo.mod = "2026-10-28T11:10:00.000Z";
+  eixo.trabalho = { blob: "w2", tamanho: 1, data: "y", autor: "J" }; eixo.mod = "2026-10-28T11:10:00.000Z";
+  ap.blobs.set("n2", "rascunho 2"); ap.blobs.set("w2", "trabalho 2");
+  const r = await sincronizar([ap, tab], AGORA);
+  igual("salvar seguido não gera conflito", [r.conflitos, tab.indice!.arquivos.length], [[], 2]);
+  igual("pasta do dispositivo fica com o conteúdo novo e libera o antigo", [tab.blobs.has("n2"), tab.blobs.has("w2"), tab.blobs.has("n1"), tab.blobs.has("w1")], [true, true, false, false]);
 }
 
 console.log(falhas ? `\nsincronia: ${falhas} falha(s)` : "\nsincronia: tudo certo");

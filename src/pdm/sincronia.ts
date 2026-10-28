@@ -40,6 +40,11 @@ export const indiceVazio = (): Indice => ({ formato: "wjpdm-indice", versao: 1, 
 /** Uma cópia do cofre (banco do aparelho, pasta do pendrive/tablet, Drive). */
 export interface Repositorio {
   nome: string;
+  /**
+   * Cópia de publicação (pendrive, Drive): recebe só o que passou por GO-IN — sem cópias de
+   * trabalho e sem arquivos que nunca foram publicados. A pasta do dispositivo recebe tudo.
+   */
+  publicado?: boolean;
   lerIndice(): Promise<Indice | null>;
   gravarIndice(i: Indice): Promise<void>;
   listarBlobs(): Promise<Set<string>>;
@@ -60,10 +65,15 @@ export const blobsDoArquivo = (a: Arquivo) => [...a.versoes.map((v) => v.blob), 
 /** Conteúdo atual do arquivo: a cópia de trabalho ou a última versão. */
 export const blobAtual = (a: Arquivo) => a.trabalho?.blob ?? a.versoes[a.versoes.length - 1]?.blob;
 
-/** O perdedor tem conteúdo que o vencedor não tem (seria perdido)? */
+/**
+ * O perdedor tem uma versão publicada que o vencedor não tem (seria perdida)? A cópia de trabalho e
+ * o rascunho de um arquivo nunca publicado (soLocal) são substituídos a cada salvar: a cópia mais
+ * antiga deles é só um salvar anterior, não um conflito.
+ */
 function perderiaConteudo(vencedor: Arquivo, perdedor: Arquivo): boolean {
+  if (perdedor.soLocal) return false;
   const tem = new Set(blobsDoArquivo(vencedor));
-  return blobsDoArquivo(perdedor).some((b) => !tem.has(b));
+  return perdedor.versoes.some((v) => !tem.has(v.blob));
 }
 
 /** Cópia do perdedor na lixeira, com id fixo (todas as cópias do cofre geram a mesma). */
@@ -144,6 +154,11 @@ export function mesclar(indices: Indice[], agora: string): { indice: Indice; con
   return { indice: r, conflitos };
 }
 
+/** O que uma cópia de publicação recebe: só versões que passaram por GO-IN. */
+export function vistaPublicada(i: Indice): Indice {
+  return { ...i, arquivos: i.arquivos.filter((a) => !a.soLocal).map((a) => (a.trabalho ? { ...a, trabalho: undefined } : a)) };
+}
+
 /** Todos os blobs que o índice usa. */
 export function blobsDoIndice(i: Indice): Set<string> {
   return new Set(i.arquivos.flatMap(blobsDoArquivo));
@@ -190,7 +205,8 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
     }
   }
   const { indice, conflitos } = mesclar(indices, agora);
-  const precisa = blobsDoIndice(indice);
+  const vista = (r: Repositorio) => (r.publicado ? vistaPublicada(indice) : indice);
+  const precisaDe = new Map(repos.map((r) => [r, blobsDoIndice(vista(r))]));
   const tem = new Map<Repositorio, Set<string>>();
   for (const r of [...vivos]) {
     try {
@@ -202,8 +218,9 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
   }
   let copiados = 0;
   const faltando: string[] = [];
-  for (const id of precisa) {
-    const sem = vivos.filter((r) => !tem.get(r)!.has(id));
+  const todos = new Set(vivos.flatMap((r) => [...precisaDe.get(r)!]));
+  for (const id of todos) {
+    const sem = vivos.filter((r) => precisaDe.get(r)!.has(id) && !tem.get(r)!.has(id));
     if (!sem.length) continue;
     const fonte = vivos.find((r) => tem.get(r)!.has(id));
     const b = fonte && (await fonte.lerBlob(id).catch(() => undefined));
@@ -224,9 +241,11 @@ export async function sincronizar(repos: Repositorio[], agora: string): Promise<
   for (const r of vivos) {
     if (falhas.some((f) => f.repo === r.nome)) continue;
     try {
-      await r.gravarVisiveis?.(indice, (id) => r.lerBlob(id));
-      await r.gravarIndice(indice);
+      const v = vista(r);
+      await r.gravarVisiveis?.(v, (id) => r.lerBlob(id));
+      await r.gravarIndice(v);
       // blobs que nenhum arquivo usa mais (destruídos): liberam espaço
+      const precisa = precisaDe.get(r)!;
       if (r.apagarBlob) for (const id of tem.get(r)!) if (!precisa.has(id)) await r.apagarBlob(id).catch(() => {});
     } catch (e) {
       falhas.push({ repo: r.nome, erro: (e as Error).message ?? String(e) });
