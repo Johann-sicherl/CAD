@@ -94,11 +94,12 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
-| WJFlow | `flow/` | `src/flow/` | `src/flow/lbm.ts` (`teste-flow.ts`) | fase A0: protótipo de medição (LBM D3Q19 em WebGPU); `.wjflow` na A1 |
+| WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
 com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e
-listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G5/G7).
+listas de materiais do cofre do WJPDM; o WJCAD manda a peça para o WJFlow (menu Arquivo → Abrir no
+WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulação. Tudo local no aparelho até o servidor (G5/G7).
 
 ## Decisões de produto (definidas pelo Johann)
 

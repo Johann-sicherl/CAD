@@ -323,7 +323,7 @@ export class Historico<T> {
   }
 }
 
-const CHAVES: Record<string, ChaveApp> = { wjpl: "plan", wjdoc: "word", wjapn: "apn", wjcron: "cron", wjpdm: "pdm", wjerp: "erp", wjcad: "cad" };
+const CHAVES: Record<string, ChaveApp> = { wjpl: "plan", wjdoc: "word", wjapn: "apn", wjcron: "cron", wjpdm: "pdm", wjerp: "erp", wjcad: "cad", wjflow: "flow" };
 const chaveDaExtensao = (ext: string): ChaveApp => CHAVES[ext] ?? "word";
 let cascaAtual: Casca | null = null;
 /** Último salvamento no cofre (o painel do cofre espera por ele antes do GO-IN). */

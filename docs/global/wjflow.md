@@ -5,8 +5,10 @@ projetada no WJCAD: veículos, aeronaves, drones, tubulações abertas, dutos e 
 Roda no **celular, tablet e computador** (navegador). Neste início, **só ar**, isotérmico.
 
 - Página: `flow/` · código: `src/flow/` · motor testado: `src/flow/lbm.ts` (`scripts/teste-flow.ts`)
-- Arquivo: `.wjflow` (fase A1) · autosave `wjflow:estudo`
-- Status: **A0 entregue** (protótipo de medição, 28/10/2026). O restante está planejado (fases A1–A6, §9).
+- Arquivo: `.wjflow` (estudo + peça compactada) salvo no cofre do WJPDM (pasta "Escoamento") ·
+  autosave no IndexedDB `wjflow` · teste do aparelho em `flow/aparelho/`
+- Status: **A0 ✅** (teste do aparelho) · **A1 🟡** (túnel externo com a peça; faltam simetria e
+  validação do cilindro, §9). O restante está planejado (fases A2–A6).
 
 Legenda: ✅ existe · 🟡 parcial · **A0…A6** fase deste documento · ⏸ registrado, fora do escopo atual.
 
@@ -226,7 +228,9 @@ modelo é o mesmo); duto com bocal contra dados de catálogo.
 | BGK | ✅ | O mais simples. Instável quando τ → ½. |
 | BGK + **LES Smagorinsky** (Hou et al. 1996) | ✅ | τ_ef = ½(τ₀ + √(τ₀² + 18√2 Cs² \|Π\|/ρ)), Cs ≈ 0,1–0,17, com Π = Σcᵢcᵢ(fᵢ − fᵢᵉᵠ). Barato: o tensor de tensões já sai das populações, sem derivada numérica. |
 | TRT | A5 | Corrige o erro de parede dependente de τ. |
-| Regularizado ou cumulante (Geier 2015) | A5 | Estável em Re alto com τ ≈ ½. Recomendado para carros e aviões. |
+| **Regularizado** (Latt & Chopard 2006) + LES | ✅ (A1, padrão do app) | f* = fᵉᵠ + (1 − ω)·wᵢ·(3cᵢ·Jⁿᵉᵠ + 4,5 Qᵢ:Πⁿᵉᵠ). Elimina os modos "fantasma" que viravam ruído em xadrez e instabilidade com τ₀ ≈ ½ (Re 10⁵, peça do WJCAD). Jⁿᵉᵠ = −g/2 com força: sem esse termo, o impulso da força de Guo vira g·(1,5 − ω/2) (o Poiseuille errava 41 % com τ = 0,55; com o termo, ≤ 0,8 % em τ de 0,55 a 1,2) |
+| Parte volumétrica com ω_b = 1 | ✅ | Com τ ≈ ½, a viscosidade volumétrica do LBM some e as ondas de pressão não amortecem: o Cd da peça do WJCAD oscilava entre 1,2 e 2,8. O traço de Π relaxa com ω_b = 1, o que não muda o escoamento incompressível (testes de Taylor–Green e Poiseuille iguais) |
+| Cumulante (Geier 2015) | A5 | Mais preciso em Re alto; só se o regularizado não bastar. |
 | WALE | A5 | Substitui o Smagorinsky perto de paredes (amortece a viscosidade turbulenta). |
 
 ### 4.2 Escala: do problema real para a rede (`escalar()` ✅)
@@ -254,21 +258,25 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Parede sólida parada | bounce-back no meio do caminho (2ª ordem em paredes alinhadas, "escada" em curvas) | ✅ |
 | Parede curva precisa | bounce-back interpolado (Bouzidi 2001), usando a distância real à superfície da malha | A5 |
 | Parede móvel (solo móvel, roda) | bounce-back com termo de velocidade: −2wᵢρ(cᵢ·u_w)/cs² | A4 |
-| Entrada de velocidade/vazão | equilíbrio imposto (✅ no protótipo); regularizado (Latt 2008) em A1 | 🟡 |
-| Saída de pressão | ρ = 1 + extrapolação de velocidade, ou convectiva (sem reflexão) | A1 |
-| Laterais do túnel | equilíbrio da corrente livre (✅); deslizamento livre (simetria) em A1 | 🟡 |
-| Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 |
-| Zona esponja | viscosidade crescente perto da saída: absorve ondas de pressão | A1 |
+| Entrada de velocidade/vazão | equilíbrio imposto ✅, com **partida suave**: o ar começa parado e a velocidade das bordas sobe de 0 a U∞ (cosseno) no primeiro quarto de travessia, para reduzir as ondas de pressão da partida; regularizado (Latt 2008) em A5 | 🟡 |
+| Saída de pressão | equilíbrio com ρ = 1 e a velocidade da célula anterior (gradiente nulo) ✅ | ✅ |
+| Laterais do túnel | equilíbrio da corrente livre ✅; deslizamento livre (simetria) depois | 🟡 |
+| Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 (falta) |
+| Zona esponja | τ₀ cresce até τ₀ + 0,5 (quadrático) nos últimos 12 % do túnel ✅ | ✅ |
+| Camadas absorventes | nas duas pontas (6 % na entrada, a zona esponja na saída): f ← f − σ(x)·(f − fᵉᵠ∞), σ até 0,1. Tiram o modo acústico de ¼ de onda que ricocheteava entre entrada e saída. Partida brusca num túnel vazio: δρ residual de 1,5·10⁻⁵ para 1,1·10⁻⁸ ✅ | ✅ |
 | Disco atuador (EDF) | força de corpo de Guo por célula | A3 (força uniforme ✅) |
 
 ### 4.4 Geometria → voxels
 
 1. **Origem da peça:**
-   - **WJCAD/WJPDM:** a malha triangulada que o WJCAD já gera para o viewport (o kernel exporta
-     triângulos). Abrir pelo autosave/cofre, como as outras faces fazem.
-   - **STL** (formato aberto): para peças de fora.
-2. **Voxelização na GPU:** paridade de raios em z por coluna ou número de enrolamento
-   generalizado (robusto a malhas com pequenos furos). Malha não fechada gera um aviso.
+   - **WJCAD ✅:** menu Arquivo → **Abrir no WJFlow** manda a malha triangulada da última
+     reconstrução (IndexedDB `wjflow`, registro `do-cad`) e abre o WJFlow com ela.
+   - **STL ✅** (formato aberto, binário ou texto): para peças de fora; unidade escolhida no estudo.
+   - **Orientação ✅:** o usuário escolhe a direção do ar nos eixos da peça (±X, ±Y, ±Z); a peça
+     gira para o ar correr no +X do túnel.
+2. **Voxelização ✅** (num Worker, em CPU: < 1 s para 1–2 M células): paridade de raios em X,
+   um raio por coluna y-z, triângulos agrupados por coluna. A malha aberta aparece como "colunas
+   com cruzamento ímpar" e gera um aviso. Na GPU só se a CPU ficar lenta em malhas maiores.
 3. **Resolução recomendada** (o app sugere):
    - ≥ 60–100 células no comprimento do corpo;
    - ≥ 8–10 células na menor dimensão que importa (espessura do bordo, diâmetro do duto);
@@ -388,7 +396,7 @@ Memória × malha:
 | Poiseuille plano com força de Guo | perfil parabólico | 1 % (medido: 0,25 %) | ✅ |
 | Conservação de massa (caixa fechada com obstáculo) | Σρ constante | 10⁻⁵ | ✅ |
 | GPU × CPU (FP32 e FP16, LES e força) | referência `LbmCpu` | 10⁻⁵ / 10⁻² rel. | ✅ autoverificação no aparelho |
-| Esfera, Re 100 | Cd ≈ 1,09 (Schiller–Naumann) | 10 % | A1 |
+| Esfera, Re 100 | Cd ≈ 1,09 (Schiller–Naumann) | 10 % | A1 🟡: 1,26 (+15 %) com 15 células no diâmetro (§13) |
 | Cilindro 2D, Re 20 e 100 | Schäfer–Turek 1996: Cd 5,58; St ≈ 0,30 | 5 % | A1 |
 | Tubo turbulento | Moody/Haaland | 15 % | A2 |
 | Expansão súbita | Borda–Carnot | 10 % | A2 |
@@ -414,7 +422,7 @@ Memória × malha:
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **A0** ✅ | Protótipo de medição: LBM D3Q19 em WebGPU (FP32/FP16, LES, força de Guo), autoverificação GPU × CPU, medição de MLUPS por malha, base em CPU, túnel ao vivo com esfera | autoverificação ok no TCL; números de desempenho anotados aqui |
-| **A1** | Túnel externo com a peça do WJCAD/STL: voxelização na GPU, entrada e saída de verdade, simetria, esponja, planos de corte (velocidade/Cp/vorticidade), forças por troca de momento, Cd/Cl com média, `.wjflow` | esfera e cilindro validados |
+| **A1** 🟡 | Túnel externo com a peça do WJCAD/STL ✅: voxelização ✅, saída ✅, esponja ✅, cortes (velocidade, componente na direção do ar, Cp, vorticidade; vista lateral e superior) ✅, forças por troca de momento ✅, Cd/Cl/Cs com média na última travessia ✅, `.wjflow` no cofre ✅, túnel padrão/amplo ✅. Falta: plano de simetria e validação do cilindro | esfera validada (§13); cilindro |
 | **A2** | Escoamento interno: entradas e saídas em faces tocadas (vazão, velocidade, pressão), prolongamentos automáticos, Δp e K, comparação com Moody | tubo e expansão validados |
 | **A3** | EDF: disco atuador por célula (empuxo, curva do ventilador ou C_T/C_P), giro opcional, empuxo/vazão/V_e/potência | disco estático validado |
 | **A4** | Veículos e aeronaves: solo móvel, rodas girando, varredura de ângulo (polar), momentos, área frontal automática, correção de bloqueio | Ahmed e NACA 0012 validados |
@@ -536,3 +544,36 @@ da Apache Software Foundation.
     sobram ~35–45 células no comprimento do corpo.
   - O refinamento local (A5) é o que mais aumenta essa resolução. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.
+- **A1 (28/10/2026):** túnel de vento com a peça do WJCAD/STL entregue (falta: plano de simetria e
+  cilindro).
+  - Autoverificação ampliada: a GPU confere com a CPU na saída, na esponja e na força por troca
+    de momento (< 0,0001 % em FP32; < 0,04 % em FP16).
+  - Em Node, a força nas paredes do canal iguala a força de corpo total (0,999997).
+- **Validação da esfera em Re 100** (navegador, GPU simulada; mesmo cálculo que roda no tablet):
+
+  | Túnel | Malha | Células no diâmetro | Cd | Diferença |
+  |---|---|---|---|---|
+  | Padrão (bloqueio 5 %) | 0,5 M | 16 | 1,32 | +21 % |
+  | Amplo (bloqueio 2 %) | 1 M | 15 | 1,26 | +15 % |
+
+  - A queda de 21 % para 15 % com quase a mesma resolução mostra que o confinamento pelas paredes
+    do túnel pesa muito em Re baixo.
+  - O que sobra vem da resolução (contorno em escada com 15 células) e do confinamento restante.
+  - **Próximas verificações:**
+    1. a mesma esfera no modo Qualidade (~18 células) deve baixar o Cd: é o teste de
+       convergência, ~9 min no tablet;
+    2. na A5, o bounce-back interpolado (Bouzidi) e o refinamento local atacam o erro de
+       resolução.
+  - Em Re alto (carros, aeronaves), o confinamento pesa menos, e o erro dominante passa a ser a
+    camada limite não resolvida (§3.3).
+- **Estabilidade em Re alto (peça exemplo do WJCAD, 80 mm a 20 m/s, Re ≈ 1,1·10⁵, 0,5 M células):**
+
+  | Configuração | Cd |
+  |---|---|
+  | BGK puro | ruído em xadrez e oscilação de 1,2 a 2,8 (modo acústico de ¼ de onda) |
+  | Regularizado + ω_b = 1 + camadas absorventes + partida suave | converge sem oscilar: **0,932** na média da última travessia (Cl −0,22) |
+
+  - A esfera de validação foi calculada com o BGK. Repetir com a colisão nova no tablet leva
+    ~4 min no modo Padrão + túnel amplo; o Cd deve ficar na mesma faixa, porque em Re 100 o τ é
+    0,53 e os termos novos quase não agem.
+

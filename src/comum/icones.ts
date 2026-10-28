@@ -125,6 +125,14 @@ export const IC = {
   painel: svg(`<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1" stroke="${C}"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="${C}"/>`),
   movimento: svg(`<path d="M4 8h13m-3-3 3 3-3 3"/><path d="M20 16H7m3-3-3 3 3 3" stroke="${C}"/>`),
   producao: svg(`<path d="M3 21V10l6 4v-4l6 4V6h6v15z"/><path d="M17 10h2M17 14h2" stroke="${C}"/>`),
+  // escoamento (WJFlow)
+  peca: svg(`<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" stroke="${C}"/>`),
+  rodar: svg(`<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" stroke="${C}"/>`),
+  pausar: svg(`<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6" stroke="${C}"/>`),
+  recomecar: svg(`<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4" stroke="${C}"/>`),
+  validar: svg(`<circle cx="12" cy="12" r="5"/><path d="M2 12h3M19 12h3"/><path d="M5 8h6M5 16h6M15 8c2 .5 3 2 3 4s-1 3.5-3 4" stroke="${C}"/>`),
+  aparelho: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 15l2.5-4 2 3 2-5 1.5 3" stroke="${C}"/>`),
+  vento: svg(`<path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" stroke="${C}"/>`),
 };
 
 export type NomeIc = keyof typeof IC;
