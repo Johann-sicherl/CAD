@@ -7,7 +7,7 @@
 //            Meu Drive/WJPDM/.wjpdm/blobs/<id>         ← conteúdo de cada versão
 //            Meu Drive/WJPDM/.wjpdm/visiveis.json      ← o que já foi gravado em <pastas>
 
-import { blobAtual, caminhoDoArquivo, type Indice, type Repositorio } from "../pdm/sincronia";
+import { blobAtual, caminhoDoArquivo, caminhosDasPastas, type Indice, type Repositorio } from "../pdm/sincronia";
 
 /** Cliente OAuth do projeto WJProMaster no Google Cloud (público; a chave secreta não é usada). */
 export const CLIENTE_GOOGLE = "751073631393-8tmbbv019s57975tbfv4h1g11gsahunb.apps.googleusercontent.com";
@@ -80,6 +80,16 @@ export class RepositorioDrive implements Repositorio {
         }
         this.ids.set(chave, id);
       }
+      pai = id;
+    }
+    return pai;
+  }
+  /** Pasta pelo caminho, sem criar (undefined se não existe). */
+  private async acharPasta(caminho: string[]): Promise<string | undefined> {
+    let pai = "root";
+    for (const n of caminho) {
+      const id = (await this.listar(`name='${q(n)}' and '${pai}' in parents and mimeType='${PASTA}' and trashed=false`))[0]?.id;
+      if (!id) return undefined;
       pai = id;
     }
     return pai;
@@ -172,6 +182,21 @@ export class RepositorioDrive implements Repositorio {
       await this.req(`${API}/${v.drive}`, { method: "DELETE" }).catch(() => {});
     }
     await this.enviar(new Blob([JSON.stringify(agora)], { type: "application/json" }), "visiveis.json", sis, idMapa);
+    // pastas do cofre (também as vazias): cria as novas; as excluídas/renomeadas vão para a
+    // lixeira do Drive (recuperáveis lá por 30 dias), as mais fundas primeiro
+    const idPastas = await this.arquivoNa(sis, "pastas.json");
+    const pastasAntes: string[][] = idPastas ? JSON.parse(await (await this.baixar(idPastas)).text()) : [];
+    const pastasAgora = caminhosDasPastas(i);
+    const chave = (c: string[]) => JSON.stringify(c);
+    const tinha = new Set(pastasAntes.map(chave)), tem = new Set(pastasAgora.map(chave));
+    for (const c of pastasAgora) if (!tinha.has(chave(c))) await this.pasta(["WJPDM", ...c]);
+    for (const c of pastasAntes.filter((x) => !tem.has(chave(x))).sort((a, b) => b.length - a.length)) {
+      const id = await this.acharPasta(["WJPDM", ...c]);
+      if (id) await this.req(`${API}/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
+      const k = ["WJPDM", ...c].join("/");
+      for (const x of [...this.ids.keys()]) if (x === k || x.startsWith(`${k}/`)) this.ids.delete(x);
+    }
+    await this.enviar(new Blob([JSON.stringify(pastasAgora)], { type: "application/json" }), "pastas.json", sis, idPastas);
   }
 }
 

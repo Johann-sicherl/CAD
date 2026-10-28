@@ -56,6 +56,10 @@ class DriveFalso {
     if (m === "PATCH" && id) {
       const x = this.itens.get(id);
       if (!x) return new Response("nf", { status: 404 });
+      if (typeof init.body === "string") {
+        if (JSON.parse(init.body).trashed) x.lixo = true; // metadados: para a lixeira do Drive
+        return Response.json({ id });
+      }
       x.dados = await (init.body as Blob).text();
       x.revisoes++;
       return Response.json({ id });
@@ -101,7 +105,7 @@ const repo = () => new RepositorioDrive(() => drive.token, drive.responder as ty
 // 1. primeiro envio: estrutura no Drive
 let r = await sincronizar([tab, repo()], AGORA);
 igual("sem falhas", r.falhas, []);
-igual("estrutura em Meu Drive/WJPDM", drive.arquivos(), ["WJPDM/.wjpdm/blobs/b1", "WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/visiveis.json", "WJPDM/CAD/Eixo.wjcad"]);
+igual("estrutura em Meu Drive/WJPDM", drive.arquivos(), ["WJPDM/.wjpdm/blobs/b1", "WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/pastas.json", "WJPDM/.wjpdm/visiveis.json", "WJPDM/CAD/Eixo.wjcad"]);
 const visivel = [...drive.itens.values()].find((x) => x.name === "Eixo.wjcad")!;
 igual("conteúdo legível", visivel.dados, "eixo v1");
 
@@ -132,7 +136,7 @@ igual("movido: só o caminho novo existe", drive.arquivos().filter((x) => !x.inc
 tab.indice.arquivos = [];
 tab.indice.exclusoes = [{ id: "a1", tipo: "arquivo", data: "2026-10-28T11:30:00.000Z" }];
 r = await sincronizar([tab, repo()], AGORA);
-igual("excluído: só o índice fica", drive.arquivos(), ["WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/visiveis.json"]);
+igual("excluído: só o índice fica", drive.arquivos(), ["WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/pastas.json", "WJPDM/.wjpdm/visiveis.json"]);
 
 // 7. acesso vencido (401): o Drive falha sozinho, o resto segue
 drive.token = "novo"; // o Google trocou o token; o app ainda tem o antigo
@@ -150,6 +154,16 @@ r = await sincronizar([tab, rr], AGORA);
 r = await sincronizar([tab, repo()], AGORA);
 igual("apóstrofo no nome não duplica", drive.arquivos().filter((x) => x.endsWith("D'água.wjcad")).length, 1);
 igual("caminho", caminhoDoArquivo(tab.indice, tab.indice.arquivos[0]), ["CAD", "D'água.wjcad"]);
+
+// 9. pastas: a vazia é criada; a excluída (com subpasta) vai para a lixeira do Drive
+const pastaNoDrive = (nome: string) => [...drive.itens.values()].find((x) => x.name === nome && x.mimeType.endsWith("folder"));
+tab.indice.pastas.push({ id: "p3", nome: "Vazia", pai: null, mod: "2026-10-28T11:50:00.000Z" }, { id: "p4", nome: "Sub", pai: "p2", mod: "2026-10-28T11:50:00.000Z" });
+r = await sincronizar([tab, repo()], AGORA);
+igual("pastas vazias criadas no Drive", [!!pastaNoDrive("Vazia"), !!pastaNoDrive("Sub"), pastaNoDrive("Projetos")?.lixo], [true, true, undefined]);
+tab.indice.pastas = tab.indice.pastas.filter((p) => p.id !== "p2" && p.id !== "p4");
+tab.indice.exclusoes.push({ id: "p2", tipo: "pasta", data: "2026-10-28T11:55:00.000Z" }, { id: "p4", tipo: "pasta", data: "2026-10-28T11:55:00.000Z" });
+r = await sincronizar([tab, repo()], AGORA);
+igual("pasta excluída vai para a lixeira do Drive", [pastaNoDrive("Projetos")?.lixo, pastaNoDrive("Sub")?.lixo, pastaNoDrive("Vazia")?.lixo], [true, true, undefined]);
 
 console.log(falhas ? `\ndrive: ${falhas} falha(s)` : "\ndrive: tudo certo");
 if (falhas) process.exit(1);

@@ -178,6 +178,11 @@ export function caminhoDoArquivo(i: Indice, a: Arquivo): string[] {
   return [...nomes, a.nome];
 }
 
+/** Caminho legível de cada pasta do cofre (inclusive as vazias), para criar/apagar no disco. */
+export function caminhosDasPastas(i: Indice): string[][] {
+  return i.pastas.map((p) => caminhoDoArquivo(i, { pasta: p.id, nome: "" } as Arquivo).slice(0, -1));
+}
+
 export interface ResultadoSincronia {
   indice: Indice;
   conflitos: string[];
