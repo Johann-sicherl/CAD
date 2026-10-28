@@ -121,7 +121,10 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`
-  (índice e versões). Drive: aguarda o cliente OAuth (Google Cloud do Johann, escopo `drive.file`).
+  (índice e versões). **Google Drive** (`src/comum/drive.ts`, teste com Drive simulado em
+  `scripts/teste-drive.ts`): login do Google no navegador (token de 1 h, renovado no toque ao salvar),
+  escopo `drive.file`, cliente OAuth `751073631393-8tmbb…` do projeto `wjpromaster`; o cofre fica em
+  Meu Drive/WJPDM (arquivos atualizados no lugar: o Drive guarda as revisões). Chave secreta não é usada.
   WJERP não é arquivo: banco local + cópia `ERP/WJERP.wjerp` no cofre; banco de verdade na G5.
 - **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
 - **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
