@@ -229,6 +229,7 @@ modelo é o mesmo); duto com bocal contra dados de catálogo.
 | BGK + **LES Smagorinsky** (Hou et al. 1996) | ✅ | τ_ef = ½(τ₀ + √(τ₀² + 18√2 Cs² \|Π\|/ρ)), Cs ≈ 0,1–0,17, com Π = Σcᵢcᵢ(fᵢ − fᵢᵉᵠ). Barato: o tensor de tensões já sai das populações, sem derivada numérica. |
 | TRT | A5 | Corrige o erro de parede dependente de τ. |
 | **Regularizado** (Latt & Chopard 2006) + LES | ✅ (A1, padrão do app) | f* = fᵉᵠ + (1 − ω)·wᵢ·(3cᵢ·Jⁿᵉᵠ + 4,5 Qᵢ:Πⁿᵉᵠ). Elimina os modos "fantasma" que viravam ruído em xadrez e instabilidade com τ₀ ≈ ½ (Re 10⁵, peça do WJCAD). Jⁿᵉᵠ = −g/2 com força: sem esse termo, o impulso da força de Guo vira g·(1,5 − ω/2) (o Poiseuille errava 41 % com τ = 0,55; com o termo, ≤ 0,8 % em τ de 0,55 a 1,2) |
+| Parte volumétrica com ω_b = 1 | ✅ | Com τ ≈ ½, a viscosidade volumétrica do LBM some e as ondas de pressão não amortecem: o Cd da peça do WJCAD oscilava entre 1,2 e 2,8. O traço de Π relaxa com ω_b = 1, o que não muda o escoamento incompressível (testes de Taylor–Green e Poiseuille iguais) |
 | Cumulante (Geier 2015) | A5 | Mais preciso em Re alto; só se o regularizado não bastar. |
 | WALE | A5 | Substitui o Smagorinsky perto de paredes (amortece a viscosidade turbulenta). |
 
@@ -262,6 +263,7 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Laterais do túnel | equilíbrio da corrente livre ✅; deslizamento livre (simetria) depois | 🟡 |
 | Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 (falta) |
 | Zona esponja | τ₀ cresce até τ₀ + 0,5 (quadrático) nos últimos 12 % do túnel ✅ | ✅ |
+| Camadas absorventes | nas duas pontas (6 % na entrada, a zona esponja na saída): f ← f − σ(x)·(f − fᵉᵠ∞), σ até 0,1. Tiram o modo acústico de ¼ de onda que ricocheteava entre entrada e saída. Partida brusca num túnel vazio: δρ residual de 1,5·10⁻⁵ para 1,1·10⁻⁸ ✅ | ✅ |
 | Disco atuador (EDF) | força de corpo de Guo por célula | A3 (força uniforme ✅) |
 
 ### 4.4 Geometria → voxels
@@ -564,4 +566,14 @@ da Apache Software Foundation.
        resolução.
   - Em Re alto (carros, aeronaves), o confinamento pesa menos, e o erro dominante passa a ser a
     camada limite não resolvida (§3.3).
+- **Estabilidade em Re alto (peça exemplo do WJCAD, 80 mm a 20 m/s, Re ≈ 1,1·10⁵, 0,5 M células):**
+
+  | Configuração | Cd |
+  |---|---|
+  | BGK puro | ruído em xadrez e oscilação de 1,2 a 2,8 (modo acústico de ¼ de onda) |
+  | Regularizado + ω_b = 1 + camadas absorventes + partida suave | converge sem oscilar: **0,932** na média da última travessia (Cl −0,22) |
+
+  - A esfera de validação foi calculada com o BGK. Repetir com a colisão nova no tablet leva
+    ~4 min no modo Padrão + túnel amplo; o Cd deve ficar na mesma faixa, porque em Re 100 o τ é
+    0,53 e os termos novos quase não agem.
 
