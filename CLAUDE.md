@@ -114,10 +114,15 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
 - **Cofre único (WJPDM):** todo arquivo de todos os apps vive no cofre do WJPDM (`src/comum/cofre.ts`).
-  Salvar (💾/Ctrl+S) grava a **cópia de trabalho** (arquivo novo entra na pasta da face — CAD,
-  Planilhas, Documentos, Apresentações, Cronogramas, ERP — já em GO-OUT); **GO-IN cria a versão**.
+  **Salvar (💾/Ctrl+S) grava só no dispositivo** (banco do app + pasta padrão do dispositivo), em
+  GO-OUT: o primeiro salvar abre a janela "Salvar no cofre" (pasta do cofre, Nova pasta, nome) e o
+  arquivo fica `soLocal` ("só no dispositivo") até o primeiro GO-IN; os seguintes gravam a cópia de
+  trabalho. **GO-IN cria a versão e publica** no pendrive e no Drive (cópias `publicado`: só recebem
+  o que passou por GO-IN, `vistaPublicada`). Aba **Cofre** na lateral direita de cada app
+  (`instalarPainelCofre`): dados da peça (pasta, estado, revisão, versão, GO-OUT), GO-OUT / GO-IN /
+  Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
-  Drive** e **pasta padrão do tablet** (3ª cópia). Ao salvar/conectar, as cópias se igualam
+  Drive** e **pasta padrão do dispositivo**. Ao salvar/publicar, as cópias se igualam
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`
