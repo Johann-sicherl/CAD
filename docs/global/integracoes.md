@@ -21,11 +21,11 @@ Regra geral: **vínculo por URI, nunca cópia silenciosa**.
 
 ## 2. Matriz de interações (origem → destino)
 
-| De \ Para | WJCAD | WJPlan | WJWord | WJApresentation | WJCronProject | WJPDM / WJERP |
+| De \ Para | WJCAD | WJPlan | WJWrite | WJApresentation | WJCronProject | WJPDM / WJERP |
 |---|---|---|---|---|---|---|
 | **WJCAD** | — | propriedades de massa, lista de corte, tabela de configurações, cotas como valores | vistas vinculadas, propriedades em campos, tabela de cotas | modelo 3D interativo, vistas | progresso de modelagem ⏸ | item, propriedades, revisão, estrutura, DXF/STEP de liberação, tempos de roteiro |
 | **WJPlan** | variáveis globais/equações e tabela de configurações vindas de células | — | tabelas e gráficos vinculados | tabelas e gráficos vinculados | importar tarefas e recursos | importar listas (preços, itens, inventário) com conferência |
-| **WJWord** | — | — | — | gerar slides da estrutura de tópicos | comentários viram tarefas | modelos para propostas, OP, laudos; instruções de trabalho vinculadas às operações |
+| **WJWrite** | — | — | — | gerar slides da estrutura de tópicos | comentários viram tarefas | modelos para propostas, OP, laudos; instruções de trabalho vinculadas às operações |
 | **WJApresentation** | — | — | exportar folhetos/roteiro | — | — | — |
 | **WJCronProject** | — | exportar tarefas, curva S | relatório de status, linha do tempo vinculada | linha do tempo, Gantt vinculados | — | projetos ↔ pedidos, capacidade finita, recursos, custos |
 | **WJPDM / WJERP** | itens comprados para inserir, material com densidade/custo, custo estimado | consultas vivas, `WJ.ITEM` | dados de registros em modelos (mala direta) | painéis vinculados | OPs, apontamentos, recursos e calendários, ações de RNC | — |

@@ -916,7 +916,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "obter", rotulo: "Obter", icone: "exportar", dica: "Baixar a versão atual", acao: exigeArquivo((a) => void obter(a)) },
-          { id: "abrirApp", rotulo: "Abrir no app", icone: "abrir", dica: "Abrir no WJCAD, WJPlan, WJWord, WJApresentation ou WJCronProject", acao: exigeArquivo((a) => void abrirNoApp(a)) },
+          { id: "abrirApp", rotulo: "Abrir no app", icone: "abrir", dica: "Abrir no WJCAD, WJPlan, WJWrite, WJApresentation ou WJCronProject", acao: exigeArquivo((a) => void abrirNoApp(a)) },
         ],
         [
           { id: "co", rotulo: "GO-OUT", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },

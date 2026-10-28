@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "check": "tsc",
-    "teste": "tsx scripts/teste-kernel.ts && tsx scripts/teste-esboco.ts && tsx scripts/teste-recursos.ts && tsx scripts/teste-formulas.ts && tsx scripts/teste-agenda.ts && tsx scripts/teste-pdm.ts && tsx scripts/teste-sincronia.ts && tsx scripts/teste-erp.ts",
+    "teste": "tsx scripts/teste-kernel.ts && tsx scripts/teste-esboco.ts && tsx scripts/teste-recursos.ts && tsx scripts/teste-formulas.ts && tsx scripts/teste-agenda.ts && tsx scripts/teste-pdm.ts && tsx scripts/teste-sincronia.ts && tsx scripts/teste-erp.ts && tsx scripts/teste-flow.ts",
     "estresse": "tsx scripts/estresse-kernel.ts",
     "estresse:ui": "node scripts/estresse-ui.cjs"
   },

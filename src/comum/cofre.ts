@@ -11,7 +11,7 @@ import { bloqueioDoCheckout, extensao, nomeLivre, type Arquivo, type Pasta } fro
 
 export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", plan: "WJPlan", word: "WJWord", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP",
+  cad: "WJCAD", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP",
 };
 /** Pasta padrão de cada face na raiz do cofre. */
 export const PASTA_DA_FACE: Record<ChaveApp, string> = {
@@ -22,7 +22,7 @@ export const APPS: Record<string, { app: string; chave: string; url: string; fac
   wjcad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave", face: "cad" },
   jlscad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave", face: "cad" },
   wjpl: { app: "WJPlan", chave: "wjpl:documento", url: "planilha/", face: "plan" },
-  wjdoc: { app: "WJWord", chave: "wjdoc:documento", url: "documento/", face: "word" },
+  wjdoc: { app: "WJWrite", chave: "wjdoc:documento", url: "documento/", face: "word" },
   wjapn: { app: "WJApresentation", chave: "wjapn:documento", url: "apresentacao/", face: "apn" },
   wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/", face: "cron" },
 };

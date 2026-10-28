@@ -1,5 +1,5 @@
 // Motor de fórmulas do WJProMaster (@wj/formulas): tipos comuns.
-// Usado pelo WJPlan e, depois, pelas outras faces (equações do WJCAD, campos do WJWord,
+// Usado pelo WJPlan e, depois, pelas outras faces (equações do WJCAD, campos do WJWrite,
 // campos personalizados do WJCronProject, regras do WJERP). Lógica pura, testada em Node.
 
 /** Erro de fórmula (#DIV/0!, #N/D…). */

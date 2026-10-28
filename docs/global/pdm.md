@@ -36,7 +36,7 @@ entram no cofre (adicionar pelo WJPDM).
   aparelho para a lista, lixeira (restaurar/destruir);
 - arquivos com **versões** (cada check-in) e **revisões** (A, B… na liberação; Z → AA);
 - **check-out/check-in** com trava por usuário, comentário, "manter check-out", check-in de um
-  arquivo do aparelho **ou do documento aberto no WJCAD/WJPlan/WJWord/WJApresentation/WJCronProject**;
+  arquivo do aparelho **ou do documento aberto no WJCAD/WJPlan/WJWrite/WJApresentation/WJCronProject**;
   desfazer check-out (com liberação de administrador);
 - **fluxo**: Em trabalho → Em revisão → Liberado (sobe a revisão) → Nova revisão; rejeitar,
   obsoleto, reativar; condições (sem check-out, código e descrição preenchidos); liberado não se
@@ -238,7 +238,7 @@ referências, integração com o WJERP.
 
 - Grupos e usuários (do WJProMaster), permissões por pasta × estado.
 - Variáveis, cartões, fluxos, numeração (séries), esquemas de revisão, modelos de arquivo (peça
-  WJCAD com propriedades padrão, documento WJWord padrão).
+  WJCAD com propriedades padrão, documento WJWrite padrão).
 - Tarefas de conversão (filas, formatos, onde salvar o resultado).
 - Cotas de armazenamento, retenção de versões antigas (manter últimas N + todas as revisões),
   backup/exportação completa do cofre.

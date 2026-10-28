@@ -1,4 +1,4 @@
-# WJWord — processador de texto com propriedades avançadas (G3)
+# WJWrite — processador de texto com propriedades avançadas (G3)
 
 Inspiração funcional: processador de texto profissional de mercado. Nomes, ícones e telas são nossos.
 Arquivo nativo `.wjdoc`. Importa/exporta `.docx` (OOXML), `.odt`, `.md`, `.html`, `.txt`, `.rtf` ⏸.
