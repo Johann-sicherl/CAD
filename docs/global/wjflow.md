@@ -280,17 +280,17 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 
 | Armazenamento | Bytes/célula (2 buffers + tipo) | Observação |
 |---|---|---|
-| FP32 | 156 | referência |
-| **FP16** (conversão própria `meiaBits`, sem extensão) | **80** | populações deslocadas **× 2¹⁴** (`ESCALA_FP16`) e convertidas para FP16 com operações inteiras, ao par mais próximo. O `pack2x16float` da Adreno zera subnormais e **trunca**, e o erro se acumulava a cada passo. Diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
+| FP32 | 153 | referência |
+| **FP16** (conversão própria `meiaBits`, sem extensão) | **81** (10 palavras: pares de direções opostas) | populações deslocadas **× 2¹⁴** (`ESCALA_FP16`) e convertidas para FP16 com operações inteiras, ao par mais próximo. O `pack2x16float` da Adreno zera subnormais e **trunca**, e o erro se acumulava a cada passo. Diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
 | FP16 + esquema *in-place* (Esoteric Pull, Lehmann 2022) | ~42 | um buffer só; A5 |
 
 Memória × malha:
 
 | Células | FP32 | FP16 |
 |---|---|---|
-| 1 M | 156 MB | 80 MB |
-| 4 M | 624 MB | 320 MB |
-| 8 M | 1,25 GB | 640 MB |
+| 1 M | 153 MB | 81 MB |
+| 4 M | 612 MB | 324 MB |
+| 8 M | 1,22 GB | 648 MB |
 
 ### 4.6 Resultados e pós-processamento
 
@@ -480,5 +480,32 @@ da Apache Software Foundation.
     simulação em Node com truncagem dá exatamente os números do tablet (2,02·10⁻⁴ e 1,89·10⁻⁶).
   - **Correção:** conversão FP32→FP16 nossa, só com inteiros (`meiaBits`, igual ao padrão IEEE em
     1 milhão de valores no `teste-flow`). Com ela, o navegador dá 1,9·10⁻⁵ e 8·10⁻⁸.
-- ⏳ **Falta:** repetir a autoverificação e rodar a medição de desempenho no tablet. O Johann roda "Autoverificação" e "Medir
+- **3ª rodada (28/10/2026):** autoverificação ✓ nos quatro casos (FP16: 1,8·10⁻⁵ e 8·10⁻⁸).
+
+  Desempenho do kernel 1 (duas células por thread, arrays):
+
+  | Malha | FP32 | FP16 |
+  |---|---|---|
+  | 0,07–1,0 M células | **12,9 MLUPS** | **9,4 MLUPS** |
+  | 1,77 M células | não cabe (128 MB por vínculo) | 9,4 MLUPS |
+
+  A base em CPU deu 1,8 MLUPS por núcleo.
+
+  **Diagnóstico:**
+  - o FP16 ficou *mais lento* que o FP32, e a banda usada foi ~2 GB/s de ~25 possíveis;
+  - logo, o limite é o cálculo e os registradores (arrays privados indo para a memória lenta),
+    não a memória.
+
+  **Kernel 2:**
+  - uma célula por thread, despacho 3D;
+  - escalares desenrolados, sem arrays;
+  - equilíbrio na colisão e Π do Smagorinsky pelos momentos;
+  - bit de vizinho sólido;
+  - sólidos e EQ sem regravação;
+  - força só quando o caso tem força;
+  - a medição agora escolhe o tamanho de grupo (32/64/128) que rende mais no aparelho.
+
+  Autoverificação ✓ no navegador. Na GPU simulada do servidor, o FP32 em 0,5 M células passou
+  de 6,5 para ~11 MLUPS.
+- ⏳ **Falta:** medir o kernel 2 no tablet e definir a malha padrão da A1. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.

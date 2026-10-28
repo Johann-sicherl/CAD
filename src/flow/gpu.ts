@@ -1,16 +1,24 @@
 // WJFlow: solver D3Q19 em WebGPU (compute shader) e desenho de um plano de corte.
 // Mesmo algoritmo de src/flow/lbm.ts (referência em CPU): populações deslocadas, passo "pull",
-// bounce-back, células EQ, BGK + Smagorinsky + força de Guo. O WGSL é gerado com as 19 direções
-// desenroladas (sem índices dinâmicos em constantes, que alguns drivers móveis tratam mal).
+// bounce-back, células EQ, BGK + Smagorinsky + força de Guo.
+//
+// Kernel enxuto (medido no TCL Tab A1 Plus: a Adreno 613 era limitada por cálculo e registradores,
+// não por memória):
+// - uma célula por thread, despacho 3D (x, y, z vêm do índice da thread, sem divisões);
+// - 19 variáveis escalares desenroladas, sem arrays (arrays privados vão para a memória lenta);
+// - equilíbrio calculado na hora da colisão; o tensor do Smagorinsky sai dos momentos de 2ª
+//   ordem (Σcc·f̃ − δρ/3·δ − ρuu, exato no D3Q19), sem guardar os 19 valores de equilíbrio;
+// - bit 7 do tipo marca célula com vizinho sólido: só essas consultam as 18 vizinhas;
+// - células sólidas e EQ não são regravadas (o valor delas não muda);
+// - código da força de Guo só entra quando o caso tem força.
 //
 // Precisão de armazenamento (a conta é sempre em f32):
 // - fp32: f[i·n + c];
-// - fp16: duas células vizinhas em x na mesma palavra u32, f[i·n/2 + c/2], guardadas multiplicadas
-//   por ESCALA_FP16. A conversão para FP16 é nossa (meiaBits, ao par mais próximo): a Adreno 613
-//   trunca e zera subnormais no pack2x16float, e o erro se acumulava a cada passo (ver lbm.ts).
-//   Cada thread cuida de um par de células (nx par), então nunca duas threads escrevem a mesma palavra.
+// - fp16: palavra u32 k·n + c com o par de direções opostas (2k−1, 2k); a palavra 0 guarda só a
+//   direção 0. Valores guardados × ESCALA_FP16 e convertidos por meiaBits (ao par mais próximo):
+//   a Adreno 613 trunca e zera subnormais no pack2x16float (ver lbm.ts).
 
-import { CX, CY, CZ, EQ, ESCALA_FP16, Q, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
+import { CX, CY, CZ, ESCALA_FP16, FLUIDO, Q, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
 
 export interface ConfigGpu {
   nx: number;
@@ -21,28 +29,52 @@ export interface ConfigGpu {
   u: [number, number, number];
   precisao: Precisao;
   tipo: Uint8Array;
+  /** Compila o termo de força de Guo (canal com força, disco atuador). */
+  forca?: boolean;
+  /** Threads por grupo em x (padrão 64). */
+  grupo?: number;
 }
 
-const GRUPO = 64;
 // constantes da especificação WebGPU (os tipos do TypeScript não trazem os objetos globais)
 const USO = { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 } as const;
 const ESTAGIO_COMPUTE = 4;
 const MAPA_LEITURA = 1;
+const VIZINHO_SOLIDO = 128;
 const num = (v: number) => {
   const s = String(Math.fround(v));
   return /[.e]/.test(s) ? s : `${s}.0`;
 };
+/** Palavras u32 por célula num buffer. */
+const palavras = (p: Precisao) => (p === "fp32" ? Q : 10);
 
-/** Código WGSL comum: parâmetros, leitura de população e equilíbrio. */
+/** Expressão WGSL que lê a população i da célula `c` (em f32, já sem a escala). */
+function carregar(precisao: Precisao, i: number, c: string): string {
+  if (precisao === "fp32") return `fa[${i}u * p.n + ${c}]`;
+  const k = (i + 1) >> 1;
+  const metade = i !== 0 && i % 2 === 0 ? "y" : "x";
+  return `(unpack2x16float(fa[${k}u * p.n + ${c}]).${metade} * ${num(1 / ESCALA_FP16)})`;
+}
+
+/** Comandos WGSL que gravam f0..f18 (variáveis `${v}0`…) na célula `c` do buffer de saída. */
+function gravar(precisao: Precisao, v: string, c: string): string {
+  if (precisao === "fp32") return Array.from({ length: Q }, (_, i) => `fb[${i}u * p.n + ${c}] = ${v}${i};`).join(" ");
+  const S = num(ESCALA_FP16);
+  const L = [`fb[${c}] = meiaBits(${v}0 * ${S});`];
+  for (let k = 1; k < 10; k++) L.push(`fb[${k}u * p.n + ${c}] = meiaBits(${v}${2 * k - 1} * ${S}) | (meiaBits(${v}${2 * k} * ${S}) << 16u);`);
+  return L.join("\n  ");
+}
+
+/** Código WGSL comum: parâmetros, buffers, tipo da célula e conversão FP16. */
 function wgslBase(precisao: Precisao, leituraEscrita: boolean): string {
   const tipo = precisao === "fp32" ? "f32" : "u32";
-  const ld = precisao === "fp32"
-    ? `fn ld(i: u32, c: u32) -> f32 { return fa[i * p.n + c]; }`
-    : `fn ld(i: u32, c: u32) -> f32 {
-  let v = unpack2x16float(fa[i * (p.n / 2u) + (c >> 1u)]);
-  return select(v.x, v.y, (c & 1u) == 1u) * ${num(1 / ESCALA_FP16)};
-}
-fn meiaBits(v: f32) -> u32 {
+  return `
+struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, pad0: u32, gxf: f32, gyf: f32, gzf: f32, z: u32, escala: f32, pad: u32 };
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> tipo: array<u32>;
+@group(0) @binding(2) var<storage, read> fa: array<${tipo}>;
+${leituraEscrita ? `@group(0) @binding(3) var<storage, read_write> fb: array<${tipo}>;` : ""}
+fn tipoDe(c: u32) -> u32 { return (tipo[c >> 2u] >> ((c & 3u) * 8u)) & 255u; }
+${precisao === "fp16" && leituraEscrita ? `fn meiaBits(v: f32) -> u32 {
   let u = bitcast<u32>(v);
   let s = (u >> 16u) & 0x8000u;
   let e = i32((u >> 23u) & 0xffu) - 112;
@@ -53,116 +85,87 @@ fn meiaBits(v: f32) -> u32 {
   let resto = m & 0x1fffu;
   if (resto > 0x1000u || (resto == 0x1000u && (h & 1u) == 1u)) { h += 1u; }
   return s | min(h, 0x7bffu);
-}`;
-  return `
-struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, gx: u32, gxf: f32, gyf: f32, gzf: f32, z: u32, escala: f32, pad: u32 };
-@group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> tipo: array<u32>;
-@group(0) @binding(2) var<storage, read> fa: array<${tipo}>;
-${leituraEscrita ? `@group(0) @binding(3) var<storage, read_write> fb: array<${tipo}>;` : ""}
-${ld}
-fn tipoDe(c: u32) -> u32 { return (tipo[c >> 2u] >> ((c & 3u) * 8u)) & 255u; }
+}` : ""}
 `;
 }
 
-/** Corpo que calcula as 19 populações pós-colisão da célula c em r0..r18. */
-function wgslCelula(): string {
-  const L: string[] = [];
-  L.push(`fn celula(c: u32) -> array<f32, 19> {
-  var f: array<f32, 19>;
-  let t = tipoDe(c);
-  if (t == ${SOLIDO}u) { return f; }
-  if (t == ${EQ}u) { return eq(0.0, p.ux, p.uy, p.uz); }
-  let x = c % p.nx; let yz = c / p.nx; let y = yz % p.ny; let z = yz / p.ny;
-  let xp = select(x + 1u, 0u, x + 1u == p.nx); let xm = select(x - 1u, p.nx - 1u, x == 0u);
-  let yp = select(y + 1u, 0u, y + 1u == p.ny); let ym = select(y - 1u, p.ny - 1u, y == 0u);
-  let zp = select(z + 1u, 0u, z + 1u == p.nz); let zm = select(z - 1u, p.nz - 1u, z == 0u);`);
-  const eixo = (v: number, o: string) => (v === 1 ? `${o}m` : v === -1 ? `${o}p` : o);
+/** Soma WGSL Σ coef(i)·f_i só com os termos não nulos (coef ∈ {−1, 0, 1}). */
+function soma(coef: (i: number) => number): string {
+  const t: string[] = [];
   for (let i = 0; i < Q; i++) {
-    if (i === 0) {
-      L.push(`  f[0] = ld(0u, c);`);
-      continue;
-    }
-    L.push(`  { let s = ${eixo(CX[i], "x")} + p.nx * (${eixo(CY[i], "y")} + p.ny * ${eixo(CZ[i], "z")});
-    if (tipoDe(s) == ${SOLIDO}u) { f[${i}] = ld(${opp(i)}u, c); } else { f[${i}] = ld(${i}u, s); } }`);
+    const k = coef(i);
+    if (k) t.push(`${k > 0 ? "+" : "-"} f${i}`);
   }
-  const soma = (comp: readonly number[]) =>
-    comp.map((v, i) => (v === 1 ? `+ f[${i}]` : v === -1 ? `- f[${i}]` : "")).filter(Boolean).join(" ").replace(/^\+ /, "");
-  L.push(`  var dr = 0.0;
-  for (var i = 0u; i < 19u; i++) { dr += f[i]; }
+  return t.join(" ").replace(/^\+ /, "") || "0.0";
+}
+
+/** Expressão c_i·u. */
+const cu = (i: number) =>
+  [CX[i] ? `${CX[i] > 0 ? "+" : "-"}ux` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}uy` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}uz` : ""].join("").replace(/^\+/, "") || "0.0";
+
+function wgslPasso(precisao: Precisao, forca: boolean, grupo: number): string {
+  const L: string[] = [];
+  L.push(`${wgslBase(precisao, true)}
+@compute @workgroup_size(${grupo})
+fn passo(@builtin(global_invocation_id) g: vec3<u32>) {
+  let x = g.x; let y = g.y; let z = g.z;
+  if (x >= p.nx) { return; }
+  let c = x + p.nx * (y + p.ny * z);
+  let t = tipoDe(c);
+  if ((t & 3u) != ${FLUIDO}u) { return; }
+  let nb = (t & ${VIZINHO_SOLIDO}u) != 0u;
+  let nxy = i32(p.nx * p.ny);
+  let ic = i32(c);
+  let xp = select(1, 1 - i32(p.nx), x + 1u == p.nx); let xm = select(-1, i32(p.nx) - 1, x == 0u);
+  let yp = select(i32(p.nx), i32(p.nx) - nxy, y + 1u == p.ny); let ym = select(-i32(p.nx), nxy - i32(p.nx), y == 0u);
+  let zp = select(nxy, nxy - i32(p.n), z + 1u == p.nz); let zm = select(-nxy, i32(p.n) - nxy, z == 0u);
+  var f0 = ${carregar(precisao, 0, "c")};`);
+  const desl = (v: number, o: string) => (v === 1 ? `${o}m` : v === -1 ? `${o}p` : "");
+  for (let i = 1; i < Q; i++) {
+    const d = [desl(CX[i], "x"), desl(CY[i], "y"), desl(CZ[i], "z")].filter(Boolean).join(" + ");
+    L.push(`  let s${i} = u32(ic + ${d});
+  var f${i} = ${carregar(precisao, i, `s${i}`)};
+  if (nb) { if ((tipoDe(s${i}) & 3u) == ${SOLIDO}u) { f${i} = ${carregar(precisao, opp(i), "c")}; } }`);
+  }
+  const fx = forca ? " + 0.5 * p.gxf" : "", fy = forca ? " + 0.5 * p.gyf" : "", fz = forca ? " + 0.5 * p.gzf" : "";
+  L.push(`  let dr = ${soma(() => 1)};
   let rho = 1.0 + dr;
-  let ux = (${soma(CX)} + 0.5 * p.gxf) / rho;
-  let uy = (${soma(CY)} + 0.5 * p.gyf) / rho;
-  let uz = (${soma(CZ)} + 0.5 * p.gzf) / rho;
-  let fe = eq(dr, ux, uy, uz);
+  let ir = 1.0 / rho;
+  let ux = (${soma((i) => CX[i])}${fx}) * ir;
+  let uy = (${soma((i) => CY[i])}${fy}) * ir;
+  let uz = (${soma((i) => CZ[i])}${fz}) * ir;
+  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);
   var tau = p.tau;
   if (p.smag > 0.0) {
-    var xx = 0.0; var yy = 0.0; var zz = 0.0; var xy = 0.0; var xz = 0.0; var yz2 = 0.0;`);
-  for (let i = 1; i < Q; i++) {
-    const d = `(f[${i}] - fe[${i}])`;
-    const termos: string[] = [];
-    if (CX[i]) termos.push(`xx += ${d};`);
-    if (CY[i]) termos.push(`yy += ${d};`);
-    if (CZ[i]) termos.push(`zz += ${d};`);
-    if (CX[i] && CY[i]) termos.push(`xy ${CX[i] * CY[i] > 0 ? "+" : "-"}= ${d};`);
-    if (CX[i] && CZ[i]) termos.push(`xz ${CX[i] * CZ[i] > 0 ? "+" : "-"}= ${d};`);
-    if (CY[i] && CZ[i]) termos.push(`yz2 ${CY[i] * CZ[i] > 0 ? "+" : "-"}= ${d};`);
-    L.push(`    ${termos.join(" ")}`);
+    // Π de não equilíbrio = Σcc·f̃ − δρ/3·δ − ρuu (exato no D3Q19)
+    let tr = dr * ${num(1 / 3)};
+    let xx = ${soma((i) => CX[i] * CX[i])} - tr - rho * ux * ux;
+    let yy = ${soma((i) => CY[i] * CY[i])} - tr - rho * uy * uy;
+    let zz = ${soma((i) => CZ[i] * CZ[i])} - tr - rho * uz * uz;
+    let xy = ${soma((i) => CX[i] * CY[i])} - rho * ux * uy;
+    let xz = ${soma((i) => CX[i] * CZ[i])} - rho * ux * uz;
+    let yz = ${soma((i) => CY[i] * CZ[i])} - rho * uy * uz;
+    let pi = sqrt(xx * xx + yy * yy + zz * zz + 2.0 * (xy * xy + xz * xz + yz * yz));
+    tau = 0.5 * (tau + sqrt(tau * tau + p.smag * pi * ir));
   }
-  L.push(`    let pi = sqrt(xx * xx + yy * yy + zz * zz + 2.0 * (xy * xy + xz * xz + yz2 * yz2));
-    tau = 0.5 * (tau + sqrt(tau * tau + p.smag * pi / rho));
-  }
-  let w = 1.0 / tau;
-  let forca = p.gxf != 0.0 || p.gyf != 0.0 || p.gzf != 0.0;`);
+  let w = 1.0 / tau;`);
+  if (forca) L.push(`  let kf = 1.0 - 0.5 * w;`);
   for (let i = 0; i < Q; i++) {
-    const cu = `(${num(CX[i])} * ux + ${num(CY[i])} * uy + ${num(CZ[i])} * uz)`;
-    L.push(`  f[${i}] = f[${i}] + w * (fe[${i}] - f[${i}]);
-  if (forca) { let cu${i} = ${cu}; f[${i}] += (1.0 - 0.5 * w) * ${num(W[i])} * ((3.0 * (${num(CX[i])} - ux) + 9.0 * cu${i} * ${num(CX[i])}) * p.gxf + (3.0 * (${num(CY[i])} - uy) + 9.0 * cu${i} * ${num(CY[i])}) * p.gyf + (3.0 * (${num(CZ[i])} - uz) + 9.0 * cu${i} * ${num(CZ[i])}) * p.gzf); }`);
+    L.push(`  { let e = ${cu(i)}; f${i} += w * (${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) - f${i});${forca ? ` f${i} += kf * ${num(W[i])} * ((3.0 * (${num(CX[i])} - ux) + 9.0 * e * ${num(CX[i])}) * p.gxf + (3.0 * (${num(CY[i])} - uy) + 9.0 * e * ${num(CY[i])}) * p.gyf + (3.0 * (${num(CZ[i])} - uz) + 9.0 * e * ${num(CZ[i])}) * p.gzf);` : ""} }`);
   }
-  L.push(`  return f;
+  L.push(`  ${gravar(precisao, "f", "c")}
+}
+@compute @workgroup_size(${grupo})
+fn iniciar(@builtin(global_invocation_id) g: vec3<u32>) {
+  if (g.x >= p.nx) { return; }
+  let c = g.x + p.nx * (g.y + p.ny * g.z);
+  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return; }
+  let ux = p.ux; let uy = p.uy; let uz = p.uz;
+  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);`);
+  for (let i = 0; i < Q; i++) L.push(`  let e${i} = ${num(W[i])} * (3.0 * (${cu(i)}) + 4.5 * (${cu(i)}) * (${cu(i)}) - uu);`);
+  L.push(`  ${gravar(precisao, "e", "c")}
 }`);
   return L.join("\n");
-}
-
-function wgslEq(): string {
-  const L = [`fn eq(dr: f32, ux: f32, uy: f32, uz: f32) -> array<f32, 19> {
-  var e: array<f32, 19>;
-  let rho = 1.0 + dr;
-  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);`];
-  for (let i = 0; i < Q; i++) {
-    const cu = [CX[i] ? `${CX[i] > 0 ? "" : "-"}ux` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}uy` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}uz` : ""].join("").replace(/^\+/, "") || "0.0";
-    L.push(`  { let cu = ${cu}; e[${i}] = ${num(W[i])} * (dr + rho * (3.0 * cu + 4.5 * cu * cu - uu)); }`);
-  }
-  L.push("  return e;\n}");
-  return L.join("\n");
-}
-
-function wgslPasso(precisao: Precisao): string {
-  const gravar = precisao === "fp32"
-    ? `for (var i = 0u; i < 19u; i++) { fb[i * p.n + c0] = a[i]; fb[i * p.n + c0 + 1u] = b[i]; }`
-    : `for (var i = 0u; i < 19u; i++) { fb[i * (p.n / 2u) + k] = meiaBits(a[i] * ${num(ESCALA_FP16)}) | (meiaBits(b[i] * ${num(ESCALA_FP16)}) << 16u); }`;
-  return `${wgslBase(precisao, true)}
-${wgslEq()}
-${wgslCelula()}
-@compute @workgroup_size(${GRUPO})
-fn passo(@builtin(global_invocation_id) g: vec3<u32>) {
-  let k = g.x + g.y * p.gx * ${GRUPO}u;
-  if (k >= p.n / 2u) { return; }
-  let c0 = 2u * k;
-  let a = celula(c0);
-  let b = celula(c0 + 1u);
-  ${gravar}
-}
-@compute @workgroup_size(${GRUPO})
-fn iniciar(@builtin(global_invocation_id) g: vec3<u32>) {
-  let k = g.x + g.y * p.gx * ${GRUPO}u;
-  if (k >= p.n / 2u) { return; }
-  let c0 = 2u * k;
-  var a: array<f32, 19>; var b: array<f32, 19>;
-  if (tipoDe(c0) != ${SOLIDO}u) { a = eq(0.0, p.ux, p.uy, p.uz); }
-  if (tipoDe(c0 + 1u) != ${SOLIDO}u) { b = eq(0.0, p.ux, p.uy, p.uz); }
-  ${gravar}
-}`;
 }
 
 /** Desenho do plano z = p.z: módulo da velocidade / |u∞| em escala de cor; sólido em cinza. */
@@ -189,10 +192,11 @@ fn cor(t: f32) -> vec3<f32> {
   let x = min(u32(s.uv.x * f32(p.nx)), p.nx - 1u);
   let y = min(u32((1.0 - s.uv.y) * f32(p.ny)), p.ny - 1u);
   let c = x + p.nx * (y + p.ny * p.z);
-  if (tipoDe(c) == ${SOLIDO}u) { return vec4<f32>(0.54, 0.58, 0.62, 1.0); }
-  var dr = 0.0; var jx = 0.0; var jy = 0.0; var jz = 0.0;
-${Array.from({ length: Q }, (_, i) => `  { let v = ld(${i}u, c); dr += v; jx += ${num(CX[i])} * v; jy += ${num(CY[i])} * v; jz += ${num(CZ[i])} * v; }`).join("\n")}
-  let u = length(vec3<f32>(jx, jy, jz)) / (1.0 + dr);
+  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return vec4<f32>(0.54, 0.58, 0.62, 1.0); }
+${Array.from({ length: Q }, (_, i) => `  let f${i} = ${carregar(precisao, i, "c")};`).join("\n")}
+  let dr = ${soma(() => 1)};
+  let j = vec3<f32>(${soma((i) => CX[i])}, ${soma((i) => CY[i])}, ${soma((i) => CZ[i])});
+  let u = length(j) / (1.0 + dr);
   if (u != u || u > 1.0) { return vec4<f32>(0.9, 0.1, 0.9, 1.0); }
   return vec4<f32>(cor(u * p.escala), 1.0);
 }`;
@@ -214,7 +218,7 @@ export async function abrirGpu(): Promise<{ adaptador: GPUAdapter; device: GPUDe
 
 /** Maior malha cujos buffers cabem nos limites do aparelho. */
 export function cabe(device: GPUDevice, n: number, precisao: Precisao): boolean {
-  const bytes = Q * n * (precisao === "fp32" ? 4 : 2);
+  const bytes = palavras(precisao) * n * 4;
   return bytes <= device.limits.maxStorageBufferBindingSize && bytes <= device.limits.maxBufferSize;
 }
 
@@ -228,31 +232,24 @@ export class LbmGpu {
   private pPasso: GPUComputePipeline;
   private pIniciar: GPUComputePipeline;
   private grupos: GPUBindGroup[];
-  private gx: number;
-  private gy: number;
+  private despacho: [number, number, number];
   private atual = 0;
   private desenho?: { pipe: GPURenderPipeline; grupos: GPUBindGroup[]; ctx: GPUCanvasContext };
   passos = 0;
 
   constructor(device: GPUDevice, cfg: ConfigGpu) {
-    if (cfg.nx % 2) throw new Error("nx precisa ser par");
     this.device = device;
     this.cfg = cfg;
     this.n = cfg.nx * cfg.ny * cfg.nz;
-    const pares = this.n / 2;
-    const gruposTotal = Math.ceil(pares / GRUPO);
-    this.gx = Math.min(gruposTotal, 65535);
-    this.gy = Math.ceil(gruposTotal / this.gx);
-    const tam = Q * this.n * (cfg.precisao === "fp32" ? 4 : 2);
+    const tamGrupo = cfg.grupo ?? 64;
+    this.despacho = [Math.ceil(cfg.nx / tamGrupo), cfg.ny, cfg.nz];
+    const tam = palavras(cfg.precisao) * this.n * 4;
     this.buffers = [0, 1].map(() => device.createBuffer({ size: tam, usage: USO.STORAGE | USO.COPY_SRC }));
-    // tipo: 1 byte por célula, 4 por palavra
-    const tipos = new Uint8Array(Math.ceil(this.n / 4) * 4);
-    tipos.set(cfg.tipo);
-    this.tipos = device.createBuffer({ size: tipos.byteLength, usage: USO.STORAGE | USO.COPY_DST });
-    device.queue.writeBuffer(this.tipos, 0, tipos);
+    this.tipos = device.createBuffer({ size: Math.ceil(this.n / 4) * 4, usage: USO.STORAGE | USO.COPY_DST });
+    device.queue.writeBuffer(this.tipos, 0, marcarVizinhos(cfg));
     this.uniforme = device.createBuffer({ size: 64, usage: USO.UNIFORM | USO.COPY_DST });
     this.escreverParametros();
-    const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao) });
+    const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao, !!cfg.forca, tamGrupo) });
     const C = ESTAGIO_COMPUTE;
     const leitura = { type: "read-only-storage" } as const;
     const bgl = device.createBindGroupLayout({
@@ -283,7 +280,7 @@ export class LbmGpu {
     pass.setPipeline(this.pIniciar);
     for (const de of [0, 1]) {
       pass.setBindGroup(0, this.grupos[de]);
-      pass.dispatchWorkgroups(this.gx, this.gy);
+      pass.dispatchWorkgroups(...this.despacho);
     }
     pass.end();
     device.queue.submit([enc.finish()]);
@@ -297,7 +294,7 @@ export class LbmGpu {
     const fl = new Float32Array(b);
     ui[0] = nx; ui[1] = ny; ui[2] = nz; ui[3] = this.n;
     fl[4] = tau; fl[5] = smagorinsky(cs); fl[6] = u[0]; fl[7] = u[1]; fl[8] = u[2];
-    ui[9] = this.gx ?? 0; fl[10] = g[0]; fl[11] = g[1]; fl[12] = g[2];
+    fl[10] = g[0]; fl[11] = g[1]; fl[12] = g[2];
     ui[13] = Math.floor(nz / 2); fl[14] = escalaCor;
     this.device.queue.writeBuffer(this.uniforme, 0, b);
   }
@@ -309,7 +306,7 @@ export class LbmGpu {
     pass.setPipeline(this.pPasso);
     for (let s = 0; s < k; s++) {
       pass.setBindGroup(0, this.grupos[this.atual]);
-      pass.dispatchWorkgroups(this.gx, this.gy);
+      pass.dispatchWorkgroups(...this.despacho);
       this.atual = 1 - this.atual;
     }
     pass.end();
@@ -333,8 +330,16 @@ export class LbmGpu {
     copia.destroy();
     if (this.cfg.precisao === "fp32") return new Float32Array(bruto);
     const h = new Uint16Array(bruto);
-    const out = new Float32Array(Q * this.n);
-    for (let j = 0; j < out.length; j++) out[j] = meiaParaFloat(h[j]) / ESCALA_FP16;
+    const n = this.n;
+    const out = new Float32Array(Q * n);
+    const v = (j: number) => meiaParaFloat(h[j]) / ESCALA_FP16;
+    for (let c = 0; c < n; c++) {
+      out[c] = v(2 * c);
+      for (let k = 1; k < 10; k++) {
+        out[(2 * k - 1) * n + c] = v(2 * (k * n + c));
+        out[2 * k * n + c] = v(2 * (k * n + c) + 1);
+      }
+    }
     return out;
   }
 
@@ -381,6 +386,29 @@ export class LbmGpu {
     this.tipos.destroy();
     this.uniforme.destroy();
   }
+}
+
+/** Tipo por célula (1 byte; 4 por palavra) com o bit 7 marcando quem tem vizinho sólido. */
+function marcarVizinhos(cfg: ConfigGpu): Uint8Array {
+  const { nx, ny, nz, tipo } = cfg;
+  const t = new Uint8Array(Math.ceil((nx * ny * nz) / 4) * 4);
+  t.set(tipo);
+  for (let z = 0; z < nz; z++) {
+    for (let y = 0; y < ny; y++) {
+      for (let x = 0; x < nx; x++) {
+        const c = x + nx * (y + ny * z);
+        if (tipo[c] !== FLUIDO) continue;
+        for (let i = 1; i < Q; i++) {
+          const s = ((x - CX[i] + nx) % nx) + nx * (((y - CY[i] + ny) % ny) + ny * ((z - CZ[i] + nz) % nz));
+          if (tipo[s] === SOLIDO) {
+            t[c] |= VIZINHO_SOLIDO;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return t;
 }
 
 /** f̃ᵉᵠ da corrente livre, para conferir células EQ na verificação. */

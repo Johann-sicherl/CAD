@@ -105,7 +105,7 @@ async function verificar() {
   for (const prec of ["fp32", "fp16"] as Precisao[]) {
     for (const c of casos) {
       const cpu = new LbmCpu({ nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, g: c.g }, c.tipo);
-      const g = new LbmGpu(gpu!.device, { nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, precisao: prec, tipo: c.tipo });
+      const g = new LbmGpu(gpu!.device, { nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, precisao: prec, tipo: c.tipo, forca: c.g.some((v) => v !== 0) });
       g.escreverParametros(c.g);
       for (let k = 0; k < c.passos; k++) cpu.passo();
       g.avancar(c.passos);
@@ -158,6 +158,26 @@ async function cronometrar(s: LbmGpu, ms: number): Promise<number> {
 
 async function medir() {
   const dev = gpu!.device;
+  // 1) tamanho do grupo de threads que rende mais nesta GPU (malha de 0,5 M células)
+  escrever("== Ajuste do kernel (128×64×64, threads por grupo) ==");
+  const melhorGrupo: Record<Precisao, number> = { fp32: 64, fp16: 64 };
+  for (const prec of ["fp32", "fp16"] as Precisao[]) {
+    let melhor = 0;
+    const linha: string[] = [];
+    for (const grupo of [32, 64, 128]) {
+      progresso(`⏳ Ajustando o kernel: ${prec.toUpperCase()}, ${grupo} threads por grupo… não saia desta tela.`);
+      const s = new LbmGpu(dev, { nx: 128, ny: 64, nz: 64, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(128, 64, 64, 16), grupo });
+      const mlups = ((await cronometrar(s, 1500)) * s.n) / 1e6;
+      s.destruir();
+      linha.push(`${grupo}: ${fmt(mlups, 1)}`);
+      if (mlups > melhor) {
+        melhor = mlups;
+        melhorGrupo[prec] = grupo;
+      }
+    }
+    escrever(`${prec}  MLUPS por tamanho de grupo → ${linha.join(" · ")}  (usa ${melhorGrupo[prec]})`);
+  }
+  escrever("");
   escrever("== Desempenho (esfera no túnel, BGK + LES, u = 0,05) ==");
   escrever("malha              células  prec.  memória   passos/s   MLUPS   1 travessia");
   const resultados: { celulas: number; prec: Precisao; mlups: number }[] = [];
@@ -173,7 +193,7 @@ async function medir() {
         continue;
       }
       dev.pushErrorScope("out-of-memory");
-      const s = new LbmGpu(dev, { nx, ny, nz, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, ny / 4) });
+      const s = new LbmGpu(dev, { nx, ny, nz, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, ny / 4), grupo: melhorGrupo[prec] });
       const semMemoria = await dev.popErrorScope();
       if (semMemoria) {
         s.destruir();
