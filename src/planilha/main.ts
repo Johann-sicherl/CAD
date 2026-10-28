@@ -2,7 +2,7 @@
 // Liga a casca comum, a grade, a barra de fórmulas, as folhas e os arquivos (.wjpl e CSV).
 
 import "./planilha.css";
-import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline, type Aba } from "../comum/casca";
+import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline, type Aba, salvarArquivo } from "../comum/casca";
 import { comparar } from "../formulas/conversao";
 import { listaDeFuncoes } from "../formulas/funcoes";
 import { Calculadora, chave, interpretarEntrada, pastaVazia, validarPasta, type Celula, type Folha, type Formato, type Pasta, type TipoFormato } from "../formulas/pasta";
@@ -568,7 +568,7 @@ async function abrir() {
 }
 
 function salvar() {
-  baixar(JSON.stringify(pasta), pasta.nome, "wjpl");
+  salvarArquivo(JSON.stringify(pasta), pasta.nome, "wjpl");
   casca.avisar("Pasta salva (.wjpl).");
 }
 

@@ -1,5 +1,8 @@
 # WJPDM — diretório e cofre de engenharia do WJCAD (G5)
 
+> Nomes na interface (decisão do Johann, 28/10/2026): **GO-OUT** = check-out (retirar para editar) e
+> **GO-IN** = check-in (devolver ao cofre, gerando versão). O texto abaixo usa os termos genéricos.
+
 Inspiração funcional: sistema de PDM profissional integrado ao CAD de referência. O fluxo de cofre
 é o mesmo: pasta local espelhada, check-out/check-in, cartões de dados, estados e transições,
 referências e lista de materiais. Nomes, ícones e telas são nossos; nada é copiado.

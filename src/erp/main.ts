@@ -4,7 +4,7 @@
 // docs/global/erp.md. Os dados ficam neste aparelho (IndexedDB) até o servidor da fase G7.
 
 import "./erp.css";
-import { $, baixar, Casca, el, escapar, janela, registrarOffline } from "../comum/casca";
+import { $, baixar, Casca, el, escapar, janela, registrarOffline, salvarArquivo } from "../comum/casca";
 import { Armazem } from "../comum/armazem";
 import { IC, type NomeIc } from "../comum/icones";
 import { calcularEstoque, mrp, parcelas, proximoNumero, saldoDe, type ItemErp, type Movimento, type Sugestao } from "./regras";
@@ -983,7 +983,7 @@ async function dadosExemplo() {
 
 async function exportarCopia() {
   const d = { formato: "wjerp-copia", versao: 1, data: new Date().toISOString().slice(0, 19), dados: Object.fromEntries(LOJAS.filter((l) => l !== "meta").map((l) => [l, dados[l]])) };
-  baixar(JSON.stringify(d), `WJERP ${hoje()}`, "wjerp", "application/json");
+  salvarArquivo(JSON.stringify(d), `WJERP ${hoje()}`, "wjerp", "application/json");
 }
 async function importarCopia() {
   const inp = el("input", { type: "file" }) as HTMLInputElement;

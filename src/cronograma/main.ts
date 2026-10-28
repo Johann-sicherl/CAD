@@ -3,7 +3,7 @@
 // Especificação: docs/global/cronograma.md.
 
 import "./cronograma.css";
-import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline } from "../comum/casca";
+import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
 import {
   calcular, calendarioPadrao, codigosEAP, dataBR, diaDaSemana, estrutura, formatarDuracao, formatarPredecessoras, hojeIso, iso,
   lerDataBR, lerDuracao, lerPredecessoras, RESTRICOES, serial, validarProjeto,
@@ -1485,7 +1485,7 @@ const casca: Casca = new Casca({
       casca.avisar(e instanceof Error ? e.message : "Não foi possível abrir o arquivo.", 6000);
     }
   },
-  salvar: () => baixar(JSON.stringify(doc), doc.nome, "wjcron", "application/json"),
+  salvar: () => salvarArquivo(JSON.stringify(doc), doc.nome, "wjcron", "application/json"),
   desfazer: () => {
     const d = historico.desfazer();
     if (d) (doc = d), mudou(false);

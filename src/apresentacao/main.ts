@@ -4,7 +4,7 @@
 // apresentação em tela cheia, modo do apresentador; PDF pela impressão; arquivo .wjapn.
 
 import "./apresentacao.css";
-import { $, autosave, baixar, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline, type Aba } from "../comum/casca";
+import { $, autosave, Casca, el, escapar, escolherArquivo, Historico, janela, menu, registrarOffline, type Aba, salvarArquivo } from "../comum/casca";
 
 type TipoForma = "retangulo" | "arredondado" | "elipse" | "triangulo" | "seta" | "linha" | "estrela";
 type Anim = "nenhuma" | "aparecer" | "esmaecer" | "voar" | "zoom";
@@ -858,7 +858,7 @@ async function abrir() {
 }
 function salvar() {
   if (editando) terminarEdicao();
-  baixar(JSON.stringify(doc), doc.nome, "wjapn");
+  salvarArquivo(JSON.stringify(doc), doc.nome, "wjapn");
   casca.avisar("Apresentação salva (.wjapn).");
 }
 
