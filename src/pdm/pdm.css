@@ -57,3 +57,5 @@ body.disp-celular .pd-so-celular { display: inline-block; }
 body.disp-celular .pd-busca { width: 40vw; }
 body.disp-celular .pd-lista .pd-opc { display: none; }
 body.disp-celular .pd-centro { grid-template-rows: auto minmax(0, 1fr) minmax(200px, 48%); }
+.pd-trabalho-ic { margin-left: 4px; color: var(--acento, #2f7fd0); font-weight: 700; }
+tr.pd-trabalho td { background: #f2f7fd; }

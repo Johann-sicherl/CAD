@@ -983,7 +983,7 @@ async function dadosExemplo() {
 
 async function exportarCopia() {
   const d = { formato: "wjerp-copia", versao: 1, data: new Date().toISOString().slice(0, 19), dados: Object.fromEntries(LOJAS.filter((l) => l !== "meta").map((l) => [l, dados[l]])) };
-  salvarArquivo(JSON.stringify(d), `WJERP ${hoje()}`, "wjerp", "application/json");
+  salvarArquivo(JSON.stringify(d), "WJERP", "wjerp", "application/json"); // cópia no cofre (ERP/WJERP.wjerp); cada GO-IN vira versão
 }
 async function importarCopia() {
   const inp = el("input", { type: "file" }) as HTMLInputElement;

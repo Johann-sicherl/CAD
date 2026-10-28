@@ -42,6 +42,12 @@ export interface Arquivo {
   item?: string;
   historico: Evento[];
   lixeira?: boolean;
+  /** quando foi para a lixeira (destruído sozinho após 30 dias) */
+  lixeiraData?: string;
+  /** cópia de trabalho (o que o app salvou desde o último GO-IN); ausente = igual à última versão */
+  trabalho?: { blob: string; tamanho: number; data: string; autor: string };
+  /** última alteração do registro (sincronia entre cópias: a mais recente vence) */
+  mod?: string;
 }
 
 export interface Pasta {
@@ -49,6 +55,7 @@ export interface Pasta {
   nome: string;
   pai: string | null;
   cartao?: Record<string, string>;
+  mod?: string;
 }
 
 export interface LinhaBOM {
@@ -79,6 +86,7 @@ export interface Item {
   massa?: number;
   obs?: string;
   bom: LinhaBOM[];
+  mod?: string;
 }
 
 /** Campos do cartão de dados (ordem do formulário). */

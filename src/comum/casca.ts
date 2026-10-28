@@ -2,7 +2,7 @@
 // de arquivo), faixa de comandos por abas, barra de status, avisos, janelas, menus, perfil de
 // dispositivo, desfazer/refazer por fotografias do documento, salvar/abrir arquivos.
 
-import { abrirLocais, salvarNosLocais, type ChaveApp } from "./locais";
+import { abrirCopias, abrirDoCofre, APPS, desligar, salvarNoCofre, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
 
@@ -74,6 +74,8 @@ export function aplicarDispositivo() {
 
 export class Casca {
   aba: string;
+  /** Abrir (Ctrl+O / botão): nos apps de documento, pergunta se é do cofre ou do aparelho. */
+  abrir: (x: number, y: number) => void = () => {};
   private faixa!: HTMLElement;
   private abasEl!: HTMLElement;
   status!: HTMLElement;
@@ -90,8 +92,8 @@ export class Casca {
       <a class="wj-marca" href="../" title="Voltar ao WJProMaster"><img src="${import.meta.env.BASE_URL}wjpromaster.svg" alt="" /><span>${o.app}</span></a>
       <button class="wj-ic" data-a="novo" title="Novo (Ctrl+N)">${IC.novo}</button>
       <button class="wj-ic" data-a="abrir" title="Abrir (Ctrl+O)">${IC.abrir}</button>
-      <button class="wj-ic" data-a="salvar" title="Salvar (Ctrl+S): pendrive + Drive">${IC.salvar}</button>
-      <button class="wj-ic" data-a="locais" title="Locais de salvamento (pendrive, Google Drive, aparelho)">${IC.pasta}</button>
+      <button class="wj-ic" data-a="salvar" title="Salvar no cofre (Ctrl+S): pendrive, Drive e tablet">${IC.salvar}</button>
+      <button class="wj-ic" data-a="locais" title="Cópias do cofre (pendrive, Google Drive, tablet)">${IC.pasta}</button>
       ${o.desfazer ? `<span class="wj-sep"></span><button class="wj-ic" data-a="desfazer" title="Desfazer (Ctrl+Z)">${IC.desfazer}</button><button class="wj-ic" data-a="refazer" title="Refazer (Ctrl+Y)">${IC.refazer}</button>` : ""}
       <input class="wj-nome" aria-label="Nome do documento" />
       <div class="wj-direita"></div>`;
@@ -106,10 +108,28 @@ export class Casca {
     document.body.append(this.status);
     this.nome = $(".wj-nome", topo);
     this.nome.onchange = () => o.renomear(this.nome.value.trim() || o.nomeDoc());
-    topo.querySelector<HTMLElement>('[data-a="novo"]')!.onclick = () => o.novo();
-    topo.querySelector<HTMLElement>('[data-a="abrir"]')!.onclick = () => o.abrir();
+    // documentos dos apps vivem no cofre: novo/abrir do aparelho desligam do arquivo do cofre
+    const chave = chaveDaExtensao(o.extensao);
+    const ehDocumento = Object.values(APPS).some((x) => x.face === chave);
+    const novo = () => {
+      if (ehDocumento) desligar(chave);
+      o.novo();
+    };
+    const abrirAparelho = () => {
+      if (ehDocumento) desligar(chave);
+      o.abrir();
+    };
+    this.abrir = (x, y) => (ehDocumento
+      ? menu(x, y, [{ rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", acao: () => void abrirDoCofre(chave) }, { rotulo: "Abrir arquivo do aparelho…", icone: "abrir", acao: abrirAparelho }])
+      : abrirAparelho());
+    topo.querySelector<HTMLElement>('[data-a="novo"]')!.onclick = novo;
+    const btAbrir = topo.querySelector<HTMLElement>('[data-a="abrir"]')!;
+    btAbrir.onclick = () => {
+      const r = btAbrir.getBoundingClientRect();
+      this.abrir(r.left, r.bottom + 4);
+    };
     topo.querySelector<HTMLElement>('[data-a="salvar"]')!.onclick = () => o.salvar();
-    topo.querySelector<HTMLElement>('[data-a="locais"]')!.onclick = () => void abrirLocais(chaveDaExtensao(o.extensao));
+    topo.querySelector<HTMLElement>('[data-a="locais"]')!.onclick = () => void abrirCopias();
     cascaAtual = this;
     if (o.desfazer) {
       topo.querySelector<HTMLElement>('[data-a="desfazer"]')!.onclick = () => o.desfazer!();
@@ -127,7 +147,7 @@ export class Casca {
         o.salvar();
       } else if (k === "o") {
         e.preventDefault();
-        o.abrir();
+        this.abrir(innerWidth / 2 - 120, 80);
       }
     });
   }
@@ -296,13 +316,13 @@ const chaveDaExtensao = (ext: string): ChaveApp => CHAVES[ext] ?? "word";
 let cascaAtual: Casca | null = null;
 
 /**
- * Salva o arquivo do app nos locais escolhidos (pendrive + Google Drive; sem os dois, janela
- * "Salvar como") e avisa onde gravou. Exportações (CSV, HTML…) continuam sendo baixadas.
+ * Salva o documento do app no cofre do WJPDM (cópia de trabalho; versão só no GO-IN) e iguala as
+ * cópias conectadas (pendrive, Drive, pasta do tablet). Exportações (CSV, HTML…) continuam baixando.
  */
 export function salvarArquivo(conteudo: BlobPart, nome: string, extensao: string, tipo = "application/octet-stream") {
   const dados = new Blob([conteudo], { type: tipo });
-  void salvarNosLocais(chaveDaExtensao(extensao), `${nome}.${extensao}`, dados).then(
-    (msg) => cascaAtual?.avisar(msg, 4500),
+  void salvarNoCofre(chaveDaExtensao(extensao), `${nome}.${extensao}`, dados).then(
+    (msg) => cascaAtual?.avisar(msg, 6000),
     (e) => cascaAtual?.avisar(`Não foi possível salvar: ${(e as Error).message}`, 6000),
   );
 }

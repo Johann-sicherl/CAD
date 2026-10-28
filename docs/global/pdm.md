@@ -13,6 +13,21 @@ Status de tudo: **G5** salvo indicação.
 
 ---
 
+## Cofre único e cópias (28/10/2026)
+
+✅ Todo arquivo dos apps vive no cofre (`src/comum/cofre.ts`): salvar no app grava a **cópia de
+trabalho** (✎ na lista); arquivo novo entra na pasta da face (CAD, Planilhas, Documentos,
+Apresentações, Cronogramas, ERP) já em GO-OUT; **GO-IN** cria a versão a partir da cópia de trabalho;
+desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em cada app.
+✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
+tablet e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
+que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a
+outra vira cópia na lixeira ("(conflito AAAA-MM-DD)"); exclusões e lixeira propagam; lixeira se
+esvazia após 30 dias. Cada cópia guarda `WJPDM/<pastas>/<arquivo>` (legível em qualquer
+computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
+🟡 Google Drive (aguarda cliente OAuth); arquivos colocados à mão na pasta do pendrive ainda não
+entram no cofre (adicionar pelo WJPDM).
+
 ## Estado da v1 (25/10/2026) — `pdm/index.html`, `src/pdm/` (cofre local)
 
 ✅ Cofre **neste aparelho** (IndexedDB; funciona sem internet), regras puras testadas em

@@ -4,6 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
+import { abrirArquivoNoApp, abrirCopias, APPS, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -21,15 +22,6 @@ const agora = () => {
 const quando = (s: string) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 16)}` : "");
 const tamanho = (b: number) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1).replace(".", ",")} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`);
 
-/** Apps do WJProMaster por extensão: chave do salvamento automático e endereço. */
-const APPS: Record<string, { app: string; chave: string; url: string }> = {
-  wjcad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave" },
-  jlscad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave" },
-  wjpl: { app: "WJPlan", chave: "wjpl:documento", url: "planilha/" },
-  wjdoc: { app: "WJWrite", chave: "wjdoc:documento", url: "documento/" },
-  wjapn: { app: "WJApresentation", chave: "wjapn:documento", url: "apresentacao/" },
-  wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/" },
-};
 const TIPOS_MIME: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf",
   txt: "text/plain", csv: "text/csv", md: "text/markdown", json: "application/json", xml: "application/xml", dxf: "application/dxf",
@@ -67,7 +59,11 @@ const pastaAtual = () => (local.tipo === "pasta" ? local.id : RAIZ);
 const nomePasta = (id: string) => (id === RAIZ ? meta.nome : pastas.find((p) => p.id === id)?.nome ?? "?");
 const versaoAtual = (a: Arquivo) => a.versoes[a.versoes.length - 1];
 const usuario = () => meta.usuario || "Usuário";
-const gravarArquivo = (a: Arquivo) => db.por("arquivos", a);
+/** Toda gravação carimba a data: na sincronia entre cópias do cofre, a mais recente vence. */
+const gravarArquivo = (a: Arquivo) => db.por("arquivos", Object.assign(a, { mod: agora() }));
+const gravar = <T extends { id: string; mod?: string }>(loja: "pastas" | "itens" | "meta", x: T) => db.por(loja, Object.assign(x, { mod: agora() }));
+/** Destruído: registra a exclusão para ela chegar às outras cópias do cofre. */
+const registrarExclusao = (id: string, tipo: "arquivo" | "pasta" | "item") => db.por("exclusoes", { id, tipo, data: agora() } as { id: string });
 
 function caminho(id: string): Pasta[] {
   const r: Pasta[] = [];
@@ -124,9 +120,10 @@ $("#pd-pastas").onclick = () => document.body.classList.toggle("pd-arvore-aberta
 // ---------- lista ----------
 
 function travaHtml(a: Arquivo) {
-  if (!a.checkout) return "";
+  const trab = a.trabalho ? `<span class="pd-trabalho-ic" title="Cópia de trabalho salva em ${quando(a.trabalho.data)} (ainda sem GO-IN)">✎</span>` : "";
+  if (!a.checkout) return trab;
   const minha = a.checkout.usuario === usuario();
-  return `<span class="pd-trava ${minha ? "minha" : "outro"}" title="Check-out de ${escapar(a.checkout.usuario)} em ${quando(a.checkout.data)}">${IC.cadeado}</span>`;
+  return `<span class="pd-trava ${minha ? "minha" : "outro"}" title="GO-OUT de ${escapar(a.checkout.usuario)} em ${quando(a.checkout.data)}">${IC.cadeado}</span>${trab}`;
 }
 const estadoHtml = (a: Arquivo) => `<span class="pd-estado" style="background:${ESTADOS[a.estado].cor}">${ESTADOS[a.estado].nome}</span>`;
 
@@ -359,7 +356,7 @@ function acoesDoCartao(a: Arquivo, editavel: boolean) {
 }
 
 async function painelPrevia(a: Arquivo, v: Versao = versaoAtual(a)) {
-  const b = await db.blob(v.blob);
+  const b = await db.blob(v === versaoAtual(a) && a.trabalho ? a.trabalho.blob : v.blob);
   if (!b) return void (conteudo.innerHTML = `<p class="pd-dica">Conteúdo não encontrado.</p>`);
   if (arquivoSel() !== a || aba !== "previa") return;
   const ext = extensao(a.nome);
@@ -401,9 +398,11 @@ async function painelPrevia(a: Arquivo, v: Versao = versaoAtual(a)) {
 function painelVersoes(a: Arquivo) {
   const podeRestaurar = a.checkout?.usuario === usuario();
   conteudo.innerHTML = `<table class="pd-tab"><thead><tr><th>Versão</th><th>Revisão</th><th>Estado</th><th>Data</th><th>Autor</th><th>Comentário</th><th>Tamanho</th><th></th></tr></thead><tbody>
+    ${a.trabalho ? `<tr class="pd-trabalho"><td>✎</td><td colspan="2">Cópia de trabalho (salva no app, ainda sem GO-IN)</td><td>${quando(a.trabalho.data)}</td><td>${escapar(a.trabalho.autor)}</td><td></td><td>${tamanho(a.trabalho.tamanho)}</td><td><button data-obter-trabalho>Obter</button></td></tr>` : ""}
     ${[...a.versoes].reverse().map((v) => `<tr><td>${v.n}</td><td>${v.revisao || "—"}</td><td>${ESTADOS[v.estado]?.nome ?? ""}</td><td>${quando(v.data)}</td><td>${escapar(v.autor)}</td><td>${escapar(v.comentario)}</td><td>${tamanho(v.tamanho)}</td>
       <td style="white-space:nowrap"><button data-obter="${v.n}">Obter</button>${podeRestaurar && v !== versaoAtual(a) ? ` <button data-restaurar="${v.n}" title="Cria uma versão nova com este conteúdo">Restaurar</button>` : ""}</td></tr>`).join("")}
     </tbody></table>`;
+  conteudo.querySelector<HTMLElement>("[data-obter-trabalho]")?.addEventListener("click", () => void obter(a, versaoAtual(a), true));
   conteudo.querySelectorAll<HTMLElement>("[data-obter]").forEach((b) => (b.onclick = () => void obter(a, a.versoes.find((v) => v.n === Number(b.dataset.obter)))));
   conteudo.querySelectorAll<HTMLElement>("[data-restaurar]").forEach((b) => {
     b.onclick = async () => {
@@ -441,7 +440,7 @@ function painelItem(it: Item) {
       } else if (k === "massa") it.massa = c.value ? Number(c.value) : undefined;
       else if (k === "tipo") it.tipo = c.value as TipoItem;
       else (it as unknown as Record<string, string>)[k] = c.value.trim();
-      await db.por("itens", it);
+      await gravar("itens", it);
       renderizarLista();
       renderizarArvore();
     };
@@ -461,7 +460,7 @@ function painelBOM(it: Item) {
     <h4 style="margin:14px 0 6px">Lista explodida (todos os níveis)</h4>
     ${typeof ex === "string" ? `<p style="color:var(--erro)">${escapar(ex)}</p>` : ex.length ? `<table class="pd-tab"><thead><tr><th>Nível</th><th>Código</th><th>Descrição</th><th>Qtd. por</th><th>Qtd. total</th></tr></thead><tbody>${ex.map((l) => `<tr><td>${"·".repeat(l.nivel - 1)}${l.nivel}</td><td>${escapar(l.item.codigo)}</td><td>${escapar(l.item.descricao)}</td><td>${l.qtd}</td><td>${Math.round(l.total * 1000) / 1000} ${escapar(l.item.unidade)}</td></tr>`).join("")}</tbody></table>` : `<p class="pd-dica">Sem componentes.</p>`}`;
   const salvar = async () => {
-    await db.por("itens", it);
+    await gravar("itens", it);
     renderizarLista();
     renderizarPainel();
   };
@@ -511,7 +510,7 @@ function painelArquivosDoItem(it: Item) {
 async function novoItem(dados: Partial<Item> = {}) {
   const it: Item = { id: uid(), codigo: proximoCodigo(meta.mascara, itens.map((i) => i.codigo)), descricao: "Novo item", tipo: "fabricado", unidade: "pç", bom: [], ...dados };
   itens.push(it);
-  await db.por("itens", it);
+  await gravar("itens", it);
   local = { tipo: "itens" };
   sel = { tipo: "item", id: it.id };
   aba = "item";
@@ -532,6 +531,7 @@ async function excluirItem(it: Item) {
   if (!confirm(`Excluir o item ${it.codigo}?`)) return;
   itens = itens.filter((x) => x !== it);
   await db.apagar("itens", it.id);
+  await registrarExclusao(it.id, "item");
   for (const a of arquivos.filter((x) => x.item === it.id)) (a.item = undefined), await gravarArquivo(a);
   sel = null;
   renderizar();
@@ -587,8 +587,8 @@ async function adicionarDoAparelho() {
   if (fs.length) await adicionar(fs, pastaAtual());
 }
 
-async function obter(a: Arquivo, v: Versao = versaoAtual(a)) {
-  const b = await db.blob(v.blob);
+async function obter(a: Arquivo, v: Versao = versaoAtual(a), deTrabalho = false) {
+  const b = await db.blob(deTrabalho && a.trabalho ? a.trabalho.blob : v.blob);
   if (!b) return casca.avisar("Conteúdo não encontrado no cofre.");
   const ext = extensao(a.nome);
   const base = ext ? a.nome.slice(0, -(ext.length + 1)) : a.nome;
@@ -605,17 +605,27 @@ async function checkout(a: Arquivo) {
 }
 
 async function desfazerCheckout(a: Arquivo) {
-  if (!a.checkout) return casca.avisar("O arquivo não está com check-out.");
-  if (a.checkout.usuario !== usuario() && !confirm(`O check-out é de ${a.checkout.usuario}. Liberar mesmo assim (como administrador)?`)) return;
-  historico(a, a.checkout.usuario === usuario() ? "Check-out desfeito" : `Check-out de ${a.checkout.usuario} liberado pelo administrador`);
+  if (!a.checkout) return casca.avisar("O arquivo não está em GO-OUT.");
+  if (a.checkout.usuario !== usuario() && !confirm(`O GO-OUT é de ${a.checkout.usuario}. Liberar mesmo assim (como administrador)?`)) return;
+  if (a.trabalho && !confirm(`Desfazer o GO-OUT descarta a cópia de trabalho salva em ${quando(a.trabalho.data)} (o arquivo volta à versão ${versaoAtual(a).n}). Continuar?`)) return;
+  historico(a, a.checkout.usuario === usuario() ? "GO-OUT desfeito" : `GO-OUT de ${a.checkout.usuario} liberado pelo administrador`);
+  if (a.trabalho) await db.apagar("blobs", a.trabalho.blob), (a.trabalho = undefined);
   delete a.checkout;
   await gravarArquivo(a);
   renderizar();
 }
 
-async function novaVersao(a: Arquivo, dados: Blob, comentario: string) {
-  const blob = uid();
-  await db.porBlob(blob, dados);
+async function novaVersao(a: Arquivo, dados: Blob | { trabalho: true }, comentario: string) {
+  let blob: string;
+  if (dados instanceof Blob) {
+    blob = uid();
+    await db.porBlob(blob, dados);
+  } else {
+    blob = a.trabalho!.blob;
+    dados = { size: a.trabalho!.tamanho } as Blob;
+  }
+  if (a.trabalho && a.trabalho.blob !== blob) await db.apagar("blobs", a.trabalho.blob);
+  a.trabalho = undefined;
   const n = versaoAtual(a).n + 1;
   a.versoes.push({ n, blob, tamanho: dados.size, autor: usuario(), data: agora(), comentario, revisao: a.revisao, estado: a.estado });
   historico(a, `Versão ${n}${comentario ? ` — ${comentario}` : ""}`);
@@ -624,34 +634,31 @@ async function novaVersao(a: Arquivo, dados: Blob, comentario: string) {
 }
 
 function checkin(a: Arquivo) {
-  if (a.checkout?.usuario !== usuario()) return casca.avisar(a.checkout ? `O check-out é de ${a.checkout.usuario}.` : "Faça o check-out antes do check-in.");
-  const app = APPS[extensao(a.nome)];
-  const temNoApp = app && localStorage.getItem(app.chave);
+  if (a.checkout?.usuario !== usuario()) return casca.avisar(a.checkout ? `O GO-OUT é de ${a.checkout.usuario}.` : "Faça o GO-OUT antes do GO-IN.");
+  const trab = a.trabalho;
   const { corpo } = janela(`GO-IN — ${a.nome}`, `
     <div class="wj-campo"><label>Conteúdo da nova versão</label>
-      <label><input type="radio" name="fonte" value="aparelho" ${temNoApp ? "" : "checked"}/> Arquivo do aparelho…</label>
-      ${app ? `<label><input type="radio" name="fonte" value="app" ${temNoApp ? "checked" : "disabled"}/> Documento aberto no ${app.app}${temNoApp ? "" : " (nenhum)"}</label>` : ""}
-      <label><input type="radio" name="fonte" value="nada"/> Só o cartão de dados (sem versão nova)</label></div>
+      <label><input type="radio" name="fonte" value="trabalho" ${trab ? "checked" : "disabled"}/> Cópia de trabalho${trab ? ` (salva em ${quando(trab.data)})` : " (nada salvo no app desde a última versão)"}</label>
+      <label><input type="radio" name="fonte" value="aparelho"/> Arquivo do aparelho…</label>
+      <label><input type="radio" name="fonte" value="nada" ${trab ? "" : "checked"}/> Só o cartão de dados (sem versão nova)</label></div>
     <div class="wj-campo"><label>Comentário</label><input id="ck-com" placeholder="O que mudou?" /></div>
     <label><input id="ck-manter" type="checkbox"/> Manter em GO-OUT (continuar editando)</label>`, [
     { rotulo: "Cancelar" },
     {
       rotulo: "GO-IN", destaque: true, acao: (b) => {
-        const fonte = (b.querySelector('input[name="fonte"]:checked') as HTMLInputElement | null)?.value ?? "aparelho";
+        const fonte = (b.querySelector('input[name="fonte"]:checked') as HTMLInputElement | null)?.value ?? "nada";
         const com = (b.querySelector("#ck-com") as HTMLInputElement).value.trim();
         const manter = (b.querySelector("#ck-manter") as HTMLInputElement).checked;
-        const finalizar = async (dados?: Blob) => {
+        const finalizar = async (dados?: Blob | { trabalho: true }) => {
           if (dados) await novaVersao(a, dados, com);
           else historico(a, `GO-IN sem versão nova${com ? ` — ${com}` : ""}`);
-          if (!manter) delete a.checkout, historico(a, "Check-in");
+          if (!manter) delete a.checkout, historico(a, "GO-IN");
           await gravarArquivo(a);
           renderizar();
+          void sincronizarCofre(false).then((m) => casca.avisar(m, 5000));
         };
-        if (fonte === "app") {
-          const txt = localStorage.getItem(app!.chave);
-          if (!txt) return void casca.avisar(`Não há documento aberto no ${app!.app}.`), false;
-          void finalizar(new Blob([txt], { type: "application/json" }));
-        } else if (fonte === "aparelho") {
+        if (fonte === "trabalho") void finalizar({ trabalho: true });
+        else if (fonte === "aparelho") {
           void escolherVarios().then((fs) => (fs[0] ? finalizar(fs[0]) : casca.avisar("Nenhum arquivo escolhido: GO-IN cancelado.")));
         } else void finalizar();
       },
@@ -661,23 +668,10 @@ function checkin(a: Arquivo) {
 }
 
 async function abrirNoApp(a: Arquivo) {
-  const app = APPS[extensao(a.nome)];
-  if (!app) return obter(a);
-  const b = await db.blob(versaoAtual(a).blob);
-  if (!b) return casca.avisar("Conteúdo não encontrado.");
-  let texto = await b.text();
-  try {
-    const d = JSON.parse(texto);
-    d.nome = a.nome.replace(/\.[^.]+$/, "");
-    texto = JSON.stringify(d);
-  } catch {
-    return casca.avisar("O arquivo não é um documento válido do " + app.app + ".");
-  }
-  const atual = localStorage.getItem(app.chave);
-  if (atual && atual !== texto && !confirm(`O documento aberto no ${app.app} neste aparelho será substituído por ${a.nome}. Se ele tiver alterações sem salvar, salve antes. Continuar?`)) return;
-  if (a.checkout?.usuario !== usuario()) casca.avisar("Aberto sem check-out: as alterações não poderão voltar ao cofre sem check-out.", 6000);
-  localStorage.setItem(app.chave, texto);
-  location.href = `${import.meta.env.BASE_URL}${app.url}`;
+  if (!APPS[extensao(a.nome)]) return obter(a);
+  if (a.checkout?.usuario !== usuario()) casca.avisar("Aberto sem GO-OUT: ao salvar no app, o GO-OUT é feito sozinho (se o arquivo estiver livre).", 6000);
+  const erro = await abrirArquivoNoApp(a, db);
+  if (erro) casca.avisar(erro);
 }
 
 function alterarEstado(a: Arquivo) {
@@ -735,13 +729,15 @@ async function excluirArquivo(a: Arquivo) {
   if (a.checkout) return casca.avisar(`Está com check-out de ${a.checkout.usuario}: faça o check-in ou desfaça antes.`);
   if (a.estado === "liberado") return casca.avisar("Arquivo liberado não pode ser excluído (torne-o obsoleto antes).");
   a.lixeira = true;
-  historico(a, "Enviado para a lixeira");
+  a.lixeiraData = agora();
+  historico(a, "Enviado para a lixeira (destruído sozinho em 30 dias)");
   await gravarArquivo(a);
   sel = null;
   renderizar();
 }
 async function restaurar(a: Arquivo) {
   a.lixeira = undefined;
+  a.lixeiraData = undefined;
   if (a.pasta !== RAIZ && !pastas.some((p) => p.id === a.pasta)) a.pasta = RAIZ;
   a.nome = nomeLivre(a.nome, arquivos.filter((x) => x !== a && x.pasta === a.pasta && !x.lixeira).map((x) => x.nome));
   historico(a, "Restaurado da lixeira");
@@ -750,8 +746,9 @@ async function restaurar(a: Arquivo) {
 }
 async function destruir(a: Arquivo) {
   if (!confirm(`Destruir ${a.nome} e todas as ${a.versoes.length} versões? Não dá para desfazer.`)) return;
-  for (const v of a.versoes) await db.apagar("blobs", v.blob);
+  for (const b of [...a.versoes.map((v) => v.blob), ...(a.trabalho ? [a.trabalho.blob] : [])]) await db.apagar("blobs", b);
   await db.apagar("arquivos", a.id);
+  await registrarExclusao(a.id, "arquivo");
   arquivos = arquivos.filter((x) => x !== a);
   sel = null;
   renderizar();
@@ -780,7 +777,7 @@ function novaPasta(pai = pastaAtual()) {
     if (subpastas(pai).some((p) => p.nome.toLowerCase() === nome.toLowerCase())) return "Já existe uma pasta com esse nome.";
     const p: Pasta = { id: uid(), nome, pai: pai === RAIZ ? null : pai };
     pastas.push(p);
-    await db.por("pastas", p);
+    await gravar("pastas", p);
     local = { tipo: "pasta", id: p.id };
     sel = null;
     renderizar();
@@ -792,7 +789,7 @@ function renomearPasta(id: string) {
   pedirTexto("Renomear pasta", "Nome da pasta", p.nome, async (nome) => {
     if (subpastas(p.pai ?? RAIZ).some((x) => x !== p && x.nome.toLowerCase() === nome.toLowerCase())) return "Já existe uma pasta com esse nome.";
     p.nome = nome;
-    await db.por("pastas", p);
+    await gravar("pastas", p);
     renderizar();
   });
 }
@@ -802,6 +799,7 @@ async function excluirPasta(id: string) {
   for (const k of ids) {
     pastas = pastas.filter((p) => p.id !== k);
     await db.apagar("pastas", k);
+    await registrarExclusao(k, "pasta");
   }
   if (local.tipo === "pasta" && ids.includes(local.id)) local = { tipo: "pasta", id: RAIZ };
   sel = null;
@@ -820,10 +818,20 @@ function configurar(primeiraVez = false) {
       rotulo: "OK", destaque: true, acao: (b) => {
         const u = (b.querySelector("#cf-u") as HTMLInputElement).value.trim();
         if (!u) return void casca.avisar("Informe o seu nome."), false;
+        const antigo = meta.usuario || "Usuário";
         meta.usuario = u;
+        // GO-OUTs feitos nos apps antes de o nome existir (ou com o nome antigo) passam a ser seus
+        if (antigo !== u) {
+          for (const a of arquivos) {
+            if (a.checkout?.usuario !== antigo) continue;
+            a.checkout.usuario = u;
+            historico(a, `GO-OUT transferido de ${antigo} para ${u}`);
+            void gravarArquivo(a);
+          }
+        }
         meta.nome = (b.querySelector("#cf-n") as HTMLInputElement).value.trim() || "Cofre local";
         meta.mascara = (b.querySelector("#cf-m") as HTMLInputElement).value.trim() || "12-####";
-        void db.por("meta", meta).then(renderizar);
+        void gravar("meta", meta).then(renderizar);
       },
     },
   ]);
@@ -849,7 +857,7 @@ async function importarCofre() {
     if (!confirm(`Substituir o cofre deste aparelho pela cópia de ${String(d.data).slice(0, 10)} (${d.arquivos.length} arquivos)? O conteúdo atual será apagado.`)) return;
     await db.limparTudo();
     for (const [id, b] of Object.entries(d.blobs as Record<string, { t: string; d: string }>)) await db.porBlob(id, deBase64(b.d, b.t));
-    for (const p of d.pastas) await db.por("pastas", p);
+    for (const p of d.pastas) await gravar("pastas", p);
     for (const a of d.arquivos) await db.por("arquivos", a);
     for (const i of d.itens) await db.por("itens", i);
     await db.por("meta", { ...d.meta, usuario: meta.usuario || d.meta.usuario });
@@ -895,10 +903,10 @@ const casca: Casca = new Casca({
   icone: "",
   extensao: "wjpdm",
   nomeDoc: () => meta.nome,
-  renomear: (n) => ((meta.nome = n), void db.por("meta", meta).then(renderizar)),
+  renomear: (n) => ((meta.nome = n), void gravar("meta", meta).then(renderizar)),
   novo: () => novaPasta(),
   abrir: () => void adicionarDoAparelho(),
-  salvar: () => void exportarCofre(),
+  salvar: () => void sincronizarAgora(),
   abas: [
     {
       id: "cofre", rotulo: "Cofre", grupos: [
@@ -939,6 +947,7 @@ const casca: Casca = new Casca({
       id: "ferramentas", rotulo: "Ferramentas", grupos: [
         [{ id: "usu", rotulo: "Usuário e cofre", icone: "nome", acao: () => configurar() }],
         [
+          { id: "copias", rotulo: "Cópias do cofre", icone: "pasta", dica: "Pendrive, Google Drive e pasta do tablet: escolher e sincronizar", acao: () => void abrirCopias(() => void carregar()) },
           { id: "exp", rotulo: "Exportar cofre", icone: "exportar", dica: "Cópia de segurança completa (.wjpdm)", acao: () => void exportarCofre() },
           { id: "imp", rotulo: "Restaurar cópia", icone: "importar", acao: () => void importarCofre() },
           { id: "arm", rotulo: "Armazenamento", icone: "pasta", acao: () => void armazenamento() },
@@ -958,12 +967,21 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 
+/** Iguala o cofre com pendrive, pasta do tablet e Drive (💾 / Ctrl+S). */
+async function sincronizarAgora() {
+  casca.avisar("Sincronizando o cofre…", 20000);
+  const m = await sincronizarCofre(true);
+  await carregar();
+  casca.avisar(m, 7000);
+}
+
 async function carregar() {
   meta = { ...meta, ...((await db.ler<Meta>("meta", "meta")) ?? {}) };
   pastas = await db.todos<Pasta>("pastas");
   arquivos = await db.todos<Arquivo>("arquivos");
   itens = await db.todos<Item>("itens");
-  sel = null;
+  // mantém a seleção se o registro continua existindo (recarga ao voltar para o WJPDM)
+  if (sel && !(sel.tipo === "arquivo" ? arquivos : sel.tipo === "pasta" ? pastas : itens).some((x) => x.id === sel!.id)) sel = null;
   renderizar();
 }
 
@@ -979,5 +997,8 @@ void (async () => {
   void navigator.storage?.persist?.();
 })();
 registrarOffline();
+// outro app salvou no cofre (ou a sincronia trouxe novidades): recarrega ao voltar para o WJPDM
+addEventListener("focus", () => db && void carregar().catch(() => {}));
+document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && db && void carregar().catch(() => {}));
 
 if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__pdm = { estado: () => ({ meta, pastas, arquivos, itens }), adicionar, carregar };

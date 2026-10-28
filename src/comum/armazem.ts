@@ -3,7 +3,7 @@
 
 export type Loja = string;
 /** Lojas do cofre do WJPDM. */
-export const LOJAS_PDM = ["meta", "pastas", "arquivos", "itens", "blobs"];
+export const LOJAS_PDM = ["meta", "pastas", "arquivos", "itens", "blobs", "exclusoes"];
 
 const req = <T>(r: IDBRequest<T>) =>
   new Promise<T>((ok, erro) => {
@@ -46,6 +46,9 @@ export class Armazem {
   }
   todos<T>(l: Loja): Promise<T[]> {
     return req(this.loja(l).getAll()) as Promise<T[]>;
+  }
+  chaves(l: Loja): Promise<string[]> {
+    return req(this.loja(l).getAllKeys()) as Promise<string[]>;
   }
   ler<T>(l: Loja, id: string): Promise<T | undefined> {
     return req(this.loja(l).get(id)) as Promise<T | undefined>;

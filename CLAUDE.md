@@ -109,11 +109,16 @@ listas de materiais do cofre do WJPDM. Tudo local no aparelho até o servidor (G
   Ferramentas → Dispositivo): cada perfil mostra só as adaptações do seu operador. Celular: ícones
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
-- **Locais de salvamento** (todas as faces, `src/comum/locais.ts`; tela em Ferramentas/📁): Salvar grava
-  no **pendrive** (pasta escolhida por face) **e no Google Drive**; se um faltar, grava no outro; se os
-  dois faltarem, abre a janela "Salvar como" (começa na pasta do aparelho escolhida). Cópias no Drive:
-  **5 últimas** por arquivo. Drive: aguarda o cliente OAuth (Google Cloud do Johann, escopo `drive.file`).
-  Drive **não** é banco de dados do WJPDM/WJERP: banco local + retrato no Drive; banco de verdade na G5.
+- **Cofre único (WJPDM):** todo arquivo de todos os apps vive no cofre do WJPDM (`src/comum/cofre.ts`).
+  Salvar (💾/Ctrl+S) grava a **cópia de trabalho** (arquivo novo entra na pasta da face — CAD,
+  Planilhas, Documentos, Apresentações, Cronogramas, ERP — já em GO-OUT); **GO-IN cria a versão**.
+  O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
+  Drive** e **pasta padrão do tablet** (3ª cópia). Ao salvar/conectar, as cópias se igualam
+  (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
+  alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
+  lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`
+  (índice e versões). Drive: aguarda o cliente OAuth (Google Cloud do Johann, escopo `drive.file`).
+  WJERP não é arquivo: banco local + cópia `ERP/WJERP.wjerp` no cofre; banco de verdade na G5.
 - **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
 - **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
