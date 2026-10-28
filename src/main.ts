@@ -35,7 +35,7 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
-import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, salvarNoCofre } from "./comum/cofre";
+import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, precisaToque, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import {
   ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
@@ -3898,6 +3898,8 @@ renderizarAbas();
 renderizarTudo();
 // painel do cofre na lateral direita: GO-OUT / GO-IN e arquivos em GO-OUT
 instalarPainelCofre("cad", salvarPeca);
+// sincronia global do cofre a cada abertura, depois que o kernel carregou (não disputa a rede)
+void sincronizarAoAbrir(kernel.pronto)?.then((m) => precisaToque(m) && avisar(`Sincronia ao abrir: ${m}`), () => {});
 
 // diagnóstico do aparelho (só onde o Johann ligou o modo: ?diag=1)
 {
