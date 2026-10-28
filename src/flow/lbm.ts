@@ -1,7 +1,7 @@
-// WJAirFlow: núcleo puro do método de Lattice-Boltzmann (D3Q19), testado em Node
-// (scripts/teste-airflow.ts). É a referência exata do shader da GPU (src/airflow/gpu.ts): mesma
+// WJFlow: núcleo puro do método de Lattice-Boltzmann (D3Q19), testado em Node
+// (scripts/teste-flow.ts). É a referência exata do shader da GPU (src/flow/gpu.ts): mesma
 // ordem de direções, mesmas populações deslocadas, mesmo contorno e mesma colisão, para a
-// autoverificação comparar os dois. Física e escopo: docs/global/wjairflow.md.
+// autoverificação comparar os dois. Física e escopo: docs/global/wjflow.md.
 //
 // Convenções:
 // - Unidades de rede: Δx = Δt = 1, cs² = 1/3, ν = cs²(τ − ½).

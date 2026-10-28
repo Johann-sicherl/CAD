@@ -1,4 +1,4 @@
-/* Casca comum dos apps do WJProMaster (WJPlan, WJWord, WJApresentation, WJCronProject, WJPDM, WJERP):
+/* Casca comum dos apps do WJProMaster (WJPlan, WJWrite, WJApresentation, WJCronProject, WJPDM, WJERP):
    tema claro, barra superior, faixa de comandos por abas, barra de status, janelas e avisos.
    Alvos de toque ≥ 44 px no tablet e no celular; compactos no computador. */
 :root {

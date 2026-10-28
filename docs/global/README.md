@@ -11,11 +11,11 @@ e identidade de objetos.
 | **WJCAD** | CAD paramétrico (antigo JLSCAD) | CAD paramétrico profissional | `.wjcad` (abre `.jlscad`/`.cadt`) | [cad.md](cad.md) + `docs/funcional/` |
 | **WJPDM** | diretório/cofre do WJCAD: versões, revisões, fluxos, itens, lista de materiais | PDM integrado ao CAD de referência | cofre no servidor | [pdm.md](pdm.md) |
 | **WJPlan** | planilhas com fórmulas avançadas | planilha eletrônica profissional | `.wjpl` | [planilha.md](planilha.md) |
-| **WJWord** | documentos com propriedades avançadas | processador de texto profissional | `.wjdoc` | [documentos.md](documentos.md) |
+| **WJWrite** | documentos com propriedades avançadas | processador de texto profissional | `.wjdoc` | [documentos.md](documentos.md) |
 | **WJApresentation** | apresentações | software de apresentações profissional | `.wjapn` | [apresentacoes.md](apresentacoes.md) |
 | **WJCronProject** | cronogramas e projetos | gerenciador de projetos com Gantt | `.wjcron` | [cronograma.md](cronograma.md) |
 | **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
-| **WJAirFlow** | escoamento de ar nas peças do WJCAD (túnel de vento virtual, dutos, EDF) | ferramentas de CFD | `.wjair` | [wjairflow.md](wjairflow.md) |
+| **WJFlow** | escoamento de ar nas peças do WJCAD (túnel de vento virtual, dutos, EDF) | ferramentas de CFD | `.wjflow` | [wjflow.md](wjflow.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
@@ -26,8 +26,7 @@ Legenda de status (igual à do CAD): ✅ existe · 🟡 parcial · **G0…G8** f
 
 ## 1. Princípios (valem para todas as faces)
 
-1. **Inspiração, nunca cópia.** (Atenção ao nome **WJWord**: "Word" é marca registrada de
-   processador de texto — risco de conflito de marca; ver §6.) O fluxo e o comportamento podem ser parecidos com os softwares de
+1. **Inspiração, nunca cópia.** (Nomes das faces e risco de marca: ver §6.) O fluxo e o comportamento podem ser parecidos com os softwares de
    referência, mas **não** se copia:
    - código, ícones, logotipos, cores de marca, textos de ajuda ou telas;
    - nomes registrados (ex.: "Excel", "Word", "PowerPoint", "Project", "Protheus", "SmartArt",
@@ -78,7 +77,7 @@ WJProMaster/
 │  ├─ inicio/          WJProMaster (hub): arquivos recentes, busca global, notificações, abrir qualquer face
 │  ├─ cad/             WJCAD (o app atual, movido de src/)
 │  ├─ planilha/        WJPlan
-│  ├─ documentos/      WJWord
+│  ├─ documentos/      WJWrite
 │  ├─ apresentacoes/   WJApresentation
 │  ├─ cronograma/      WJCronProject
 │  ├─ pdm/             WJPDM (explorador do cofre)
@@ -108,7 +107,7 @@ WJProMaster/
   - Durable Objects para colaboração em tempo real e travas de check-out.
   - Mantém a hospedagem atual (Cloudflare Pages). Se o volume do ERP pedir, avaliar Postgres
     gerenciado; essa decisão é do Johann.
-- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para WJWord, WJPlan, WJApresentation e
+- **Colaboração**: CRDT (Yjs, MIT, projeto conhecido) para WJWrite, WJPlan, WJApresentation e
   WJCronProject. O ERP é transacional no servidor e não usa CRDT.
 - **Linguagem**: TypeScript em tudo (cliente, servidor, motores). DOM puro como hoje. Um framework
   de UI só entra com justificativa (avaliar quando a Planilha/ERP crescer; Lit ou Preact seriam
@@ -134,7 +133,7 @@ WJProMaster/
 | **G0** Fundação | monorepo, `nucleo`, `icones`, `dados` local, hub WJProMaster, PWA único com rotas; CAD movido para `apps/cad` sem perder nada | base de tudo |
 | **G1** WJCAD | termina a Fase 4 (chapa) e a Fase 5 do CAD; propriedades personalizadas da peça (alimentam o WJPDM) | face que já existe |
 | **G2** WJPlan | `formulas` completo + planilha (grade, formatos, gráficos, tabelas, dinâmica, xlsx/csv) | o motor de fórmulas é usado por todas as outras faces |
-| **G3** WJWord | `texto-rico` + `paginacao` + documentos (estilos, sumário, campos, controle de alterações, docx/pdf) | base de texto para Apresentações e relatórios do ERP |
+| **G3** WJWrite | `texto-rico` + `paginacao` + documentos (estilos, sumário, campos, controle de alterações, docx/pdf) | base de texto para Apresentações e relatórios do ERP |
 | **G4** WJApresentation | slides, mestres, animações, apresentador, pptx/pdf | reaproveita texto rico e gráficos |
 | **G5** Servidor + WJPDM | contas, empresas, permissões, sync/colaboração, cofre do WJPDM, itens, revisões, estrutura, fluxos | liga o CAD ao mundo do ERP |
 | **G6** WJCronProject | EAP, CPM, recursos, linhas de base, valor agregado, MSPDI | usa servidor (recursos compartilhados) e fórmulas |
@@ -183,10 +182,11 @@ sugerir cronograma). Só entra se o Johann decidir, com chave/API configurável.
 ## 6. Nomes — observação de marca
 
 Os nomes WJ são do Johann (decisão de 24/10/2026). Antes de publicar ou registrar, vale uma busca
-no INPI: **WJWord** junta o prefixo a "Word", marca registrada de processador de texto na mesma
-classe de software, e é o nome com mais risco. Alternativas sem esse risco: WJDoc, WJTexto, WJWriter.
-"Project" (em WJCronProject) é palavra genérica, risco menor. Trocar o nome depois custa pouco
-(está concentrado na UI e nos docs); a extensão `.wjdoc` não depende dele.
-**WJAirFlow**: "Airflow" é marca da Apache Software Foundation (software de fluxos de dados), mesma
-classe de software; risco menor que o de WJWord por ser outra área. Alternativas: WJFlow, WJAero, WJVento
-(`wjairflow.md` §11).
+no INPI.
+
+- **28/10/2026:** o Johann trocou dois nomes para tirar o risco de marca:
+  - **WJWord → WJWrite** ("Word" é marca registrada de processador de texto);
+  - **WJAirFlow → WJFlow** ("Airflow" é marca da Apache Software Foundation).
+- "Write", "Flow" e "Project" (em WJCronProject) são palavras genéricas, e o risco delas é baixo.
+- Na UI do WJFlow, evitar nomes de produtos de CFD de terceiros (por exemplo, "Flow Simulation").
+- A extensão `.wjdoc` não mudou, porque não depende do nome.

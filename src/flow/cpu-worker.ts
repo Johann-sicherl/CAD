@@ -1,4 +1,4 @@
-// WJAirFlow: base de desempenho em CPU (uma thread, JavaScript), para comparar com a GPU e
+// WJFlow: base de desempenho em CPU (uma thread, JavaScript), para comparar com a GPU e
 // estimar o caminho sem WebGPU. Roda fora da thread da interface.
 import { LbmCpu, tunelEsfera } from "./lbm";
 

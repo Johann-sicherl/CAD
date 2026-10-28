@@ -1,10 +1,10 @@
-// WJAirFlow — protótipo de medição (fase A0 de docs/global/wjairflow.md).
+// WJFlow — protótipo de medição (fase A0 de docs/global/wjflow.md).
 // 1) Autoverificação: o shader da GPU tem de dar o mesmo resultado da referência em CPU (lbm.ts).
 // 2) Medição: passos/s e MLUPS (milhões de células atualizadas por segundo) em malhas crescentes,
 //    em FP32 e FP16, para dimensionar o túnel neste aparelho.
 // 3) Túnel ao vivo: esfera no túnel, plano central colorido pela velocidade.
 
-import "./airflow.css";
+import "./flow.css";
 import { LbmCpu, Q, bytesPorCelula, tunelEsfera, type Precisao } from "./lbm";
 import { LbmGpu, abrirGpu, cabe } from "./gpu";
 

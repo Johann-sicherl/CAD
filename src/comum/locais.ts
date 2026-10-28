@@ -9,7 +9,7 @@ import { Armazem } from "./armazem";
 
 export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", plan: "WJPlan", word: "WJWord", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP",
+  cad: "WJCAD", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP",
 };
 type Lugar = "pendrive" | "aparelho";
 
