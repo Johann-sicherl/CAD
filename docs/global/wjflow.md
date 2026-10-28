@@ -281,7 +281,7 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Armazenamento | Bytes/célula (2 buffers + tipo) | Observação |
 |---|---|---|
 | FP32 | 156 | referência |
-| **FP16** (`pack2x16float`, sem extensão) | **80** | populações deslocadas: diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
+| **FP16** (`pack2x16float`, sem extensão) | **80** | populações deslocadas **× 2¹⁴** (`ESCALA_FP16`): a Adreno zera subnormais do FP16, e sem a escala o escoamento some; diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
 | FP16 + esquema *in-place* (Esoteric Pull, Lehmann 2022) | ~42 | um buffer só; A5 |
 
 Memória × malha:
@@ -464,5 +464,14 @@ da Apache Software Foundation.
     direções desenroladas);
   - página `flow/` com autoverificação, medição, base em CPU e túnel ao vivo.
 - Verificado no Chromium (GPU por software): GPU = CPU dentro de 2·10⁻⁸ (FP32) e 2·10⁻⁵ (FP16).
-- ⏳ **Falta:** os números do TCL Tab A1 Plus. O Johann roda "Autoverificação" e "Medir
+- **TCL Tab A1 Plus, 1ª rodada (28/10/2026):**
+  - WebGPU ✓ (`qualcomm · adreno-6xx`), 128 MB por vínculo de buffer, `shader-f16` disponível.
+  - **FP32 igual à referência** (diferença de 2·10⁻⁸).
+  - **FP16 falhou** (3·10⁻⁴ e 1,8·10⁻⁴). A causa é que a Adreno zera números FP16 subnormais
+    (*flush-to-zero*, permitido pelo WebGPU), e as populações deslocadas pequenas viravam zero.
+  - O caso foi reproduzido em Node (`teste-flow`: com zeramento e sem escala dá exatamente o erro
+    do tablet) e corrigido guardando f̃·2¹⁴.
+  - O limite de 128 MB por vínculo restringe o FP32 a ≈ 1,7 M células (o FP16 a ≈ 3,5 M). A partir
+    da A1, dividir as populações em vários buffers tira esse limite, se for preciso.
+- ⏳ **Falta:** repetir a autoverificação com a correção e rodar a medição de desempenho no tablet. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.

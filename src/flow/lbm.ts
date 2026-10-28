@@ -261,5 +261,22 @@ export function escalar(l: number, u: number, celulasEmL: number, uRede = 0.05, 
 
 export type Precisao = "fp32" | "fp16";
 
+/**
+ * Escala das populações guardadas em FP16 (2¹⁴, exata). GPUs móveis podem zerar números FP16
+ * subnormais (< 6,1·10⁻⁵; "flush-to-zero", permitido pelo WebGPU e medido na Adreno 613), e as
+ * populações deslocadas vivem nessa faixa. Guardando f̃·2¹⁴, o menor normal vira 3,7·10⁻⁹ e o
+ * maior valor guardável, 4 (fisicamente |f̃| < 0,5). A precisão relativa (11 bits) não muda.
+ */
+export const ESCALA_FP16 = 16384;
+
+/** Arredonda para FP16 (ao par mais próximo), opcionalmente zerando subnormais como a GPU. */
+export function meia(v: number, zerarSubnormais = false): number {
+  const a = Math.abs(v);
+  if (a === 0 || !Number.isFinite(v)) return v;
+  if (a < 2 ** -14) return zerarSubnormais ? 0 : Math.sign(v) * Math.round(a * 2 ** 24) * 2 ** -24;
+  const q = 2 ** (Math.floor(Math.log2(a)) - 10);
+  return Math.sign(v) * Math.round(a / q) * q;
+}
+
 /** Bytes por célula: dois buffers de 19 populações + 4 bytes de tipo. */
 export const bytesPorCelula = (p: Precisao) => 2 * Q * (p === "fp32" ? 4 : 2) + 4;
