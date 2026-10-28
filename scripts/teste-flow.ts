@@ -1,5 +1,6 @@
 // Teste do núcleo do WJFlow em Node: propriedades da rede D3Q19 e casos com solução exata
 // (Taylor–Green, Poiseuille), conservação de massa, LES e conversão de unidades.
+import { cpNaSuperficie, imagemDoCorte, linhaDeCorrente, sementes, velocidadeEm, type Campo } from "../src/flow/campo";
 import { coeficientes, compactar, desserializar, estudoNovo, forcaReal, preparar, serializar, U_REDE } from "../src/flow/estudo";
 import { caixa, escreverStl, esfera, lerStl, montarDominio, paraTunel, propriedadesAr, voxelizar } from "../src/flow/geometria";
 import { AR, CX, CY, CZ, EQ, SAIDA, ESCALA_FP16, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, meia, meiaBits, meiaParaFloat, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
@@ -314,6 +315,48 @@ function taylorGreen(tau: number, cs: number, passos: number, regularizado = fal
   perto("arquivo .wjflow: mesmo nome", volta.estudo.nome === "Esfera" ? 1 : 0, 1, 0);
   const vt = volta.malha!.triangulos, vv = volta.malha!.vertices;
   perto("arquivo .wjflow: mesma geometria", vv[3 * vt[7] + 2], stl.vertices[3 * 7 + 2], 0);
+}
+
+// --- pós-processamento 3D: linhas de corrente, Cp na superfície, imagem do corte ---
+{
+  const nx = 40, ny = 20, nz = 20, n = nx * ny * nz, U = 0.05;
+  const campoCom = (f: (x: number, y: number, z: number) => [number, number, number, number], tipo = new Uint8Array(n)): Campo => {
+    const dados = new Float32Array(4 * n);
+    for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) dados.set(f(x, y, z), 4 * (x + nx * (y + ny * z)));
+    return { nx, ny, nz, dados, tipo, u: U };
+  };
+  // ar uniforme: linha reta até a saída
+  const reto = campoCom(() => [U, 0, 0, 0]);
+  const l1 = linhaDeCorrente(reto, [1, 7.3, 9.1]);
+  const fim = l1.pontos.slice(-3);
+  perto("linha de corrente reta: chega à saída", fim[0], nx - 1, 0.5);
+  perto("linha de corrente reta: y constante", fim[1], 7.3, 1e-9);
+  perto("linha de corrente: rapidez = 1 (U∞)", l1.rapidez[0], 1, 1e-6);
+  // bloco sólido no caminho: a linha para antes dele
+  const tipoBloco = new Uint8Array(n);
+  for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 20; x < 23; x++) tipoBloco[x + nx * (y + ny * z)] = SOLIDO;
+  const lb = linhaDeCorrente(campoCom(() => [U, 0, 0, 0], tipoBloco), [1, 10, 10]);
+  perto("linha de corrente: para na peça", lb.pontos[lb.pontos.length - 3] < 20 ? 1 : 0, 1, 0);
+  // rotação de corpo rígido em torno de (20, 10): a linha fica no círculo (RK2)
+  const giro = campoCom((x, y) => [-(y - 10) * 0.005, (x - 20) * 0.005, 0, 0]);
+  const lg = linhaDeCorrente(giro, [26, 10, 10], { passo: 0.25, maximo: Math.PI * 6 });
+  let desvio = 0;
+  for (let i = 0; i < lg.pontos.length; i += 3) desvio = Math.max(desvio, Math.abs(Math.hypot(lg.pontos[i] - 20, lg.pontos[i + 1] - 10) - 6));
+  perto("linha de corrente em rotação: fica no círculo (desvio em células)", desvio, 0, 0.05);
+  perto("velocidade interpolada no meio de 4 células", velocidadeEm(giro, 20.5, 10.5, 10)![0], -0.5 * 0.005, 1e-9);
+  perto("sementes: grade 3 × 3", sementes(2, 0, 9, 0, 9, 3).length, 9, 0);
+  // Cp na superfície: δρ uniforme que vale Cp = 1 → todos os vértices da esfera leem 1
+  const esf = esfera(5, [20, 10, 10], 12, 24);
+  const vx = voxelizar(esf, nx, ny, nz, 1, [0, 0, 0]);
+  const campoCp = campoCom(() => [0, 0, 0, 1.5 * U * U], vx.tipo);
+  const cps = cpNaSuperficie(campoCp, esf, (p) => p);
+  let ruins = 0;
+  for (const v of cps) if (!(Math.abs(v - 1) < 1e-6)) ruins++;
+  perto("Cp na superfície: todos os vértices acham o fluido e leem Cp = 1", ruins, 0, 0);
+  const img = imagemDoCorte(campoCp, 0, 10, "cp", 1);
+  perto("imagem do corte: tamanho nx × ny", img.rgba.length, 4 * nx * ny, 0);
+  const meio = 4 * ((ny - 1 - 10) * nx + 20);
+  perto("imagem do corte: centro da esfera em cinza", img.rgba[meio], Math.round(0.54 * 255), 1);
 }
 
 // --- unidades: carro de 4 m a 30 m/s com 200 células no comprimento ---

@@ -35,6 +35,15 @@ interface Simulacao {
   instavel: boolean;
 }
 let sim: Simulacao | null = null;
+// vista 3D (Three.js carregado só ao abrir)
+let modo3d = false;
+let vista: import("./vista3d").Vista3D | null = null;
+let geometriaDa3d: Preparo | null = null;
+let malhaCelulas: Malha | null = null;
+let campoAtual: Float32Array | null = null;
+let posOcupado = false;
+let ultimoCampo = 0;
+let posWorker: Worker | null = null;
 let ultimosResultados = 0;
 const corte = { plano: 0 as Plano, indice: -1, grandeza: "velocidade" as Grandeza };
 
@@ -171,6 +180,7 @@ function prepararAgora(): Promise<Preparo | null> {
       preparo = e.data.preparo ?? null;
       erroPreparo = e.data.erro ?? "";
       atualizarTudo();
+      if (modo3d) geometria3d();
       ok(preparo);
     };
     w.postMessage({ estudo, malha });
@@ -246,6 +256,7 @@ function laco() {
       ultimosResultados = agora;
       atualizarResultados();
     }
+    void atualizar3d();
     if (m.instavel) return concluir("O cálculo ficou instável (valores infinitos). Tente o modo Qualidade (malha mais fina) ou uma velocidade menor.");
     if (m.s.passos >= p.passosTotal) return concluir();
     if (m.rodando) m.quadro = requestAnimationFrame(laco);
@@ -263,6 +274,7 @@ function concluir(erro?: string) {
     estudo.resultado = { cd, cl, cs, forca: forcaReal(media, p), area: p.areaRef, re: p.re, travessias: m.s.passos / p.passosTravessia, data: new Date().toISOString(), instavel: !!erro || undefined };
     autosave();
   }
+  void atualizar3d(true);
   navigator.vibrate?.(200);
   casca.avisar(erro ?? "Cálculo concluído. Resultados com média na última travessia.", 7000);
   atualizarResultados();
@@ -274,6 +286,7 @@ function pausar() {
   sim.rodando = false;
   cancelAnimationFrame(sim.quadro);
   telaAtiva(false);
+  void atualizar3d(true);
   atualizarResultados();
   casca.renderizar();
 }
@@ -285,6 +298,7 @@ function pararSimulacao(descartar = true) {
   if (descartar) {
     sim.s.destruir();
     sim = null;
+    campoAtual = null;
     telaAtiva(false);
   }
 }
@@ -322,6 +336,7 @@ function aplicarCorte() {
   sim?.s.desenhar();
   desenharPrevia();
   legenda();
+  if (modo3d) void reprocessar3d();
 }
 
 function legenda() {
@@ -537,6 +552,79 @@ function textoResultados(): string {
 // ---------------------------------------------------------------------------------------------
 // casca
 
+// ---------------------------------------------------------------------------------------------
+// vista 3D
+
+async function mostrar3d(ligar: boolean) {
+  modo3d = ligar;
+  $("#fl-2d").setAttribute("aria-pressed", String(!ligar));
+  $("#fl-3d").setAttribute("aria-pressed", String(ligar));
+  $("#fl-3d-area").hidden = !ligar;
+  $(".fl-tela").hidden = ligar;
+  if (!ligar) return;
+  if (!vista) {
+    $("#fl-3d-info").textContent = "Carregando a vista 3D…";
+    const { Vista3D } = await import("./vista3d");
+    vista = new Vista3D($("#fl-3d-cena"));
+  }
+  geometria3d();
+  void atualizar3d(true);
+}
+
+/** Peça em coordenadas de célula e túnel na vista 3D (uma vez por preparo). */
+function geometria3d() {
+  if (!vista || !preparo) {
+    $("#fl-3d-info").textContent = malha ? "Montando o túnel…" : "Carregue uma peça para ver em 3D.";
+    return;
+  }
+  if (geometriaDa3d === preparo) return;
+  const { dx, dominio } = preparo;
+  const o = dominio.origem;
+  const v = preparo.malhaTunel.vertices;
+  const c = new Float32Array(v.length);
+  for (let i = 0; i < v.length; i += 3) {
+    c[i] = (v[i] - o[0]) / dx;
+    c[i + 1] = (v[i + 1] - o[1]) / dx;
+    c[i + 2] = (v[i + 2] - o[2]) / dx;
+  }
+  malhaCelulas = { vertices: c, triangulos: preparo.malhaTunel.triangulos };
+  vista.definirGeometria(malhaCelulas, dominio.nx, dominio.ny, dominio.nz);
+  geometriaDa3d = preparo;
+  campoAtual = null;
+  $("#fl-3d-info").textContent = sim ? "Lendo o campo…" : "Calcule o estudo para ver a pressão na peça e as linhas de corrente.";
+}
+
+/** Copia o campo da GPU (a cada ~4 s durante o cálculo, ou na hora) e reprocessa a vista 3D. */
+async function atualizar3d(agora = false) {
+  if (!modo3d || !vista || !sim || !preparo || posOcupado) return;
+  if (!agora && performance.now() - ultimoCampo < 4000) return;
+  ultimoCampo = performance.now();
+  const dados = await sim.s.campo();
+  if (!dados) return;
+  campoAtual = dados;
+  await reprocessar3d();
+}
+
+/** Cp na superfície, linhas e plano a partir do último campo, num worker. */
+async function reprocessar3d() {
+  if (!vista || !preparo || !campoAtual || !malhaCelulas || posOcupado) return;
+  geometria3d();
+  posOcupado = true;
+  const { nx, ny, nz, tipo } = preparo.dominio;
+  const linhas = $<HTMLInputElement>("#fl-c-linhas").checked ? +$<HTMLSelectElement>("#fl-densidade").value : 0;
+  const c = { plano: corte.plano, indice: corte.indice, grandeza: corte.grandeza, escalaVort: preparo.dominio.celulasNoCorpo / (8 * U_REDE) };
+  posWorker ??= new Worker(new URL("./pos-worker.ts", import.meta.url), { type: "module" });
+  const r = await new Promise<import("./pos-worker").RespostaPos>((ok) => {
+    posWorker!.onmessage = (e) => ok(e.data);
+    posWorker!.postMessage({ campo: { nx, ny, nz, dados: campoAtual, tipo, u: U_REDE }, malha: malhaCelulas, linhas, corte: c });
+  });
+  posOcupado = false;
+  if (!vista || geometriaDa3d !== preparo) return;
+  vista.atualizar(r, c);
+  const hora = new Date().toLocaleTimeString("pt-BR");
+  $("#fl-3d-info").textContent = `Peça colorida pelo Cp de −1 (azul, sucção) a +1 (vermelho, estagnação); nesta peça vai de ${Number.isFinite(r.cpMin) ? fmt(r.cpMin, 2) : "—"} a ${Number.isFinite(r.cpMax) ? fmt(r.cpMax, 2) : "—"}. Linhas coloridas pela velocidade (azul lento, vermelho rápido) · atualizado às ${hora}${sim?.rodando ? " (atualiza a cada ~4 s)" : ""}`;
+}
+
 function atualizarTudo() {
   renderizarPainel();
   aplicarCorte();
@@ -624,6 +712,21 @@ $<HTMLInputElement>("#fl-indice").oninput = (e) => {
   aplicarCorte();
 };
 addEventListener("resize", () => sim && preparo && atualizarResultados());
+$("#fl-2d").onclick = () => void mostrar3d(false);
+$("#fl-3d").onclick = () => void mostrar3d(true);
+const camadas = () => {
+  if (!vista) return;
+  vista.camadas = { cp: $<HTMLInputElement>("#fl-c-cp").checked, linhas: $<HTMLInputElement>("#fl-c-linhas").checked, plano: $<HTMLInputElement>("#fl-c-plano").checked };
+  vista.aplicarCamadas();
+};
+$("#fl-c-cp").onchange = camadas;
+$("#fl-c-plano").onchange = camadas;
+$("#fl-c-linhas").onchange = () => {
+  camadas();
+  void reprocessar3d();
+};
+$("#fl-densidade").onchange = () => void reprocessar3d();
+document.querySelectorAll<HTMLButtonElement>(".fl-vistas button").forEach((b) => (b.onclick = () => vista?.vista(b.dataset.v as "iso")));
 
 registrarMetrica("WJFlow", () => (sim ? `${fmt(sim.ritmo, 1)} passos/s · ${fmt((sim.ritmo * sim.s.n) / 1e6, 1)} MLUPS · passo ${fmt(sim.s.passos)}` : "parado"));
 registrarOffline();

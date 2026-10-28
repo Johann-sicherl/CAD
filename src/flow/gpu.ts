@@ -264,6 +264,22 @@ fn forca(@builtin(global_invocation_id) g: vec3<u32>, @builtin(local_invocation_
   return L.join("\n");
 }
 
+/** Campo macroscópico por célula (ux, uy, uz, δρ) para a vista 3D; sólido = 0. */
+function wgslMacro(precisao: Precisao): string {
+  return `${wgslBase(precisao, false)}
+@group(0) @binding(3) var<storage, read_write> saida: array<vec4<f32>>;
+@compute @workgroup_size(64)
+fn campoMacro(@builtin(global_invocation_id) g: vec3<u32>, @builtin(num_workgroups) ng: vec3<u32>) {
+  let c = g.x + g.y * ng.x * 64u;
+  if (c >= p.n) { return; }
+  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { saida[c] = vec4<f32>(0.0); return; }
+${Array.from({ length: Q }, (_, i) => `  let f${i} = ${carregar(precisao, i, "c")};`).join("\n")}
+  let dr = ${soma(() => 1)};
+  let ir = 1.0 / (1.0 + dr);
+  saida[c] = vec4<f32>((${soma((i) => CX[i])}) * ir, (${soma((i) => CY[i])}) * ir, (${soma((i) => CZ[i])}) * ir, dr);
+}`;
+}
+
 /**
  * Desenho do corte (uma célula por pixel; o navegador suaviza ao ampliar). Plano 0: x-y em
  * z = corte (vista de lado); plano 1: x-z em y = corte (vista de cima). Sólido em cinza.
@@ -362,6 +378,7 @@ export class LbmGpu {
   private despacho: [number, number, number];
   private atual = 0;
   private desenho?: { pipe: GPURenderPipeline; grupos: GPUBindGroup[]; ctx: GPUCanvasContext; canvas: HTMLCanvasElement };
+  private campoGpu?: { pipe: GPUComputePipeline; grupos: GPUBindGroup[]; saida: GPUBuffer; leitura: GPUBuffer; ocupado: boolean };
   private medicao?: { pipe: GPUComputePipeline; grupos: GPUBindGroup[]; parciais: GPUBuffer; leitura: GPUBuffer; nGrupos: number; ocupada: boolean };
   private g: [number, number, number] = [0, 0, 0];
   private corte = { plano: 0 as Plano, indice: 0, grandeza: "velocidade" as Grandeza, escala: 1, escalaVort: 1 };
@@ -494,6 +511,54 @@ export class LbmGpu {
   }
 
   /**
+   * Campo macroscópico atual (ux, uy, uz, δρ por célula, unidades de rede) copiado para a CPU:
+   * 16 bytes por célula (16 MB com 1 M células). Null se uma leitura anterior ainda está em curso.
+   */
+  async campo(): Promise<Float32Array | null> {
+    const d = this.device;
+    if (!this.campoGpu) {
+      const tam = this.n * 16;
+      const saida = d.createBuffer({ size: tam, usage: USO.STORAGE | USO.COPY_SRC });
+      const leitura = d.createBuffer({ size: tam, usage: USO.COPY_DST | USO.MAP_READ });
+      const modulo = d.createShaderModule({ code: wgslMacro(this.cfg.precisao) });
+      const pipe = d.createComputePipeline({ layout: "auto", compute: { module: modulo, entryPoint: "campoMacro" } });
+      const grupos = [0, 1].map((i) =>
+        d.createBindGroup({
+          layout: pipe.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.uniforme } },
+            { binding: 1, resource: { buffer: this.tipos } },
+            { binding: 2, resource: { buffer: this.buffers[i] } },
+            { binding: 3, resource: { buffer: saida } },
+          ],
+        }),
+      );
+      this.campoGpu = { pipe, grupos, saida, leitura, ocupado: false };
+    }
+    const k = this.campoGpu;
+    if (k.ocupado) return null;
+    k.ocupado = true;
+    const total = Math.ceil(this.n / 64);
+    const gx = Math.min(total, 65535), gy = Math.ceil(total / gx);
+    const enc = d.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(k.pipe);
+    pass.setBindGroup(0, k.grupos[this.atual]);
+    pass.dispatchWorkgroups(gx, gy);
+    pass.end();
+    enc.copyBufferToBuffer(k.saida, 0, k.leitura, 0, this.n * 16);
+    d.queue.submit([enc.finish()]);
+    try {
+      await k.leitura.mapAsync(MAPA_LEITURA);
+      const r = new Float32Array(k.leitura.getMappedRange().slice(0));
+      k.leitura.unmap();
+      return r;
+    } finally {
+      k.ocupado = false;
+    }
+  }
+
+  /**
    * Força do ar sobre os sólidos no estado atual (unidades de rede, por passo), por troca de
    * momento. Null se não houver sólido ou se uma leitura anterior ainda estiver em curso.
    */
@@ -610,6 +675,8 @@ export class LbmGpu {
   }
 
   destruir() {
+    this.campoGpu?.saida.destroy();
+    this.campoGpu?.leitura.destroy();
     this.medicao?.parciais.destroy();
     this.medicao?.leitura.destroy();
     for (const b of this.buffers) b.destroy();

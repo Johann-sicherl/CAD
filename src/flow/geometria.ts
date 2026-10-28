@@ -242,8 +242,9 @@ export function esfera(r: number, c: Vec3 = [0, 0, 0], nLat = 24, nLon = 48): Ma
   const id = (i: number, j: number) => i * nLon + (j % nLon);
   for (let i = 0; i < nLat; i++) {
     for (let j = 0; j < nLon; j++) {
-      if (i > 0) t.push(id(i, j), id(i + 1, j), id(i, j + 1));
-      if (i < nLat - 1) t.push(id(i, j + 1), id(i + 1, j), id(i + 1, j + 1));
+      // sentido anti-horário visto de fora: normais para fora (regra do STL)
+      if (i > 0) t.push(id(i, j), id(i, j + 1), id(i + 1, j));
+      if (i < nLat - 1) t.push(id(i, j + 1), id(i + 1, j + 1), id(i + 1, j));
     }
   }
   return { vertices: new Float32Array(v), triangulos: new Uint32Array(t) };
