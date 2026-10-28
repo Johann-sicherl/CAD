@@ -29,6 +29,12 @@ dos marcados; número de arquivos em GO-OUT na própria aba.
 ✅ **Sincronia global a cada abertura** de qualquer app (WJCAD depois do kernel carregar): iguala
 dispositivo, pendrive e Drive sem pedir nada; pendrive sem permissão ou Drive com login vencido
 (1 h) ficam para o próximo toque (salvar, GO-IN ou **Sincronizar agora** na aba Cofre), com aviso.
+✅ **Excluir pasta inteira** (menu da pasta, 🗑 ou Delete com a pasta selecionada): subpastas e
+arquivos juntos, com confirmação (avisa liberados e GO-OUTs seus; GO-OUT de outra pessoa impede).
+Os arquivos vão para a lixeira do cofre (30 dias; restaurados voltam para a raiz). As cópias
+espelham as pastas do cofre (também as vazias, `.wjpdm/pastas.json`): pasta excluída some da pasta
+do dispositivo e do pendrive (sem apagar o que alguém pôs lá à mão) e vai para a lixeira do Drive;
+pendrive desconectado recebe a exclusão quando for conectado.
 ✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
 dispositivo e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
 que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a

@@ -7,7 +7,7 @@
 //                  <raiz>/WJPDM/.wjpdm/blobs/<id>    ← conteúdo de cada versão (nunca muda)
 
 import { Armazem } from "./armazem";
-import { blobAtual, caminhoDoArquivo, indiceVazio, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
+import { blobAtual, caminhoDoArquivo, caminhosDasPastas, indiceVazio, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
 import type { Arquivo, Item, Pasta } from "../pdm/regras";
 
 // ---------- banco do aparelho ----------
@@ -144,10 +144,20 @@ export class RepositorioPasta implements Repositorio {
     await (await this.pastas()).blobs.removeEntry(id);
   }
 
-  /** Arquivos legíveis: grava o que mudou, apaga o que saiu ou mudou de lugar. */
+  /** Arquivos legíveis: grava o que mudou, apaga o que saiu ou mudou de lugar; pastas iguais às do cofre. */
   async gravarVisiveis(i: Indice, lerBlob: (id: string) => Promise<Blob | undefined>) {
     const { cofre, sis } = await this.pastas();
     const antes: Visiveis = JSON.parse((await lerTexto(sis, "visiveis.json")) ?? "{}");
+    // pastas do cofre (também as vazias): cria as novas
+    const pastasAntes: string[][] = JSON.parse((await lerTexto(sis, "pastas.json")) ?? "[]");
+    const pastasAgora = caminhosDasPastas(i);
+    const chave = (c: string[]) => JSON.stringify(c);
+    const tinha = new Set(pastasAntes.map(chave)), tem = new Set(pastasAgora.map(chave));
+    for (const c of pastasAgora) {
+      if (tinha.has(chave(c))) continue;
+      let d: FileSystemDirectoryHandle = cofre;
+      for (const n of c) d = await subpasta(d, n);
+    }
     const agora: Visiveis = {};
     const igual = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
     for (const a of i.arquivos) {
@@ -176,6 +186,19 @@ export class RepositorioPasta implements Repositorio {
         /* já não existia */
       }
     }
+    // pastas excluídas ou renomeadas no cofre: apaga do disco (as mais fundas primeiro). Sem
+    // "recursive": o que alguém pôs à mão lá dentro (fora do cofre) não é apagado.
+    for (const c of pastasAntes.filter((x) => !tem.has(chave(x))).sort((a, b) => b.length - a.length)) {
+      try {
+        let d: FileSystemDirectoryHandle = cofre;
+        for (const n of c.slice(0, -1)) d = await subpasta(d, n, false);
+        const n = c[c.length - 1];
+        await d.removeEntry(nomeSeguro(n)).catch(() => d.removeEntry(semAcentos(nomeSeguro(n))));
+      } catch {
+        /* já não existia ou tem arquivos de fora do cofre */
+      }
+    }
     await escrever(sis, "visiveis.json", JSON.stringify(agora));
+    await escrever(sis, "pastas.json", JSON.stringify(pastasAgora));
   }
 }
