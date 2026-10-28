@@ -794,9 +794,39 @@ function renomearPasta(id: string) {
     renderizar();
   });
 }
+/**
+ * Exclui a pasta com tudo o que tem dentro (subpastas e arquivos). Os arquivos vão para a lixeira
+ * (restauráveis por 30 dias; voltam para a raiz) e a exclusão chega às outras cópias do cofre
+ * (pasta do dispositivo, pendrive, Drive) na sincronia: lá somem a pasta e os arquivos.
+ */
 async function excluirPasta(id: string) {
+  if (id === RAIZ) return;
   const ids = descendentes(id);
-  if (arquivos.some((a) => ids.includes(a.pasta) && !a.lixeira)) return casca.avisar("A pasta (ou uma subpasta) tem arquivos: mova ou exclua os arquivos antes.", 5000);
+  const dentro = arquivos.filter((a) => ids.includes(a.pasta) && !a.lixeira);
+  const deOutros = dentro.filter((a) => a.checkout && a.checkout.usuario !== usuario());
+  if (deOutros.length)
+    return casca.avisar(`Não dá para excluir: em GO-OUT com outra pessoa — ${deOutros.map((a) => `${a.nome} (${a.checkout!.usuario})`).join(", ")}.`, 7000);
+  const liberados = dentro.filter((a) => a.estado === "liberado").length;
+  const meusGoOut = dentro.filter((a) => a.checkout).length;
+  const nome = pastas.find((p) => p.id === id)?.nome ?? "";
+  const partes = [
+    `Excluir a pasta "${nome}"${ids.length > 1 ? ` com ${ids.length - 1} subpasta(s)` : ""} e ${dentro.length} arquivo(s)?`,
+    dentro.length ? "Os arquivos vão para a lixeira do cofre (restauráveis por 30 dias, voltam para a raiz)." : "",
+    meusGoOut ? `${meusGoOut} em GO-OUT com você: o GO-OUT é encerrado e a cópia de trabalho vai junto para a lixeira.` : "",
+    liberados ? `Atenção: ${liberados} arquivo(s) LIBERADO(S) também serão excluídos.` : "",
+    "A pasta some também da pasta do dispositivo, do pendrive e do Google Drive na sincronia.",
+  ];
+  if (!confirm(partes.filter(Boolean).join("\n\n"))) return;
+  for (const a of dentro) {
+    if (a.checkout) {
+      delete a.checkout;
+      historico(a, "GO-OUT encerrado (pasta excluída)");
+    }
+    a.lixeira = true;
+    a.lixeiraData = agora();
+    historico(a, `Enviado para a lixeira com a pasta "${nome}" (destruído sozinho em 30 dias)`);
+    await gravarArquivo(a);
+  }
   for (const k of ids) {
     pastas = pastas.filter((p) => p.id !== k);
     await db.apagar("pastas", k);
@@ -805,6 +835,8 @@ async function excluirPasta(id: string) {
   if (local.tipo === "pasta" && ids.includes(local.id)) local = { tipo: "pasta", id: RAIZ };
   sel = null;
   renderizar();
+  casca.avisar(`Pasta "${nome}" excluída${dentro.length ? ` (${dentro.length} arquivo(s) na lixeira)` : ""}. Sincronizando…`, 20000);
+  void sincronizarCofre({ pedir: false, publicar: true }).then((m) => casca.avisar(m, 6000), () => {});
 }
 
 // ---------- ferramentas: usuário, máscara, cópia de segurança ----------
@@ -928,7 +960,7 @@ const casca: Casca = new Casca({
         [
           { id: "ren", rotulo: "Renomear", icone: "editar", peq: true, acao: exigeArquivo(renomearArquivo) },
           { id: "mov", rotulo: "Mover", icone: "pasta", peq: true, acao: exigeArquivo(moverArquivo) },
-          { id: "exc", rotulo: "Excluir", icone: "apagar", peq: true, dica: "Enviar para a lixeira", acao: exigeArquivo((a) => void excluirArquivo(a)) },
+          { id: "exc", rotulo: "Excluir", icone: "apagar", peq: true, dica: "Enviar para a lixeira (arquivo ou pasta inteira)", acao: () => (sel?.tipo === "pasta" ? void excluirPasta(sel.id) : exigeArquivo((a) => void excluirArquivo(a))()) },
         ],
       ],
     },
@@ -962,6 +994,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).closest("input, textarea, select") || document.querySelector(".wj-fundo")) return;
   const a = arquivoSel();
   if (e.key === "Delete" && a) void (a.lixeira ? destruir(a) : excluirArquivo(a));
+  else if (e.key === "Delete" && sel?.tipo === "pasta") void excluirPasta(sel.id);
   else if (e.key === "F2" && a) renomearArquivo(a);
   else if (e.key === "Enter" && a) void (APPS[extensao(a.nome)] ? abrirNoApp(a) : obter(a));
   else return;
