@@ -35,7 +35,7 @@ import { renderizarPainelEsboco } from "./esboco/painel";
 import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } from "./esboco/referencial";
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
-import { abrirLocais, salvarNosLocais } from "./comum/locais";
+import { abrirCopias, abrirDoCofre, desligar, salvarNoCofre } from "./comum/cofre";
 import {
   ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
   excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
@@ -3404,7 +3404,7 @@ nomeDoc.onchange = () => {
 
 const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => void }> = {
   novo: { rotulo: "Novo…", icone: "nova", fazer: abrirDialogoNovo },
-  abrir: { rotulo: "Abrir…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
+  abrir: { rotulo: "Abrir arquivo do aparelho…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: {
     rotulo: "Salvar (.wjcad)",
     icone: "salvar",
@@ -3412,12 +3412,14 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
     fazer: () => {
       capturarAtiva(doc);
       limparConfiguracoes(doc);
-      // pendrive + Drive; sem os dois, janela "Salvar como" (Ferramentas → Locais de salvamento)
+      // no cofre do WJPDM (cópia de trabalho) e iguala pendrive, Drive e pasta do tablet
       const dados = new Blob([JSON.stringify(doc, null, 2)], { type: "application/octet-stream" });
-      void salvarNosLocais("cad", `${doc.nome}.wjcad`, dados).then(avisar, (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
+      avisar("Salvando no cofre…");
+      void salvarNoCofre("cad", `${doc.nome}.wjcad`, dados).then(avisar, (e) => avisar(`Não foi possível salvar: ${(e as Error).message}`));
     },
   },
-  locais: { rotulo: "Locais de salvamento…", icone: "pasta", fazer: () => void abrirLocais("cad") },
+  locais: { rotulo: "Cópias do cofre (pendrive, Drive, tablet)…", icone: "pasta", fazer: () => void abrirCopias() },
+  abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad") },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
@@ -3519,6 +3521,7 @@ function abrirDialogoNovo() {
     if (aberto && doc.features.length && !confirm("Fechar a peça atual e começar uma nova? (o que não foi salvo em arquivo se perde)")) return;
     fechar();
     const d = documentoVazio();
+    desligar("cad"); // peça nova: o próximo salvar cria um arquivo no cofre
     d.nome = `Peça${++contadorPecas}`;
     abrirDocumento(d);
   };
@@ -3694,9 +3697,9 @@ function atualizarAreaDeTrabalho() {
   $("tela-inicial").hidden = aberto;
   if (aberto) return;
   $("ti-novo").innerHTML = `${ICONES.nova}<span>Novo…</span>`;
-  $("ti-abrir").innerHTML = `${ICONES.abrir}<span>Abrir…</span>`;
+  $("ti-abrir").innerHTML = `${ICONES.pasta}<span>Abrir do cofre…</span>`;
   $("ti-novo").onclick = abrirDialogoNovo;
-  $("ti-abrir").onclick = ACOES.abrir.fazer;
+  $("ti-abrir").onclick = ACOES.abrirCofre.fazer;
   const disp = DISPOSITIVOS.find((d) => d.id === prefs.dispositivo);
   $("ti-dispositivo").innerHTML = disp ? `${ICONES[disp.icone]}<span>Usando: ${disp.rotulo} · trocar</span>` : "";
   $("ti-dispositivo").onclick = () => escolherDispositivo(false);
@@ -3705,7 +3708,7 @@ function atualizarAreaDeTrabalho() {
   const ultimo = carregarAutosave();
   const itens: [string, string, () => void][] = [];
   if (ultimo && ultimo.features.length) itens.push([ultimo.nome, "último documento", () => abrirDocumento(ultimo)]);
-  itens.push(["Peça exemplo", "exemplo", () => abrirDocumento(documentoExemplo())]);
+  itens.push(["Peça exemplo", "exemplo", () => (desligar("cad"), abrirDocumento(documentoExemplo()))]);
   recentes.append(Object.assign(document.createElement("h3"), { textContent: "Recentes" }));
   for (const [nome, nota, fazer] of itens) {
     const b = document.createElement("button");
@@ -3719,6 +3722,7 @@ function atualizarAreaDeTrabalho() {
 $<HTMLInputElement>("arquivo").onchange = async (ev) => {
   const arq = (ev.target as HTMLInputElement).files?.[0];
   if (!arq) return;
+  desligar("cad"); // veio do aparelho: ao salvar entra no cofre como arquivo novo
   try {
     let dados: unknown;
     try {
