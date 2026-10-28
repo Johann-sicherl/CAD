@@ -36,6 +36,7 @@ import { eixoXParaNormal, escalar, paraMundo, planosResolvidos, referencial } fr
 import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
 import { abrirCopias, abrirDoCofre, desligar, salvarNoCofre } from "./comum/cofre";
+import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
 import {
   ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
   excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
@@ -137,6 +138,8 @@ type FerramentaAvaliar =
 /** Sem documento aberto o app mostra só a área de trabalho limpa (Novo / Abrir). */
 let aberto = false;
 let doc: Documento = documentoVazio();
+/** Tempo (ms) da última reconstrução, para a janela de diagnóstico. */
+let ultimaReconstrucao: number | null = null;
 let selecao: Selecao = null;
 /** Outros itens da seleção múltipla da árvore (Ctrl/Shift); `selecao` é o último tocado. */
 let selExtras: NonNullable<Selecao>[] = [];
@@ -243,6 +246,7 @@ function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   $("st-volume").textContent =
     r.volume !== null ? `Volume: ${(r.volume / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} cm³` : "";
   $("st-tempo").textContent = `Reconstrução: ${ms.toFixed(0)} ms`;
+  ultimaReconstrucao = ms;
   atualizarStatus();
   renderizarArvore();
   if (!editor) desenharEsbocos();
@@ -3883,6 +3887,15 @@ if (location.hash === "#abrir-autosave") {
 mostrarPainel("arvore");
 renderizarAbas();
 renderizarTudo();
+
+// diagnóstico do aparelho (só onde o Johann ligou o modo: ?diag=1)
+{
+  const b = botaoDiagnostico("btn-ic");
+  if (b) {
+    document.querySelector(".barra-topo")!.append(b);
+    registrarMetrica("Última reconstrução", () => (ultimaReconstrucao === null ? null : `${ultimaReconstrucao.toFixed(0)} ms (${doc.features.length} recursos)`));
+  }
+}
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
