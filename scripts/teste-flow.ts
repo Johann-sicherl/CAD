@@ -1,6 +1,6 @@
 // Teste do núcleo do WJFlow em Node: propriedades da rede D3Q19 e casos com solução exata
 // (Taylor–Green, Poiseuille), conservação de massa, LES e conversão de unidades.
-import { AR, CX, CY, CZ, EQ, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
+import { AR, CX, CY, CZ, EQ, ESCALA_FP16, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, meia, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
 
 let falhas = 0;
 function perto(nome: string, obtido: number, esperado: number, tol: number) {
@@ -127,6 +127,36 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
   const m0 = s.massa();
   for (let t = 0; t < 200; t++) s.passo();
   perto("massa conservada (erro relativo)", Math.abs(s.massa() - m0) / m0, 0, 1e-5);
+}
+
+// --- armazenamento FP16 em GPU que zera subnormais (Adreno 613, medido no tablet do Johann) ---
+{
+  // canal da autoverificação: populações ~10⁻⁴, metade delas na faixa subnormal do FP16
+  const canal = () => {
+    const t = new Uint8Array(16 * 12 * 8);
+    for (let z = 0; z < 8; z++) for (let x = 0; x < 16; x++) {
+      t[x + 16 * (0 + 12 * z)] = SOLIDO;
+      t[x + 16 * (11 + 12 * z)] = SOLIDO;
+    }
+    return new LbmCpu({ nx: 16, ny: 12, nz: 8, tau: 0.8, g: [2e-5, 0, 0] }, t);
+  };
+  const erroFp16 = (escala: number) => {
+    const ref = canal(), s = canal();
+    let e = 0, m = 0;
+    for (let t = 0; t < 60; t++) {
+      ref.passo();
+      s.passo();
+      for (let j = 0; j < s.f.length; j++) s.f[j] = meia(s.f[j] * escala, true) / escala;
+    }
+    for (let j = 0; j < s.f.length; j++) {
+      e = Math.max(e, Math.abs(s.f[j] - ref.f[j]));
+      m = Math.max(m, Math.abs(ref.f[j]));
+    }
+    return e / m;
+  };
+  perto("FP16 com zeramento, sem escala: perde o escoamento (reproduz a falha do tablet)", erroFp16(1) > 0.5 ? 1 : 0, 1, 0);
+  perto("FP16 com zeramento, escala 2¹⁴: erro relativo", erroFp16(ESCALA_FP16), 0, 1e-3);
+  perto("FP16: arredondamento de 1/3", meia(1 / 3), 0.333251953125, 0);
 }
 
 // --- unidades: carro de 4 m a 30 m/s com 200 células no comprimento ---

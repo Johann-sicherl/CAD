@@ -5,10 +5,11 @@
 //
 // Precisão de armazenamento (a conta é sempre em f32):
 // - fp32: f[i·n + c];
-// - fp16: duas células vizinhas em x na mesma palavra u32 (pack2x16float), f[i·n/2 + c/2].
+// - fp16: duas células vizinhas em x na mesma palavra u32 (pack2x16float), f[i·n/2 + c/2],
+//   guardadas multiplicadas por ESCALA_FP16 (GPUs móveis zeram subnormais; ver lbm.ts).
 //   Cada thread cuida de um par de células (nx par), então nunca duas threads escrevem a mesma palavra.
 
-import { CX, CY, CZ, EQ, Q, SOLIDO, W, equilibrio, opp, smagorinsky, type Precisao } from "./lbm";
+import { CX, CY, CZ, EQ, ESCALA_FP16, Q, SOLIDO, W, equilibrio, opp, smagorinsky, type Precisao } from "./lbm";
 
 export interface ConfigGpu {
   nx: number;
@@ -38,7 +39,7 @@ function wgslBase(precisao: Precisao, leituraEscrita: boolean): string {
     ? `fn ld(i: u32, c: u32) -> f32 { return fa[i * p.n + c]; }`
     : `fn ld(i: u32, c: u32) -> f32 {
   let v = unpack2x16float(fa[i * (p.n / 2u) + (c >> 1u)]);
-  return select(v.x, v.y, (c & 1u) == 1u);
+  return select(v.x, v.y, (c & 1u) == 1u) * ${num(1 / ESCALA_FP16)};
 }`;
   return `
 struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, gx: u32, gxf: f32, gyf: f32, gzf: f32, z: u32, escala: f32, pad: u32 };
@@ -126,7 +127,7 @@ function wgslEq(): string {
 function wgslPasso(precisao: Precisao): string {
   const gravar = precisao === "fp32"
     ? `for (var i = 0u; i < 19u; i++) { fb[i * p.n + c0] = a[i]; fb[i * p.n + c0 + 1u] = b[i]; }`
-    : `for (var i = 0u; i < 19u; i++) { fb[i * (p.n / 2u) + k] = pack2x16float(vec2<f32>(a[i], b[i])); }`;
+    : `for (var i = 0u; i < 19u; i++) { fb[i * (p.n / 2u) + k] = pack2x16float(vec2<f32>(a[i], b[i]) * ${num(ESCALA_FP16)}); }`;
   return `${wgslBase(precisao, true)}
 ${wgslEq()}
 ${wgslCelula()}
@@ -320,7 +321,7 @@ export class LbmGpu {
     if (this.cfg.precisao === "fp32") return new Float32Array(bruto);
     const h = new Uint16Array(bruto);
     const out = new Float32Array(Q * this.n);
-    for (let j = 0; j < out.length; j++) out[j] = meiaParaFloat(h[j]);
+    for (let j = 0; j < out.length; j++) out[j] = meiaParaFloat(h[j]) / ESCALA_FP16;
     return out;
   }
 
