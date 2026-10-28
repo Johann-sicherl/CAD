@@ -302,9 +302,19 @@ Memória × malha:
 
 ### 4.6 Resultados e pós-processamento
 
-- **Planos de corte** (velocidade, Cp, vorticidade, pressão total) com toque para ler o valor;
-  **linhas de corrente** 3D com sementes arrastáveis; **Cp na superfície** da peça; isosuperfície
-  do critério Q (vórtices).
+- **Planos de corte ✅** (velocidade, componente na direção do ar, Cp, vorticidade), em 2D ou
+  dentro da vista 3D; falta tocar para ler o valor.
+- **Vista 3D ✅** (Three.js, carregado só ao abrir; câmera ortográfica; giro, zoom e deslocamento
+  como no WJCAD; vistas Iso, Lado, Cima e Frente):
+  - **Cp na superfície** da peça (escala de −1 a +1): lê a primeira célula de fluido ao longo da
+    normal de cada vértice;
+  - **linhas de corrente 3D** (RK2 com interpolação trilinear; grade de 8², 12² ou 18² sementes
+    antes da peça), coloridas pela velocidade;
+  - **plano de corte** posicionado no túnel.
+  - O campo (ux, uy, uz, δρ por célula, 16 B/célula) é copiado da GPU a cada ~4 s durante o
+    cálculo e na hora ao pausar ou concluir; o pós-processamento roda num worker
+    (`src/flow/campo.ts`, testado em Node).
+  - Falta: sementes arrastáveis e isosuperfície do critério Q (A5).
 - **Forças e coeficientes** (Cd, Cl, Cs, Cm) com histórico de convergência e **média temporal**
   (a partir da 2ª travessia).
 - **Metas** (como em ferramentas de CFD profissionais): força, vazão, Δp entre duas faces,

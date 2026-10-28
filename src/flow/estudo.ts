@@ -100,6 +100,8 @@ export interface Preparo {
   precisao: Precisao;
   /** comprimento da peça na direção do ar (m) */
   comprimento: number;
+  /** a peça orientada e em metros, no sistema do túnel (vista 3D) */
+  malhaTunel: Malha;
 }
 
 /** Orienta, escala para metros e monta o túnel do estudo. */
@@ -133,6 +135,7 @@ export function preparar(e: Estudo, malha: Malha): Preparo {
     esponja: { x0: dominio.nx - 1 - larguraEsponja, dtau: 0.5, sigma: 0.1, entrada: Math.max(4, Math.round(0.06 * dominio.nx)) },
     precisao: modo.precisao,
     comprimento: dominio.comprimento,
+    malhaTunel: { vertices: v, triangulos: orientada.triangulos },
   };
 }
 

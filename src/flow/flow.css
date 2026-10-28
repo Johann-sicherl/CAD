@@ -19,7 +19,7 @@
 .fl-fatia input { flex: 1; min-height: 32px; }
 .fl-tela { flex: none; position: relative; background: #f4f6f8; border: 1px solid var(--linha); border-radius: 10px; min-height: 160px; display: grid; place-items: center; overflow: hidden; }
 .fl-canvas { width: 100%; height: auto; max-height: 62vh; object-fit: contain; display: block; image-rendering: auto; }
-.fl-canvas[hidden] { display: none; }
+.fl-canvas[hidden], .fl-tela[hidden] { display: none; }
 .fl-vazio { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--texto-2); }
 .fl-vazio:empty { display: none; }
 .fl-legenda { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--texto-2); }
@@ -34,6 +34,19 @@
 .fl-progresso { grid-column: 1 / -1; font-size: 14px; }
 .fl-progresso .barra { height: 8px; border-radius: 4px; background: var(--painel-2); border: 1px solid var(--linha); overflow: hidden; margin-top: 4px; }
 .fl-progresso .barra i { display: block; height: 100%; background: var(--acento); }
+.fl-modo { display: inline-flex; border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; }
+.fl-modo button { border: 0; border-radius: 0; min-height: 38px; }
+.fl-modo button[aria-pressed="true"] { background: var(--acento); color: #fff; font-weight: 600; }
+.fl-3d { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.fl-3d[hidden] { display: none; }
+.fl-3d-barra { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 14px; color: var(--texto-2); }
+.fl-3d-barra label { display: inline-flex; gap: 6px; align-items: center; min-height: 36px; }
+.fl-3d-barra input[type="checkbox"] { width: 20px; height: 20px; }
+.fl-vistas { display: inline-flex; gap: 4px; }
+.fl-vistas button { min-height: 36px; padding: 0 10px; }
+.fl-3d-cena { height: 62vh; min-height: 260px; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; touch-action: none; background: #f4f6f8; }
+.fl-3d-cena canvas { width: 100%; height: 100%; display: block; }
+.fl-3d-info { margin: 0; font-size: 13px; color: var(--texto-2); }
 @media (max-width: 760px) {
   .fl-principal { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .fl-painel { border-right: 0; border-bottom: 1px solid var(--linha); overflow: visible; }

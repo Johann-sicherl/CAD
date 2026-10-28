@@ -13,6 +13,10 @@
       <aside id="fl-painel" class="fl-painel" aria-label="Estudo"></aside>
       <section class="fl-vista">
         <div class="fl-controles">
+          <div class="fl-modo" role="group" aria-label="Vista">
+            <button id="fl-2d" aria-pressed="true">Corte 2D</button>
+            <button id="fl-3d" aria-pressed="false">Vista 3D</button>
+          </div>
           <select id="fl-plano" aria-label="Plano do corte">
             <option value="0">Vista lateral (plano x-y)</option>
             <option value="1">Vista superior (plano x-z)</option>
@@ -24,6 +28,23 @@
           <canvas id="fl-previa" class="fl-canvas"></canvas>
           <canvas id="fl-gpu" class="fl-canvas" hidden></canvas>
           <div id="fl-vazio" class="fl-vazio"></div>
+        </div>
+        <div id="fl-3d-area" class="fl-3d" hidden>
+          <div class="fl-3d-barra">
+            <label><input type="checkbox" id="fl-c-cp" checked /> Pressão na peça (Cp)</label>
+            <label><input type="checkbox" id="fl-c-linhas" checked /> Linhas de corrente</label>
+            <select id="fl-densidade" aria-label="Quantidade de linhas">
+              <option value="8">8 × 8 linhas</option>
+              <option value="12" selected>12 × 12 linhas</option>
+              <option value="18">18 × 18 linhas</option>
+            </select>
+            <label><input type="checkbox" id="fl-c-plano" checked /> Plano de corte</label>
+            <span class="fl-vistas">
+              <button data-v="iso" title="Isométrica">Iso</button><button data-v="lado" title="Vista de lado">Lado</button><button data-v="cima" title="Vista de cima">Cima</button><button data-v="frente" title="Vista de frente (de onde vem o ar)">Frente</button>
+            </span>
+          </div>
+          <div id="fl-3d-cena" class="fl-3d-cena"></div>
+          <p id="fl-3d-info" class="fl-3d-info"></p>
         </div>
         <div class="fl-legenda"><span id="fl-leg-min"></span><i id="fl-leg-barra"></i><span id="fl-leg-max"></span></div>
         <div id="fl-resultados" class="fl-resultados"></div>
