@@ -228,7 +228,8 @@ modelo é o mesmo); duto com bocal contra dados de catálogo.
 | BGK | ✅ | O mais simples. Instável quando τ → ½. |
 | BGK + **LES Smagorinsky** (Hou et al. 1996) | ✅ | τ_ef = ½(τ₀ + √(τ₀² + 18√2 Cs² \|Π\|/ρ)), Cs ≈ 0,1–0,17, com Π = Σcᵢcᵢ(fᵢ − fᵢᵉᵠ). Barato: o tensor de tensões já sai das populações, sem derivada numérica. |
 | TRT | A5 | Corrige o erro de parede dependente de τ. |
-| Regularizado ou cumulante (Geier 2015) | A5 | Estável em Re alto com τ ≈ ½. Recomendado para carros e aviões. |
+| **Regularizado** (Latt & Chopard 2006) + LES | ✅ (A1, padrão do app) | f* = fᵉᵠ + (1 − ω)·wᵢ·(3cᵢ·Jⁿᵉᵠ + 4,5 Qᵢ:Πⁿᵉᵠ). Elimina os modos "fantasma" que viravam ruído em xadrez e instabilidade com τ₀ ≈ ½ (Re 10⁵, peça do WJCAD). Jⁿᵉᵠ = −g/2 com força: sem esse termo, o impulso da força de Guo vira g·(1,5 − ω/2) (o Poiseuille errava 41 % com τ = 0,55; com o termo, ≤ 0,8 % em τ de 0,55 a 1,2) |
+| Cumulante (Geier 2015) | A5 | Mais preciso em Re alto; só se o regularizado não bastar. |
 | WALE | A5 | Substitui o Smagorinsky perto de paredes (amortece a viscosidade turbulenta). |
 
 ### 4.2 Escala: do problema real para a rede (`escalar()` ✅)
@@ -256,7 +257,7 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Parede sólida parada | bounce-back no meio do caminho (2ª ordem em paredes alinhadas, "escada" em curvas) | ✅ |
 | Parede curva precisa | bounce-back interpolado (Bouzidi 2001), usando a distância real à superfície da malha | A5 |
 | Parede móvel (solo móvel, roda) | bounce-back com termo de velocidade: −2wᵢρ(cᵢ·u_w)/cs² | A4 |
-| Entrada de velocidade/vazão | equilíbrio imposto ✅; regularizado (Latt 2008) em A5 | 🟡 |
+| Entrada de velocidade/vazão | equilíbrio imposto ✅, com **partida suave**: o ar começa parado e a velocidade das bordas sobe de 0 a U∞ (cosseno) no primeiro quarto de travessia, para reduzir as ondas de pressão da partida; regularizado (Latt 2008) em A5 | 🟡 |
 | Saída de pressão | equilíbrio com ρ = 1 e a velocidade da célula anterior (gradiente nulo) ✅ | ✅ |
 | Laterais do túnel | equilíbrio da corrente livre ✅; deslizamento livre (simetria) depois | 🟡 |
 | Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 (falta) |

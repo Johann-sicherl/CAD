@@ -47,9 +47,9 @@ void m1;
 }
 
 // --- Taylor–Green 2D (periódico): u decai com exp(−2νk²t), confirma ν = cs²(τ − ½) ---
-function taylorGreen(tau: number, cs: number, passos: number): { medido: number; teorico: number } {
+function taylorGreen(tau: number, cs: number, passos: number, regularizado = false): { medido: number; teorico: number } {
   const L = 32, u0 = 0.02, k = (2 * Math.PI) / L;
-  const s = new LbmCpu({ nx: L, ny: L, nz: 2, tau, cs });
+  const s = new LbmCpu({ nx: L, ny: L, nz: 2, tau, cs, regularizado });
   for (let z = 0; z < 2; z++) {
     for (let y = 0; y < L; y++) {
       for (let x = 0; x < L; x++) {
@@ -78,6 +78,8 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
   perto("Taylor–Green τ=0,8: decaimento / teórico", tg.medido / tg.teorico, 1, 0.01);
   const tg2 = taylorGreen(0.55, 0, 400);
   perto("Taylor–Green τ=0,55: decaimento / teórico", tg2.medido / tg2.teorico, 1, 0.01);
+  const reg = taylorGreen(0.55, 0, 400, true);
+  perto("Taylor–Green regularizado τ=0,55: decaimento / teórico (mesma viscosidade)", reg.medido / reg.teorico, 1, 0.01);
   const les = taylorGreen(0.55, 0.17, 400);
   perto("LES de Smagorinsky dissipa mais que o BGK puro", les.medido < tg2.medido ? 1 : 0, 1, 0);
 }
@@ -92,6 +94,8 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
   }
   const s = new LbmCpu({ nx: 2, ny, nz: 1, tau, g: [gx, 0, 0] }, tipo);
   for (let t = 0; t < 12000; t++) s.passo();
+  const sr = new LbmCpu({ nx: 2, ny, nz: 1, tau, g: [gx, 0, 0], regularizado: true }, tipo);
+  for (let t = 0; t < 12000; t++) sr.passo();
   const nu = (tau - 0.5) / 3;
   // paredes no meio do caminho: y = 0,5 e y = ny − 1,5 → H = ny − 2
   const H = ny - 2;
@@ -103,6 +107,12 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
     erroMax = Math.max(erroMax, Math.abs(s.macro(2 * y).ux - teor) / umax);
   }
   perto("Poiseuille: erro máx. / u_máx", erroMax, 0, 0.01);
+  let erroReg = 0;
+  for (let y = 1; y < ny - 1; y++) {
+    const yy = y - 0.5;
+    erroReg = Math.max(erroReg, Math.abs(sr.macro(2 * y).ux - (gx / (2 * nu)) * yy * (H - yy)) / umax);
+  }
+  perto("Poiseuille regularizado: erro máx. / u_máx", erroReg, 0, 0.01);
   // troca de momento: em regime, a força nas paredes iguala a força de corpo total no fluido
   const nFluido = 2 * (ny - 2);
   const [fx, fy] = s.forcaNosSolidos();

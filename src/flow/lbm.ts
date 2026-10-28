@@ -49,6 +49,13 @@ export interface ParametrosLbm {
   g?: [number, number, number];
   /** Zona esponja: de x0 até a saída, τ₀ cresce até τ₀ + dtau (quadrático), amortecendo a esteira. */
   esponja?: { x0: number; dtau: number };
+  /**
+   * Colisão regularizada (Latt & Chopard, 2006): a parte fora do equilíbrio é projetada no tensor
+   * de tensões, f̃ⁿᵉᵠ ≈ wᵢ·(3·cᵢ·Jⁿᵉᵠ + (9/2)·Qᵢ:Π), com Qᵢ = cᵢcᵢ − cs²·I (Jⁿᵉᵠ = −g/2 só com
+   * força). Mesma viscosidade do BGK, mas sem os
+   * modos "fantasma" que viram ruído em xadrez e instabilidade quando τ → ½ (Re alto).
+   */
+  regularizado?: boolean;
 }
 
 /** f̃ᵉᵠ (deslocado) da direção i, com δρ = ρ − 1. */
@@ -72,6 +79,7 @@ export class LbmCpu {
   u: [number, number, number];
   forca: [number, number, number];
   esponja: { x0: number; dtau: number } | null;
+  regularizado: boolean;
   passos = 0;
 
   constructor(p: ParametrosLbm, tipo?: Uint8Array) {
@@ -85,6 +93,7 @@ export class LbmCpu {
     this.u = p.u ?? [0, 0, 0];
     this.forca = p.g ?? [0, 0, 0];
     this.esponja = p.esponja ?? null;
+    this.regularizado = !!p.regularizado;
     this.f = new Float32Array(Q * this.n);
     this.g = new Float32Array(Q * this.n);
     this.iniciar();
@@ -209,8 +218,8 @@ export class LbmCpu {
     const ux = (jx + 0.5 * gx) / rho, uy = (jy + 0.5 * gy) / rho, uz = (jz + 0.5 * gz) / rho;
     for (let i = 0; i < Q; i++) fe[i] = equilibrio(i, dr, ux, uy, uz);
     let tau = tau0;
-    if (k > 0) {
-      let xx = 0, yy = 0, zz = 0, xy = 0, xz = 0, yz = 0;
+    let xx = 0, yy = 0, zz = 0, xy = 0, xz = 0, yz = 0;
+    if (k > 0 || this.regularizado) {
       for (let i = 0; i < Q; i++) {
         const d = fi[i] - fe[i];
         xx += CX[i] * CX[i] * d;
@@ -220,12 +229,20 @@ export class LbmCpu {
         xz += CX[i] * CZ[i] * d;
         yz += CY[i] * CZ[i] * d;
       }
+    }
+    if (k > 0) {
       const pi = Math.sqrt(xx * xx + yy * yy + zz * zz + 2 * (xy * xy + xz * xz + yz * yz));
       tau = 0.5 * (tau + Math.sqrt(tau * tau + (k * pi) / rho));
     }
     const w = 1 / tau;
+    const tr = (xx + yy + zz) / 3;
+    // 1º momento fora do equilíbrio (= −g/2 com a força de Guo): a projeção precisa mantê-lo,
+    // senão parte da força some (o impulso efetivo viraria g·(1,5 − ω/2))
+    const nx = jx - rho * ux, ny = jy - rho * uy, nz = jz - rho * uz;
     for (let i = 0; i < Q; i++) {
-      let s = fi[i] + w * (fe[i] - fi[i]);
+      let s = this.regularizado
+        ? fe[i] + (1 - w) * W[i] * (3 * (CX[i] * nx + CY[i] * ny + CZ[i] * nz) + 4.5 * (CX[i] * CX[i] * xx + CY[i] * CY[i] * yy + CZ[i] * CZ[i] * zz + 2 * (CX[i] * CY[i] * xy + CX[i] * CZ[i] * xz + CY[i] * CZ[i] * yz) - tr))
+        : fi[i] + w * (fe[i] - fi[i]);
       if (comForca) {
         const cu = CX[i] * ux + CY[i] * uy + CZ[i] * uz;
         s += (1 - 0.5 * w) * W[i] * (

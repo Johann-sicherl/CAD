@@ -197,7 +197,8 @@ async function calcular() {
   if (!sim) {
     const { nx, ny, nz, tipo } = p.dominio;
     if (!cabe(gpu.device, nx * ny * nz, p.precisao)) return casca.avisar("Esta malha não cabe na memória de GPU liberada para o navegador. Use um modo menor.", 7000);
-    const s = new LbmGpu(gpu.device, { nx, ny, nz, tau: p.tau, cs: CS, u: [U_REDE, 0, 0], precisao: p.precisao, tipo, esponja: p.esponja });
+    // parte do ar parado e acelera até U∞ (partida suave: menos ondas de pressão)
+    const s = new LbmGpu(gpu.device, { nx, ny, nz, tau: p.tau, cs: CS, u: [0, 0, 0], precisao: p.precisao, tipo, esponja: p.esponja, regularizado: true });
     s.ligarCanvas($<HTMLCanvasElement>("#fl-gpu"));
     sim = { s, hist: new Historico(), rodando: false, quadro: 0, porQuadro: 2, tMedida: performance.now(), pMedida: 0, ritmo: 0, instavel: false };
     aplicarCorte();
@@ -218,6 +219,11 @@ function laco() {
   if (!m || !m.rodando || !p) return;
   const t0 = performance.now();
   const k = Math.min(m.porQuadro, p.passosTotal - m.s.passos);
+  const rampa = p.passosTravessia / 4;
+  if (m.s.passos < rampa + k) {
+    const f = Math.min(1, m.s.passos / rampa);
+    m.s.definirVelocidade([U_REDE * 0.5 * (1 - Math.cos(Math.PI * f)), 0, 0]);
+  }
   m.s.avancar(k);
   m.s.desenhar();
   void m.s.forca().then((f) => {

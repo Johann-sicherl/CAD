@@ -96,18 +96,20 @@ async function exclusivo(nome: string, f: () => Promise<void>) {
 
 /** Compara GPU × CPU no mesmo caso: túnel com esfera (LES) e canal com força (Guo). */
 async function verificar() {
-  type Caso = { nome: string; nx: number; ny: number; nz: number; tau: number; cs: number; u: [number, number, number]; g: [number, number, number]; tipo: Uint8Array; passos: number; esponja?: { x0: number; dtau: number } };
+  type Caso = { nome: string; nx: number; ny: number; nz: number; tau: number; cs: number; u: [number, number, number]; g: [number, number, number]; tipo: Uint8Array; passos: number; esponja?: { x0: number; dtau: number }; regularizado?: boolean };
   const casos: Caso[] = [
     { nome: "túnel com esfera + LES", nx: 32, ny: 16, nz: 16, tau: 0.56, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: tunelEsfera(32, 16, 16, 6, 10), passos: 60 },
     { nome: "canal periódico com força", nx: 16, ny: 12, nz: 8, tau: 0.8, cs: 0, u: [0, 0, 0], g: [2e-5, 0, 0], tipo: canal(16, 12, 8), passos: 60 },
     { nome: "túnel com saída e esponja", nx: 40, ny: 16, nz: 16, tau: 0.53, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: comSaida(tunelEsfera(40, 16, 16, 6, 10), 40, 16, 16), passos: 80, esponja: { x0: 30, dtau: 0.4 } },
+    { nome: "túnel regularizado (Re alto)", nx: 40, ny: 16, nz: 16, tau: 0.5001, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: comSaida(tunelEsfera(40, 16, 16, 6, 10), 40, 16, 16), passos: 80, esponja: { x0: 30, dtau: 0.4 }, regularizado: true },
+    { nome: "canal regularizado com força", nx: 16, ny: 12, nz: 8, tau: 0.6, cs: 0, u: [0, 0, 0], g: [2e-5, 0, 0], tipo: canal(16, 12, 8), passos: 60, regularizado: true },
   ];
   escrever("== Autoverificação (GPU × referência em CPU) ==");
   let ok = true;
   for (const prec of ["fp32", "fp16"] as Precisao[]) {
     for (const c of casos) {
-      const cpu = new LbmCpu({ nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, g: c.g, esponja: c.esponja }, c.tipo);
-      const g = new LbmGpu(gpu!.device, { nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, precisao: prec, tipo: c.tipo, forca: c.g.some((v) => v !== 0), esponja: c.esponja });
+      const cpu = new LbmCpu({ nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, g: c.g, esponja: c.esponja, regularizado: c.regularizado }, c.tipo);
+      const g = new LbmGpu(gpu!.device, { nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, precisao: prec, tipo: c.tipo, forca: c.g.some((v) => v !== 0), esponja: c.esponja, regularizado: c.regularizado });
       g.definirForca(c.g);
       for (let k = 0; k < c.passos; k++) cpu.passo();
       g.avancar(c.passos);
@@ -183,7 +185,7 @@ async function medir() {
     const linha: string[] = [];
     for (const grupo of [32, 64, 128]) {
       progresso(`⏳ Ajustando o kernel: ${prec.toUpperCase()}, ${grupo} threads por grupo… não saia desta tela.`);
-      const s = new LbmGpu(dev, { nx: 128, ny: 64, nz: 64, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(128, 64, 64, 16), grupo });
+      const s = new LbmGpu(dev, { nx: 128, ny: 64, nz: 64, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(128, 64, 64, 16), grupo, regularizado: true });
       const mlups = ((await cronometrar(s, 1500)) * s.n) / 1e6;
       s.destruir();
       linha.push(`${grupo}: ${fmt(mlups, 1)}`);
@@ -195,7 +197,7 @@ async function medir() {
     escrever(`${prec}  MLUPS por tamanho de grupo → ${linha.join(" · ")}  (usa ${melhorGrupo[prec]})`);
   }
   escrever("");
-  escrever("== Desempenho (esfera no túnel, BGK + LES, u = 0,05) ==");
+  escrever("== Desempenho (esfera no túnel, colisão regularizada + LES, u = 0,05) ==");
   escrever("malha              células  prec.  memória   passos/s   MLUPS   1 travessia");
   const resultados: { celulas: number; prec: Precisao; mlups: number }[] = [];
   let etapa = 0;
@@ -210,7 +212,7 @@ async function medir() {
         continue;
       }
       dev.pushErrorScope("out-of-memory");
-      const s = new LbmGpu(dev, { nx, ny, nz, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, ny / 4), grupo: melhorGrupo[prec] });
+      const s = new LbmGpu(dev, { nx, ny, nz, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, ny / 4), grupo: melhorGrupo[prec], regularizado: true });
       const semMemoria = await dev.popErrorScope();
       if (semMemoria) {
         s.destruir();
@@ -279,7 +281,7 @@ function iniciarVivo() {
     estado.textContent = "Essa malha não cabe nos limites da GPU deste aparelho.";
     return;
   }
-  const s = new LbmGpu(gpu!.device, { nx, ny, nz, tau, cs, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, d) });
+  const s = new LbmGpu(gpu!.device, { nx, ny, nz, tau, cs, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, d), regularizado: true });
   const canvas = $<HTMLCanvasElement>("af-canvas");
   s.ligarCanvas(canvas);
   s.definirCorte({ escala: 1 / U });

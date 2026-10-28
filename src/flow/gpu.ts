@@ -9,7 +9,7 @@
 // - equilíbrio calculado na hora da colisão; o tensor do Smagorinsky sai dos momentos de 2ª
 //   ordem (Σcc·f̃ − δρ/3·δ − ρuu, exato no D3Q19), sem guardar os 19 valores de equilíbrio;
 // - bit 7 do tipo marca célula com vizinho sólido: só essas consultam as 18 vizinhas;
-// - células sólidas e EQ não são regravadas (o valor delas não muda);
+// - células sólidas não são regravadas (o valor delas não muda);
 // - código da força de Guo só entra quando o caso tem força.
 //
 // Precisão de armazenamento (a conta é sempre em f32):
@@ -18,7 +18,7 @@
 //   direção 0. Valores guardados × ESCALA_FP16 e convertidos por meiaBits (ao par mais próximo):
 //   a Adreno 613 trunca e zera subnormais no pack2x16float (ver lbm.ts).
 
-import { CX, CY, CZ, ESCALA_FP16, FLUIDO, Q, SAIDA, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
+import { CX, CY, CZ, EQ, ESCALA_FP16, FLUIDO, Q, SAIDA, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
 
 export interface ConfigGpu {
   nx: number;
@@ -35,6 +35,8 @@ export interface ConfigGpu {
   grupo?: number;
   /** Zona esponja antes da saída (ver lbm.ts). */
   esponja?: { x0: number; dtau: number };
+  /** Colisão regularizada (ver lbm.ts): estável com τ → ½. */
+  regularizado?: boolean;
 }
 
 /** O que o corte mostra. */
@@ -123,7 +125,7 @@ function linhasEquilibrio(): string {
   return L.join("\n");
 }
 
-function wgslPasso(precisao: Precisao, forca: boolean, grupo: number): string {
+function wgslPasso(precisao: Precisao, forca: boolean, grupo: number, regularizado: boolean): string {
   const L: string[] = [];
   L.push(`${wgslBase(precisao, true)}
 @compute @workgroup_size(${grupo})
@@ -138,6 +140,13 @@ fn passo(@builtin(global_invocation_id) g: vec3<u32>) {
 ${Array.from({ length: Q }, (_, i) => `    let f${i} = ${carregar(precisao, i, "cv")};`).join("\n")}
     let ir = 1.0 / (1.0 + ${soma(() => 1)});
     let ux = (${soma((i) => CX[i])}) * ir; let uy = (${soma((i) => CY[i])}) * ir; let uz = (${soma((i) => CZ[i])}) * ir;
+${linhasEquilibrio()}
+    ${gravar(precisao, "e", "c")}
+    return;
+  }
+  if ((t & 3u) == ${EQ}u) {
+    // borda do túnel: equilíbrio com a velocidade do ar atual (a partida é suave)
+    let ux = p.ux; let uy = p.uy; let uz = p.uz;
 ${linhasEquilibrio()}
     ${gravar(precisao, "e", "c")}
     return;
@@ -170,22 +179,37 @@ ${linhasEquilibrio()}
     let se = f32(x - p.esX0) / f32(p.nx - 1u - p.esX0);
     tau += p.esDt * se * se;
   }
+  // Π de não equilíbrio = Σcc·f̃ − δρ/3·δ − ρuu (exato no D3Q19)
+  let tr = dr * ${num(1 / 3)};
+  let xx = ${soma((i) => CX[i] * CX[i])} - tr - rho * ux * ux;
+  let yy = ${soma((i) => CY[i] * CY[i])} - tr - rho * uy * uy;
+  let zz = ${soma((i) => CZ[i] * CZ[i])} - tr - rho * uz * uz;
+  let xy = ${soma((i) => CX[i] * CY[i])} - rho * ux * uy;
+  let xz = ${soma((i) => CX[i] * CZ[i])} - rho * ux * uz;
+  let yz = ${soma((i) => CY[i] * CZ[i])} - rho * uy * uz;
   if (p.smag > 0.0) {
-    // Π de não equilíbrio = Σcc·f̃ − δρ/3·δ − ρuu (exato no D3Q19)
-    let tr = dr * ${num(1 / 3)};
-    let xx = ${soma((i) => CX[i] * CX[i])} - tr - rho * ux * ux;
-    let yy = ${soma((i) => CY[i] * CY[i])} - tr - rho * uy * uy;
-    let zz = ${soma((i) => CZ[i] * CZ[i])} - tr - rho * uz * uz;
-    let xy = ${soma((i) => CX[i] * CY[i])} - rho * ux * uy;
-    let xz = ${soma((i) => CX[i] * CZ[i])} - rho * ux * uz;
-    let yz = ${soma((i) => CY[i] * CZ[i])} - rho * uy * uz;
     let pi = sqrt(xx * xx + yy * yy + zz * zz + 2.0 * (xy * xy + xz * xz + yz * yz));
     tau = 0.5 * (tau + sqrt(tau * tau + p.smag * pi * ir));
   }
   let w = 1.0 / tau;`);
   if (forca) L.push(`  let kf = 1.0 - 0.5 * w;`);
+  if (regularizado) L.push(`  let kr = 1.0 - w; let t3 = (xx + yy + zz) * ${num(1 / 3)};${forca ? " let jnx = -0.5 * p.gxf; let jny = -0.5 * p.gyf; let jnz = -0.5 * p.gzf;" : ""}`);
+  const qpi = (i: number) => {
+    const t: string[] = [];
+    if (CX[i]) t.push("xx");
+    if (CY[i]) t.push("yy");
+    if (CZ[i]) t.push("zz");
+    if (CX[i] && CY[i]) t.push(`${CX[i] * CY[i] > 0 ? "" : "-"}2.0 * xy`);
+    if (CX[i] && CZ[i]) t.push(`${CX[i] * CZ[i] > 0 ? "" : "-"}2.0 * xz`);
+    if (CY[i] && CZ[i]) t.push(`${CY[i] * CZ[i] > 0 ? "" : "-"}2.0 * yz`);
+    return `(${[...t, "-t3"].join(" + ").replace(/\+ -/g, "- ")})`;
+  };
+  const cj = (i: number) => [CX[i] ? `${CX[i] > 0 ? "+" : "-"}jnx` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}jny` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}jnz` : ""].join("").replace(/^\+/, "") || "0.0";
   for (let i = 0; i < Q; i++) {
-    L.push(`  { let e = ${cu(i)}; f${i} += w * (${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) - f${i});${forca ? ` f${i} += kf * ${num(W[i])} * ((3.0 * (${num(CX[i])} - ux) + 9.0 * e * ${num(CX[i])}) * p.gxf + (3.0 * (${num(CY[i])} - uy) + 9.0 * e * ${num(CY[i])}) * p.gyf + (3.0 * (${num(CZ[i])} - uz) + 9.0 * e * ${num(CZ[i])}) * p.gzf);` : ""} }`);
+    const colisao = regularizado
+      ? `f${i} = ${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) + kr * ${num(W[i])} * (${forca ? `3.0 * (${cj(i)}) + ` : ""}4.5 * ${qpi(i)});`
+      : `f${i} += w * (${num(W[i])} * (dr + rho * (3.0 * e + 4.5 * e * e - uu)) - f${i});`;
+    L.push(`  { let e = ${cu(i)}; ${colisao}${forca ? ` f${i} += kf * ${num(W[i])} * ((3.0 * (${num(CX[i])} - ux) + 9.0 * e * ${num(CX[i])}) * p.gxf + (3.0 * (${num(CY[i])} - uy) + 9.0 * e * ${num(CY[i])}) * p.gyf + (3.0 * (${num(CZ[i])} - uz) + 9.0 * e * ${num(CZ[i])}) * p.gzf);` : ""} }`);
   }
   L.push(`  ${gravar(precisao, "f", "c")}
 }
@@ -349,7 +373,7 @@ export class LbmGpu {
     this.uniforme = device.createBuffer({ size: 80, usage: USO.UNIFORM | USO.COPY_DST });
     this.corte.indice = Math.floor(cfg.nz / 2);
     this.escreverUniforme();
-    const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao, !!cfg.forca, tamGrupo) });
+    const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao, !!cfg.forca, tamGrupo, !!cfg.regularizado) });
     const C = ESTAGIO_COMPUTE;
     const leitura = { type: "read-only-storage" } as const;
     const bgl = device.createBindGroupLayout({
@@ -399,6 +423,12 @@ export class LbmGpu {
     const k = this.corte;
     ui[13] = k.indice; fl[14] = k.escala; ui[16] = k.plano; ui[17] = GRANDEZAS.findIndex(([g]) => g === k.grandeza); fl[18] = k.escalaVort;
     this.device.queue.writeBuffer(this.uniforme, 0, b);
+  }
+
+  /** Velocidade do ar nas bordas do túnel (partida suave: sobe de 0 até U∞). */
+  definirVelocidade(u: [number, number, number]) {
+    this.cfg.u = u;
+    this.escreverUniforme();
   }
 
   /** Força de corpo uniforme (unidades de rede); o kernel precisa ter sido criado com `forca`. */
