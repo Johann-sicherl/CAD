@@ -507,5 +507,32 @@ da Apache Software Foundation.
 
   Autoverificação ✓ no navegador. Na GPU simulada do servidor, o FP32 em 0,5 M células passou
   de 6,5 para ~11 MLUPS.
-- ⏳ **Falta:** medir o kernel 2 no tablet e definir a malha padrão da A1. O Johann roda "Autoverificação" e "Medir
+- **4ª rodada, kernel 2 no tablet (28/10/2026):**
+  - autoverificação ✓ nos quatro casos;
+  - grupo de 64 threads;
+  - de **2,3 a 2,8× mais rápido** que o kernel 1.
+
+  | Malha | Células | FP32 MLUPS | FP32: 1 travessia | FP16 MLUPS | FP16: 1 travessia |
+  |---|---|---|---|---|---|
+  | 128×64×64 | 0,52 M | 28,7 | 47 s | 26,3 | 51 s |
+  | 160×80×80 | 1,02 M | **29,9** | **110 s** | 23,3 | 141 s |
+  | 192×96×96 | 1,77 M | não cabe (128 MB por vínculo) | — | 26,9 | 253 s |
+
+  A base em CPU dá 1,6 MLUPS por núcleo.
+
+  **Leitura dos números:**
+  - o FP32 é mais rápido e deve ser o padrão até ~1,7 M células;
+  - o FP16 serve para malhas maiores;
+  - a banda usada (~4,6 GB/s) ainda está longe do limite.
+- **Malha padrão proposta para a A1 no tablet** (aguarda o Johann):
+
+  | Modo | Células | Precisão | Tempo por resultado (3 travessias) |
+  |---|---|---|---|
+  | Rascunho | ~0,5 M | FP32 | ~2,5 min |
+  | **Padrão** | ~1 M | FP32 | ~5,5 min |
+  | Qualidade | ~1,7 M | FP16 | ~13 min |
+
+  - O domínio é ajustado ao corpo (montante 1,5 L, jusante 4 L, bloqueio ≤ 5 %): com 1 M células,
+    sobram ~35–45 células no comprimento do corpo.
+  - O refinamento local (A5) é o que mais aumenta essa resolução. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.
