@@ -64,9 +64,13 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   por face (seção "Outras faces"). O logo de cada app volta ao início. Em desenvolvimento: `/` é o início,
   `/cad/` é o WJCAD. Página nova: entrada em `vite.config.ts` (`rollupOptions.input`), em `PAGINAS` do
   `public/sw.js` e caixa em `src/inicio/inicio.ts`.
-- PWA (manifest + `public/sw.js`). Hospedagem principal: **Cloudflare Pages** (site na raiz, cabeçalhos
-  COOP/COEP em `public/_headers` → `crossOriginIsolated`, requisito do kernel com várias threads).
-  O GitHub Actions (`.github/workflows/deploy.yml`) roda check/teste/build e publica também no GitHub Pages.
+- PWA (manifest + `public/sw.js`). Hospedagem **em uso: GitHub Pages**
+  (`https://johann-sicherl.github.io/WJProMaster/`; o GitHub Actions `.github/workflows/deploy.yml` roda
+  check/teste/build e publica a cada merge no `main`). O kernel usa o build de **uma thread**
+  (`replicad_single`), então não precisa de `crossOriginIsolated`. **Cloudflare Pages** fica para depois
+  (kernel com várias threads via COOP/COEP em `public/_headers`, e servidor da G5); atenção: COOP
+  `same-origin` quebra a janela de login do Google (Drive) — usar `same-origin-allow-popups` nesse dia.
+  Origem autorizada no cliente OAuth do Google: `https://johann-sicherl.github.io`.
 - Unidade: **mm** (sistema MMGS)
 
 Gerenciador de pacotes: **pnpm** (não usar npm; segurança em `pnpm-workspace.yaml`:
