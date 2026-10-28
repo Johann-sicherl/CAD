@@ -25,7 +25,9 @@ que falta é copiado; mesmo registro alterado em duas cópias: **a alteração m
 outra vira cópia na lixeira ("(conflito AAAA-MM-DD)"); exclusões e lixeira propagam; lixeira se
 esvazia após 30 dias. Cada cópia guarda `WJPDM/<pastas>/<arquivo>` (legível em qualquer
 computador) + `WJPDM/.wjpdm/indice.json` e `.wjpdm/blobs/` (conteúdo de cada versão).
-🟡 Google Drive (aguarda cliente OAuth); arquivos colocados à mão na pasta do pendrive ainda não
+✅ Google Drive (`src/comum/drive.ts`): "Conectar ao Google Drive" na tela de cópias; cofre em
+Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuário).
+🟡 Arquivos colocados à mão na pasta do pendrive ainda não
 entram no cofre (adicionar pelo WJPDM).
 
 ## Estado da v1 (25/10/2026) — `pdm/index.html`, `src/pdm/` (cofre local)

@@ -7,6 +7,7 @@
 import { Armazem } from "./armazem";
 import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } from "./repositorios";
 import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
+import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { bloqueioDoCheckout, extensao, nomeLivre, type Arquivo, type Pasta } from "../pdm/regras";
 
 export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp";
@@ -31,17 +32,18 @@ const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], plan
 const agora = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** Destino na nuvem (Google Drive): entra quando o cliente OAuth estiver configurado. */
-export interface DestinoNuvem {
-  nome: string;
-  conectado(): boolean;
-  situacao(): string;
-  conectar?(): Promise<void>;
-  repositorio(): Repositorio;
-}
-let nuvem: DestinoNuvem | null = null;
-export function registrarNuvem(d: DestinoNuvem) {
+/** Google Drive (login do Google, escopo drive.file): cópia do cofre em Meu Drive/WJPDM. */
+let nuvem: DestinoNuvem | null = nuvemGoogle;
+export function registrarNuvem(d: DestinoNuvem | null) {
   nuvem = d;
+}
+
+/**
+ * Acesso ao Drive vencido: pede a renovação JÁ (antes de qualquer espera), enquanto o toque do
+ * usuário ainda vale — senão o navegador bloqueia a janela do Google.
+ */
+function renovarNuvem(pedir: boolean): Promise<boolean> {
+  return pedir && nuvem ? nuvem.renovar().catch(() => false) : Promise.resolve(!!nuvem?.conectado());
 }
 
 // ---------- banco do cofre e pastas das cópias ----------
@@ -77,7 +79,7 @@ let rodando: Promise<string> | null = null;
  * Iguala o cofre do aparelho com as cópias conectadas (pendrive, pasta do tablet, Drive).
  * `pedir`: pode mostrar o "Permitir" do navegador (só logo depois de um toque do usuário).
  */
-export function sincronizarCofre(pedir = true): Promise<string> {
+export function sincronizarCofre(pedir = true, renovacao = renovarNuvem(pedir)): Promise<string> {
   return (rodando ??= (async () => {
     try {
       const db = await abrirCofre();
@@ -89,7 +91,8 @@ export function sincronizarCofre(pedir = true): Promise<string> {
         if (await permissao(p, pedir).catch(() => false)) repos.push(new RepositorioPasta(rot, p));
         else ausentes.push(`${rot} sem permissão`);
       }
-      if (nuvem?.conectado() && navigator.onLine) repos.push(nuvem.repositorio());
+      if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) repos.push(nuvem.repositorio());
+      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Sincronizar agora)");
       if (repos.length === 1) return (ultima = { quando: agora(), texto: "Cofre salvo só neste aparelho: conecte o pendrive ou escolha a pasta do tablet (Cópias do cofre)." }).texto;
       const r = await sincronizar(repos, agora());
       return (ultima = { quando: agora(), texto: resumo(r, repos, ausentes) }).texto;
@@ -133,6 +136,7 @@ async function pastaDaFace(db: Armazem, app: ChaveApp): Promise<string> {
  * se precisar) ou cria um arquivo novo na pasta da face, já em GO-OUT; depois iguala as cópias.
  */
 export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: Blob): Promise<string> {
+  const renovacao = renovarNuvem(true); // antes de qualquer espera (o toque do usuário ainda vale)
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
   const t = agora();
@@ -175,7 +179,7 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     await db.por("arquivos", a);
   }
   ligar(app, a.id);
-  const sinc = await sincronizarCofre(true);
+  const sinc = await sincronizarCofre(true, renovacao);
   return `Salvo no cofre (${PASTA_DA_FACE[app]}/${a.nome}). ${sinc}${aviso}`;
 }
 
@@ -255,9 +259,9 @@ export async function abrirCopias(aoSincronizar?: () => void) {
         <p>${tab ? `Pasta: <b>${esc(tab.name)}</b>/WJPDM` : "Nenhuma pasta escolhida: escolha uma pasta do aparelho (ex.: Documentos)."}</p>
         ${temPastas() ? `<div class="wjc-botoes"><button data-b="tab">${tab ? "Trocar pasta…" : "Escolher pasta…"}</button></div>` : ""}</section>
       <section><h3>Google Drive</h3><p>${nuvem ? esc(nuvem.situacao()) : "Aguardando a configuração do acesso ao Google (cliente OAuth)."}</p>
-        ${nuvem?.conectar && !nuvem.conectado() ? `<div class="wjc-botoes"><button data-b="drive" class="destaque">Conectar ao Google Drive</button></div>` : ""}</section>
+        ${nuvem && !nuvem.conectado() ? `<div class="wjc-botoes"><button data-b="drive" class="destaque">${localStorage.getItem("wjgoogle:autorizado") === "1" ? "Reconectar" : "Conectar ao Google Drive"}</button></div>` : ""}</section>
       <section><div class="wjc-botoes"><button data-b="sinc" class="destaque">Sincronizar agora</button></div>
-        <p data-r class="${/desconectado|não encontrado|sem permissão/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p></section>
+        <p data-r class="${/desconectado|não encontrado|sem permissão|vencido|recusou|não liberou/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p></section>
       <footer><button data-b="fechar" class="destaque">Fechar</button></footer>`;
     const escolher = async (c: Copia) => {
       try {
@@ -279,12 +283,19 @@ export async function abrirCopias(aoSincronizar?: () => void) {
         await desenhar();
       },
       drive: async () => {
-        await nuvem?.conectar?.();
-        await desenhar();
+        try {
+          await nuvem?.conectar();
+        } catch (e) {
+          return desenhar((e as Error).message);
+        }
+        await desenhar("Conectado ao Google Drive. Sincronizando…");
+        await desenhar(await sincronizarCofre(false));
+        aoSincronizar?.();
       },
       sinc: async () => {
+        const renovacao = renovarNuvem(true);
         caixa.querySelector<HTMLElement>("[data-r]")!.textContent = "Sincronizando…";
-        await desenhar(await sincronizarCofre(true));
+        await desenhar(await sincronizarCofre(true, renovacao));
         aoSincronizar?.();
       },
     };
