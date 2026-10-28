@@ -58,7 +58,7 @@ const FACES: Face[] = [
   },
   {
     id: "flow", nome: "WJFlow", url: "flow/",
-    descricao: "Escoamento de ar nas peças do WJCAD. Por enquanto, protótipo que mede o desempenho deste aparelho.",
+    descricao: "Túnel de vento virtual para as peças do WJCAD: Cd, sustentação, forças e cortes do escoamento.",
     icone: svg(`<path d="M3 8h9a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/><path d="M14 8.5c2 .8 2 2.2 0 3" stroke="${C}"/>`),
   },
 ];

@@ -10,13 +10,13 @@ import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia 
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
 import { bloqueioDoCheckout, extensao, nomeLivre, type Arquivo, type Pasta } from "../pdm/regras";
 
-export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp";
+export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP",
+  cad: "WJCAD", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow",
 };
 /** Pasta padrão de cada face na raiz do cofre. */
 export const PASTA_DA_FACE: Record<ChaveApp, string> = {
-  cad: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP",
+  cad: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento",
 };
 /** Apps por extensão: chave do salvamento automático e endereço (abrir arquivo do cofre no app). */
 export const APPS: Record<string, { app: string; chave: string; url: string; face: ChaveApp }> = {
@@ -26,8 +26,9 @@ export const APPS: Record<string, { app: string; chave: string; url: string; fac
   wjdoc: { app: "WJWrite", chave: "wjdoc:documento", url: "documento/", face: "word" },
   wjapn: { app: "WJApresentation", chave: "wjapn:documento", url: "apresentacao/", face: "apn" },
   wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/", face: "cron" },
+  wjflow: { app: "WJFlow", chave: "wjflow:estudo", url: "flow/", face: "flow" },
 };
-const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"] };
+const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"] };
 
 const agora = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);

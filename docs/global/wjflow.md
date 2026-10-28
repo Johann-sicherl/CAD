@@ -5,8 +5,10 @@ projetada no WJCAD: veículos, aeronaves, drones, tubulações abertas, dutos e 
 Roda no **celular, tablet e computador** (navegador). Neste início, **só ar**, isotérmico.
 
 - Página: `flow/` · código: `src/flow/` · motor testado: `src/flow/lbm.ts` (`scripts/teste-flow.ts`)
-- Arquivo: `.wjflow` (fase A1) · autosave `wjflow:estudo`
-- Status: **A0 entregue** (protótipo de medição, 28/10/2026). O restante está planejado (fases A1–A6, §9).
+- Arquivo: `.wjflow` (estudo + peça compactada) salvo no cofre do WJPDM (pasta "Escoamento") ·
+  autosave no IndexedDB `wjflow` · teste do aparelho em `flow/aparelho/`
+- Status: **A0 ✅** (teste do aparelho) · **A1 🟡** (túnel externo com a peça; faltam simetria e
+  validação do cilindro, §9). O restante está planejado (fases A2–A6).
 
 Legenda: ✅ existe · 🟡 parcial · **A0…A6** fase deste documento · ⏸ registrado, fora do escopo atual.
 
@@ -254,21 +256,24 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Parede sólida parada | bounce-back no meio do caminho (2ª ordem em paredes alinhadas, "escada" em curvas) | ✅ |
 | Parede curva precisa | bounce-back interpolado (Bouzidi 2001), usando a distância real à superfície da malha | A5 |
 | Parede móvel (solo móvel, roda) | bounce-back com termo de velocidade: −2wᵢρ(cᵢ·u_w)/cs² | A4 |
-| Entrada de velocidade/vazão | equilíbrio imposto (✅ no protótipo); regularizado (Latt 2008) em A1 | 🟡 |
-| Saída de pressão | ρ = 1 + extrapolação de velocidade, ou convectiva (sem reflexão) | A1 |
-| Laterais do túnel | equilíbrio da corrente livre (✅); deslizamento livre (simetria) em A1 | 🟡 |
-| Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 |
-| Zona esponja | viscosidade crescente perto da saída: absorve ondas de pressão | A1 |
+| Entrada de velocidade/vazão | equilíbrio imposto ✅; regularizado (Latt 2008) em A5 | 🟡 |
+| Saída de pressão | equilíbrio com ρ = 1 e a velocidade da célula anterior (gradiente nulo) ✅ | ✅ |
+| Laterais do túnel | equilíbrio da corrente livre ✅; deslizamento livre (simetria) depois | 🟡 |
+| Plano de simetria | reflexão especular (corta a malha pela metade em peças simétricas) | A1 (falta) |
+| Zona esponja | τ₀ cresce até τ₀ + 0,5 (quadrático) nos últimos 12 % do túnel ✅ | ✅ |
 | Disco atuador (EDF) | força de corpo de Guo por célula | A3 (força uniforme ✅) |
 
 ### 4.4 Geometria → voxels
 
 1. **Origem da peça:**
-   - **WJCAD/WJPDM:** a malha triangulada que o WJCAD já gera para o viewport (o kernel exporta
-     triângulos). Abrir pelo autosave/cofre, como as outras faces fazem.
-   - **STL** (formato aberto): para peças de fora.
-2. **Voxelização na GPU:** paridade de raios em z por coluna ou número de enrolamento
-   generalizado (robusto a malhas com pequenos furos). Malha não fechada gera um aviso.
+   - **WJCAD ✅:** menu Arquivo → **Abrir no WJFlow** manda a malha triangulada da última
+     reconstrução (IndexedDB `wjflow`, registro `do-cad`) e abre o WJFlow com ela.
+   - **STL ✅** (formato aberto, binário ou texto): para peças de fora; unidade escolhida no estudo.
+   - **Orientação ✅:** o usuário escolhe a direção do ar nos eixos da peça (±X, ±Y, ±Z); a peça
+     gira para o ar correr no +X do túnel.
+2. **Voxelização ✅** (num Worker, em CPU: < 1 s para 1–2 M células): paridade de raios em X,
+   um raio por coluna y-z, triângulos agrupados por coluna. A malha aberta aparece como "colunas
+   com cruzamento ímpar" e gera um aviso. Na GPU só se a CPU ficar lenta em malhas maiores.
 3. **Resolução recomendada** (o app sugere):
    - ≥ 60–100 células no comprimento do corpo;
    - ≥ 8–10 células na menor dimensão que importa (espessura do bordo, diâmetro do duto);
@@ -414,7 +419,7 @@ Memória × malha:
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **A0** ✅ | Protótipo de medição: LBM D3Q19 em WebGPU (FP32/FP16, LES, força de Guo), autoverificação GPU × CPU, medição de MLUPS por malha, base em CPU, túnel ao vivo com esfera | autoverificação ok no TCL; números de desempenho anotados aqui |
-| **A1** | Túnel externo com a peça do WJCAD/STL: voxelização na GPU, entrada e saída de verdade, simetria, esponja, planos de corte (velocidade/Cp/vorticidade), forças por troca de momento, Cd/Cl com média, `.wjflow` | esfera e cilindro validados |
+| **A1** 🟡 | Túnel externo com a peça do WJCAD/STL ✅: voxelização ✅, saída ✅, esponja ✅, cortes (velocidade, componente na direção do ar, Cp, vorticidade; vista lateral e superior) ✅, forças por troca de momento ✅, Cd/Cl/Cs com média na última travessia ✅, `.wjflow` no cofre ✅, túnel padrão/amplo ✅. Falta: plano de simetria e validação do cilindro | esfera validada (§13); cilindro |
 | **A2** | Escoamento interno: entradas e saídas em faces tocadas (vazão, velocidade, pressão), prolongamentos automáticos, Δp e K, comparação com Moody | tubo e expansão validados |
 | **A3** | EDF: disco atuador por célula (empuxo, curva do ventilador ou C_T/C_P), giro opcional, empuxo/vazão/V_e/potência | disco estático validado |
 | **A4** | Veículos e aeronaves: solo móvel, rodas girando, varredura de ângulo (polar), momentos, área frontal automática, correção de bloqueio | Ahmed e NACA 0012 validados |

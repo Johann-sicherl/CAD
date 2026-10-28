@@ -18,7 +18,7 @@
 //   direção 0. Valores guardados × ESCALA_FP16 e convertidos por meiaBits (ao par mais próximo):
 //   a Adreno 613 trunca e zera subnormais no pack2x16float (ver lbm.ts).
 
-import { CX, CY, CZ, ESCALA_FP16, FLUIDO, Q, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
+import { CX, CY, CZ, ESCALA_FP16, FLUIDO, Q, SAIDA, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
 
 export interface ConfigGpu {
   nx: number;
@@ -33,7 +33,20 @@ export interface ConfigGpu {
   forca?: boolean;
   /** Threads por grupo em x (padrão 64). */
   grupo?: number;
+  /** Zona esponja antes da saída (ver lbm.ts). */
+  esponja?: { x0: number; dtau: number };
 }
+
+/** O que o corte mostra. */
+export type Grandeza = "velocidade" | "ux" | "cp" | "vorticidade";
+export const GRANDEZAS: [Grandeza, string][] = [
+  ["velocidade", "Velocidade |u| / U∞"],
+  ["ux", "Velocidade na direção do ar (negativa = recirculação)"],
+  ["cp", "Coeficiente de pressão Cp"],
+  ["vorticidade", "Vorticidade (giro do ar)"],
+];
+/** Plano do corte: 0 = lateral (x-y, vista de lado), 1 = superior (x-z, vista de cima). */
+export type Plano = 0 | 1;
 
 // constantes da especificação WebGPU (os tipos do TypeScript não trazem os objetos globais)
 const USO = { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 } as const;
@@ -68,7 +81,7 @@ function gravar(precisao: Precisao, v: string, c: string): string {
 function wgslBase(precisao: Precisao, leituraEscrita: boolean): string {
   const tipo = precisao === "fp32" ? "f32" : "u32";
   return `
-struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, pad0: u32, gxf: f32, gyf: f32, gzf: f32, z: u32, escala: f32, pad: u32 };
+struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, esX0: u32, gxf: f32, gyf: f32, gzf: f32, corte: u32, escala: f32, esDt: f32, plano: u32, grandeza: u32, escalaVort: f32, pad: u32 };
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> tipo: array<u32>;
 @group(0) @binding(2) var<storage, read> fa: array<${tipo}>;
@@ -103,6 +116,13 @@ function soma(coef: (i: number) => number): string {
 const cu = (i: number) =>
   [CX[i] ? `${CX[i] > 0 ? "+" : "-"}ux` : "", CY[i] ? `${CY[i] > 0 ? "+" : "-"}uy` : "", CZ[i] ? `${CZ[i] > 0 ? "+" : "-"}uz` : ""].join("").replace(/^\+/, "") || "0.0";
 
+/** Linhas WGSL com e0..e18 = f̃ᵉᵠ(δρ = 0, u) para as variáveis ux, uy, uz já definidas. */
+function linhasEquilibrio(): string {
+  const L = ["  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);"];
+  for (let i = 0; i < Q; i++) L.push(`  let e${i} = ${num(W[i])} * (3.0 * (${cu(i)}) + 4.5 * (${cu(i)}) * (${cu(i)}) - uu);`);
+  return L.join("\n");
+}
+
 function wgslPasso(precisao: Precisao, forca: boolean, grupo: number): string {
   const L: string[] = [];
   L.push(`${wgslBase(precisao, true)}
@@ -112,6 +132,16 @@ fn passo(@builtin(global_invocation_id) g: vec3<u32>) {
   if (x >= p.nx) { return; }
   let c = x + p.nx * (y + p.ny * z);
   let t = tipoDe(c);
+  if ((t & 3u) == ${SAIDA}u) {
+    // saída: equilíbrio com ρ = 1 e a velocidade da célula anterior em x (passo anterior)
+    let cv = c - 1u;
+${Array.from({ length: Q }, (_, i) => `    let f${i} = ${carregar(precisao, i, "cv")};`).join("\n")}
+    let ir = 1.0 / (1.0 + ${soma(() => 1)});
+    let ux = (${soma((i) => CX[i])}) * ir; let uy = (${soma((i) => CY[i])}) * ir; let uz = (${soma((i) => CZ[i])}) * ir;
+${linhasEquilibrio()}
+    ${gravar(precisao, "e", "c")}
+    return;
+  }
   if ((t & 3u) != ${FLUIDO}u) { return; }
   let nb = (t & ${VIZINHO_SOLIDO}u) != 0u;
   let nxy = i32(p.nx * p.ny);
@@ -136,6 +166,10 @@ fn passo(@builtin(global_invocation_id) g: vec3<u32>) {
   let uz = (${soma((i) => CZ[i])}${fz}) * ir;
   let uu = 1.5 * (ux * ux + uy * uy + uz * uz);
   var tau = p.tau;
+  if (x > p.esX0) {
+    let se = f32(x - p.esX0) / f32(p.nx - 1u - p.esX0);
+    tau += p.esDt * se * se;
+  }
   if (p.smag > 0.0) {
     // Π de não equilíbrio = Σcc·f̃ − δρ/3·δ − ρuu (exato no D3Q19)
     let tr = dr * ${num(1 / 3)};
@@ -161,14 +195,47 @@ fn iniciar(@builtin(global_invocation_id) g: vec3<u32>) {
   let c = g.x + p.nx * (g.y + p.ny * g.z);
   if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return; }
   let ux = p.ux; let uy = p.uy; let uz = p.uz;
-  let uu = 1.5 * (ux * ux + uy * uy + uz * uz);`);
-  for (let i = 0; i < Q; i++) L.push(`  let e${i} = ${num(W[i])} * (3.0 * (${cu(i)}) + 4.5 * (${cu(i)}) * (${cu(i)}) - uu);`);
-  L.push(`  ${gravar(precisao, "e", "c")}
+${linhasEquilibrio()}
+  ${gravar(precisao, "e", "c")}
 }`);
   return L.join("\n");
 }
 
-/** Desenho do plano z = p.z: módulo da velocidade / |u∞| em escala de cor; sólido em cinza. */
+/**
+ * Força nos sólidos por troca de momento, só nas células da lista (fluido com vizinho sólido):
+ * F += 2·f̃ⱼ*·cⱼ por ligação; soma por grupo de 64 na memória do grupo; a CPU soma os grupos.
+ */
+function wgslForca(precisao: Precisao): string {
+  const L = [`${wgslBase(precisao, false)}
+@group(0) @binding(3) var<storage, read> lista: array<u32>;
+@group(0) @binding(4) var<storage, read_write> parciais: array<vec4<f32>>;
+var<workgroup> acc: array<vec3<f32>, 64>;
+@compute @workgroup_size(64)
+fn forca(@builtin(global_invocation_id) g: vec3<u32>, @builtin(local_invocation_index) li: u32, @builtin(workgroup_id) wg: vec3<u32>) {
+  var F = vec3<f32>(0.0);
+  if (g.x < arrayLength(&lista)) {
+    let c = lista[g.x];
+    let x = c % p.nx; let yz = c / p.nx; let y = yz % p.ny; let z = yz / p.ny;`];
+  for (let i = 1; i < Q; i++) {
+    const ex = (v: number, o: string, nn: string) => (v === 0 ? o : `((${o} + p.${nn} ${v > 0 ? "- 1u" : "+ 1u"}) % p.${nn})`);
+    L.push(`    if ((tipoDe(${ex(CX[i], "x", "nx")} + p.nx * (${ex(CY[i], "y", "ny")} + p.ny * ${ex(CZ[i], "z", "nz")})) & 3u) == ${SOLIDO}u) { F -= 2.0 * ${carregar(precisao, opp(i), "c")} * vec3<f32>(${num(CX[i])}, ${num(CY[i])}, ${num(CZ[i])}); }`);
+  }
+  L.push(`  }
+  acc[li] = F;
+  workgroupBarrier();
+  for (var st = 32u; st > 0u; st = st >> 1u) {
+    if (li < st) { acc[li] = acc[li] + acc[li + st]; }
+    workgroupBarrier();
+  }
+  if (li == 0u) { parciais[wg.x] = vec4<f32>(acc[0], 0.0); }
+}`);
+  return L.join("\n");
+}
+
+/**
+ * Desenho do corte (uma célula por pixel; o navegador suaviza ao ampliar). Plano 0: x-y em
+ * z = corte (vista de lado); plano 1: x-z em y = corte (vista de cima). Sólido em cinza.
+ */
 function wgslDesenho(precisao: Precisao): string {
   return `${wgslBase(precisao, false)}
 struct S { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
@@ -188,17 +255,45 @@ fn cor(t: f32) -> vec3<f32> {
   if (s < 3.0) { return mix(c, d, s - 2.0); }
   return mix(d, e, s - 3.0);
 }
-@fragment fn fs(s: S) -> @location(0) vec4<f32> {
-  let x = min(u32(s.uv.x * f32(p.nx)), p.nx - 1u);
-  let y = min(u32((1.0 - s.uv.y) * f32(p.ny)), p.ny - 1u);
-  let c = x + p.nx * (y + p.ny * p.z);
-  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return vec4<f32>(0.54, 0.58, 0.62, 1.0); }
+fn divergente(t: f32) -> vec3<f32> {
+  let s = clamp(t, -1.0, 1.0);
+  if (s < 0.0) { return mix(vec3<f32>(0.97, 0.97, 0.97), vec3<f32>(0.17, 0.33, 0.78), -s); }
+  return mix(vec3<f32>(0.97, 0.97, 0.97), vec3<f32>(0.84, 0.19, 0.15), s);
+}
+fn idx(x: u32, y: u32, z: u32) -> u32 { return x + p.nx * (y + p.ny * z); }
+fn vel(c: u32) -> vec4<f32> {
+  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return vec4<f32>(0.0); }
 ${Array.from({ length: Q }, (_, i) => `  let f${i} = ${carregar(precisao, i, "c")};`).join("\n")}
   let dr = ${soma(() => 1)};
-  let j = vec3<f32>(${soma((i) => CX[i])}, ${soma((i) => CY[i])}, ${soma((i) => CZ[i])});
-  let u = length(j) / (1.0 + dr);
-  if (u != u || u > 1.0) { return vec4<f32>(0.9, 0.1, 0.9, 1.0); }
-  return vec4<f32>(cor(u * p.escala), 1.0);
+  let ir = 1.0 / (1.0 + dr);
+  return vec4<f32>((${soma((i) => CX[i])}) * ir, (${soma((i) => CY[i])}) * ir, (${soma((i) => CZ[i])}) * ir, dr);
+}
+@fragment fn fs(s: S) -> @location(0) vec4<f32> {
+  let x = min(u32(s.uv.x * f32(p.nx)), p.nx - 1u);
+  var y = p.corte; var z = p.corte;
+  if (p.plano == 0u) { y = p.ny - 1u - min(u32(s.uv.y * f32(p.ny)), p.ny - 1u); }
+  else { z = min(u32(s.uv.y * f32(p.nz)), p.nz - 1u); }
+  let c = idx(x, y, z);
+  if ((tipoDe(c) & 3u) == ${SOLIDO}u) { return vec4<f32>(0.54, 0.58, 0.62, 1.0); }
+  let v = vel(c);
+  if (v.x != v.x || abs(v.x) > 1.0) { return vec4<f32>(0.9, 0.1, 0.9, 1.0); }
+  switch p.grandeza {
+    case 1u: { return vec4<f32>(divergente(v.x * p.escala / 1.5), 1.0); }
+    case 2u: { return vec4<f32>(divergente(v.w * p.escala * p.escala / 1.5 / 1.5), 1.0); }
+    case 3u: {
+      let xa = max(x, 1u) - 1u; let xb = min(x + 1u, p.nx - 1u);
+      var w = 0.0;
+      if (p.plano == 0u) {
+        let ya = max(y, 1u) - 1u; let yb = min(y + 1u, p.ny - 1u);
+        w = 0.5 * (vel(idx(xb, y, z)).y - vel(idx(xa, y, z)).y) - 0.5 * (vel(idx(x, yb, z)).x - vel(idx(x, ya, z)).x);
+      } else {
+        let za = max(z, 1u) - 1u; let zb = min(z + 1u, p.nz - 1u);
+        w = 0.5 * (vel(idx(x, y, zb)).x - vel(idx(x, y, za)).x) - 0.5 * (vel(idx(xb, y, z)).z - vel(idx(xa, y, z)).z);
+      }
+      return vec4<f32>(divergente(w * p.escalaVort), 1.0);
+    }
+    default: { return vec4<f32>(cor(length(v.xyz) * p.escala / 1.5), 1.0); }
+  }
 }`;
 }
 
@@ -234,7 +329,10 @@ export class LbmGpu {
   private grupos: GPUBindGroup[];
   private despacho: [number, number, number];
   private atual = 0;
-  private desenho?: { pipe: GPURenderPipeline; grupos: GPUBindGroup[]; ctx: GPUCanvasContext };
+  private desenho?: { pipe: GPURenderPipeline; grupos: GPUBindGroup[]; ctx: GPUCanvasContext; canvas: HTMLCanvasElement };
+  private medicao?: { pipe: GPUComputePipeline; grupos: GPUBindGroup[]; parciais: GPUBuffer; leitura: GPUBuffer; nGrupos: number; ocupada: boolean };
+  private g: [number, number, number] = [0, 0, 0];
+  private corte = { plano: 0 as Plano, indice: 0, grandeza: "velocidade" as Grandeza, escala: 1, escalaVort: 1 };
   passos = 0;
 
   constructor(device: GPUDevice, cfg: ConfigGpu) {
@@ -246,9 +344,11 @@ export class LbmGpu {
     const tam = palavras(cfg.precisao) * this.n * 4;
     this.buffers = [0, 1].map(() => device.createBuffer({ size: tam, usage: USO.STORAGE | USO.COPY_SRC }));
     this.tipos = device.createBuffer({ size: Math.ceil(this.n / 4) * 4, usage: USO.STORAGE | USO.COPY_DST });
-    device.queue.writeBuffer(this.tipos, 0, marcarVizinhos(cfg));
-    this.uniforme = device.createBuffer({ size: 64, usage: USO.UNIFORM | USO.COPY_DST });
-    this.escreverParametros();
+    const tipos = marcarVizinhos(cfg);
+    device.queue.writeBuffer(this.tipos, 0, tipos);
+    this.uniforme = device.createBuffer({ size: 80, usage: USO.UNIFORM | USO.COPY_DST });
+    this.corte.indice = Math.floor(cfg.nz / 2);
+    this.escreverUniforme();
     const modulo = device.createShaderModule({ code: wgslPasso(cfg.precisao, !!cfg.forca, tamGrupo) });
     const C = ESTAGIO_COMPUTE;
     const leitura = { type: "read-only-storage" } as const;
@@ -284,19 +384,106 @@ export class LbmGpu {
     }
     pass.end();
     device.queue.submit([enc.finish()]);
+    this.prepararForca(tipos);
   }
 
-  /** Atualiza τ, Cs, u∞ e força (pode mudar durante a simulação). */
-  escreverParametros(g: [number, number, number] = [0, 0, 0], escalaCor = 1) {
-    const { nx, ny, nz, tau, cs, u } = this.cfg;
-    const b = new ArrayBuffer(64);
+  private escreverUniforme() {
+    const { nx, ny, nz, tau, cs, u, esponja } = this.cfg;
+    const b = new ArrayBuffer(80);
     const ui = new Uint32Array(b);
     const fl = new Float32Array(b);
     ui[0] = nx; ui[1] = ny; ui[2] = nz; ui[3] = this.n;
     fl[4] = tau; fl[5] = smagorinsky(cs); fl[6] = u[0]; fl[7] = u[1]; fl[8] = u[2];
-    fl[10] = g[0]; fl[11] = g[1]; fl[12] = g[2];
-    ui[13] = Math.floor(nz / 2); fl[14] = escalaCor;
+    ui[9] = esponja ? esponja.x0 : nx; fl[15] = esponja?.dtau ?? 0;
+    fl[10] = this.g[0]; fl[11] = this.g[1]; fl[12] = this.g[2];
+    const k = this.corte;
+    ui[13] = k.indice; fl[14] = k.escala; ui[16] = k.plano; ui[17] = GRANDEZAS.findIndex(([g]) => g === k.grandeza); fl[18] = k.escalaVort;
     this.device.queue.writeBuffer(this.uniforme, 0, b);
+  }
+
+  /** Força de corpo uniforme (unidades de rede); o kernel precisa ter sido criado com `forca`. */
+  definirForca(g: [number, number, number]) {
+    this.g = g;
+    this.escreverUniforme();
+  }
+
+  /**
+   * Corte desenhado: plano, índice da fatia, grandeza e escalas de cor (escala = 1/U∞ na rede;
+   * escalaVort = 1/ω de saturação). Ajusta o tamanho do canvas (uma célula por pixel).
+   */
+  definirCorte(o: Partial<{ plano: Plano; indice: number; grandeza: Grandeza; escala: number; escalaVort: number }>) {
+    Object.assign(this.corte, o);
+    const max = (this.corte.plano === 0 ? this.cfg.nz : this.cfg.ny) - 1;
+    this.corte.indice = Math.max(0, Math.min(max, Math.round(this.corte.indice)));
+    if (this.desenho) {
+      const [w, h] = this.tamanhoCorte();
+      if (this.desenho.canvas.width !== w || this.desenho.canvas.height !== h) Object.assign(this.desenho.canvas, { width: w, height: h });
+    }
+    this.escreverUniforme();
+  }
+
+  tamanhoCorte(): [number, number] {
+    return [this.cfg.nx, this.corte.plano === 0 ? this.cfg.ny : this.cfg.nz];
+  }
+
+  /** Lista das células junto aos sólidos e o pipeline da troca de momento. */
+  private prepararForca(tipos: Uint8Array) {
+    const lista: number[] = [];
+    for (let c = 0; c < this.n; c++) if (tipos[c] === (FLUIDO | VIZINHO_SOLIDO)) lista.push(c);
+    if (!lista.length) return;
+    const d = this.device;
+    const bLista = d.createBuffer({ size: lista.length * 4, usage: USO.STORAGE | USO.COPY_DST });
+    d.queue.writeBuffer(bLista, 0, new Uint32Array(lista));
+    const nGrupos = Math.ceil(lista.length / 64);
+    const parciais = d.createBuffer({ size: nGrupos * 16, usage: USO.STORAGE | USO.COPY_SRC });
+    const leitura = d.createBuffer({ size: nGrupos * 16, usage: USO.COPY_DST | USO.MAP_READ });
+    const modulo = d.createShaderModule({ code: wgslForca(this.cfg.precisao) });
+    const pipe = d.createComputePipeline({ layout: "auto", compute: { module: modulo, entryPoint: "forca" } });
+    const grupos = [0, 1].map((i) =>
+      d.createBindGroup({
+        layout: pipe.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.uniforme } },
+          { binding: 1, resource: { buffer: this.tipos } },
+          { binding: 2, resource: { buffer: this.buffers[i] } },
+          { binding: 3, resource: { buffer: bLista } },
+          { binding: 4, resource: { buffer: parciais } },
+        ],
+      }),
+    );
+    this.medicao = { pipe, grupos, parciais, leitura, nGrupos, ocupada: false };
+  }
+
+  /**
+   * Força do ar sobre os sólidos no estado atual (unidades de rede, por passo), por troca de
+   * momento. Null se não houver sólido ou se uma leitura anterior ainda estiver em curso.
+   */
+  async forca(): Promise<[number, number, number] | null> {
+    const m = this.medicao;
+    if (!m || m.ocupada) return null;
+    m.ocupada = true;
+    const enc = this.device.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(m.pipe);
+    pass.setBindGroup(0, m.grupos[this.atual]);
+    pass.dispatchWorkgroups(m.nGrupos);
+    pass.end();
+    enc.copyBufferToBuffer(m.parciais, 0, m.leitura, 0, m.nGrupos * 16);
+    this.device.queue.submit([enc.finish()]);
+    try {
+      await m.leitura.mapAsync(MAPA_LEITURA);
+      const v = new Float32Array(m.leitura.getMappedRange());
+      let fx = 0, fy = 0, fz = 0;
+      for (let k = 0; k < m.nGrupos; k++) {
+        fx += v[4 * k];
+        fy += v[4 * k + 1];
+        fz += v[4 * k + 2];
+      }
+      m.leitura.unmap();
+      return [fx, fy, fz];
+    } finally {
+      m.ocupada = false;
+    }
   }
 
   /** Grava k passos num só envio (os despachos de um passe são ordenados entre si). */
@@ -348,6 +535,8 @@ export class LbmGpu {
     const ctx = canvas.getContext("webgpu") as GPUCanvasContext | null;
     if (!ctx) throw new Error("Canvas sem contexto WebGPU");
     const formato = navigator.gpu.getPreferredCanvasFormat();
+    const [w, h] = this.tamanhoCorte();
+    Object.assign(canvas, { width: w, height: h });
     ctx.configure({ device: this.device, format: formato, alphaMode: "opaque" });
     const modulo = this.device.createShaderModule({ code: wgslDesenho(this.cfg.precisao) });
     const pipe = this.device.createRenderPipeline({
@@ -366,7 +555,7 @@ export class LbmGpu {
         ],
       }),
     );
-    this.desenho = { pipe, grupos, ctx };
+    this.desenho = { pipe, grupos, ctx, canvas };
   }
 
   desenhar() {
@@ -382,6 +571,8 @@ export class LbmGpu {
   }
 
   destruir() {
+    this.medicao?.parciais.destroy();
+    this.medicao?.leitura.destroy();
     for (const b of this.buffers) b.destroy();
     this.tipos.destroy();
     this.uniforme.destroy();
