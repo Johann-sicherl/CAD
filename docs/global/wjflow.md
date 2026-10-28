@@ -393,7 +393,7 @@ Memória × malha:
 | Poiseuille plano com força de Guo | perfil parabólico | 1 % (medido: 0,25 %) | ✅ |
 | Conservação de massa (caixa fechada com obstáculo) | Σρ constante | 10⁻⁵ | ✅ |
 | GPU × CPU (FP32 e FP16, LES e força) | referência `LbmCpu` | 10⁻⁵ / 10⁻² rel. | ✅ autoverificação no aparelho |
-| Esfera, Re 100 | Cd ≈ 1,09 (Schiller–Naumann) | 10 % | A1 |
+| Esfera, Re 100 | Cd ≈ 1,09 (Schiller–Naumann) | 10 % | A1 🟡: 1,26 (+15 %) com 15 células no diâmetro (§13) |
 | Cilindro 2D, Re 20 e 100 | Schäfer–Turek 1996: Cd 5,58; St ≈ 0,30 | 5 % | A1 |
 | Tubo turbulento | Moody/Haaland | 15 % | A2 |
 | Expansão súbita | Borda–Carnot | 10 % | A2 |
@@ -541,3 +541,26 @@ da Apache Software Foundation.
     sobram ~35–45 células no comprimento do corpo.
   - O refinamento local (A5) é o que mais aumenta essa resolução. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.
+- **A1 (28/10/2026):** túnel de vento com a peça do WJCAD/STL entregue (falta: plano de simetria e
+  cilindro).
+  - Autoverificação ampliada: a GPU confere com a CPU na saída, na esponja e na força por troca
+    de momento (< 0,0001 % em FP32; < 0,04 % em FP16).
+  - Em Node, a força nas paredes do canal iguala a força de corpo total (0,999997).
+- **Validação da esfera em Re 100** (navegador, GPU simulada; mesmo cálculo que roda no tablet):
+
+  | Túnel | Malha | Células no diâmetro | Cd | Diferença |
+  |---|---|---|---|---|
+  | Padrão (bloqueio 5 %) | 0,5 M | 16 | 1,32 | +21 % |
+  | Amplo (bloqueio 2 %) | 1 M | 15 | 1,26 | +15 % |
+
+  - A queda de 21 % para 15 % com quase a mesma resolução mostra que o confinamento pelas paredes
+    do túnel pesa muito em Re baixo.
+  - O que sobra vem da resolução (contorno em escada com 15 células) e do confinamento restante.
+  - **Próximas verificações:**
+    1. a mesma esfera no modo Qualidade (~18 células) deve baixar o Cd: é o teste de
+       convergência, ~9 min no tablet;
+    2. na A5, o bounce-back interpolado (Bouzidi) e o refinamento local atacam o erro de
+       resolução.
+  - Em Re alto (carros, aeronaves), o confinamento pesa menos, e o erro dominante passa a ser a
+    camada limite não resolvida (§3.3).
+
