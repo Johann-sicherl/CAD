@@ -281,7 +281,7 @@ O **Re é preservado** (mesmo ν físico). Exemplo do carro (4 m, 30 m/s, N = 20
 | Armazenamento | Bytes/célula (2 buffers + tipo) | Observação |
 |---|---|---|
 | FP32 | 156 | referência |
-| **FP16** (`pack2x16float`, sem extensão) | **80** | populações deslocadas **× 2¹⁴** (`ESCALA_FP16`): a Adreno zera subnormais do FP16, e sem a escala o escoamento some; diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
+| **FP16** (conversão própria `meiaBits`, sem extensão) | **80** | populações deslocadas **× 2¹⁴** (`ESCALA_FP16`) e convertidas para FP16 com operações inteiras, ao par mais próximo. O `pack2x16float` da Adreno zera subnormais e **trunca**, e o erro se acumulava a cada passo. Diferença da referência ≈ 10⁻³ do valor; padrão em aparelhos fracos |
 | FP16 + esquema *in-place* (Esoteric Pull, Lehmann 2022) | ~42 | um buffer só; A5 |
 
 Memória × malha:
@@ -473,5 +473,12 @@ da Apache Software Foundation.
     do tablet) e corrigido guardando f̃·2¹⁴.
   - O limite de 128 MB por vínculo restringe o FP32 a ≈ 1,7 M células (o FP16 a ≈ 3,5 M). A partir
     da A1, dividir as populações em vários buffers tira esse limite, se for preciso.
-- ⏳ **Falta:** repetir a autoverificação com a correção e rodar a medição de desempenho no tablet. O Johann roda "Autoverificação" e "Medir
+- **2ª rodada (28/10/2026):**
+  - o canal passou com a escala;
+  - a esfera ainda deu 2,05·10⁻⁴ (limite 1,2·10⁻⁴).
+  - **Causa:** o `pack2x16float` da Adreno **trunca** em vez de arredondar ao mais próximo. A
+    simulação em Node com truncagem dá exatamente os números do tablet (2,02·10⁻⁴ e 1,89·10⁻⁶).
+  - **Correção:** conversão FP32→FP16 nossa, só com inteiros (`meiaBits`, igual ao padrão IEEE em
+    1 milhão de valores no `teste-flow`). Com ela, o navegador dá 1,9·10⁻⁵ e 8·10⁻⁸.
+- ⏳ **Falta:** repetir a autoverificação e rodar a medição de desempenho no tablet. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.

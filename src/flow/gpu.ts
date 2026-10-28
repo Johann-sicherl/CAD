@@ -5,11 +5,12 @@
 //
 // Precisão de armazenamento (a conta é sempre em f32):
 // - fp32: f[i·n + c];
-// - fp16: duas células vizinhas em x na mesma palavra u32 (pack2x16float), f[i·n/2 + c/2],
-//   guardadas multiplicadas por ESCALA_FP16 (GPUs móveis zeram subnormais; ver lbm.ts).
+// - fp16: duas células vizinhas em x na mesma palavra u32, f[i·n/2 + c/2], guardadas multiplicadas
+//   por ESCALA_FP16. A conversão para FP16 é nossa (meiaBits, ao par mais próximo): a Adreno 613
+//   trunca e zera subnormais no pack2x16float, e o erro se acumulava a cada passo (ver lbm.ts).
 //   Cada thread cuida de um par de células (nx par), então nunca duas threads escrevem a mesma palavra.
 
-import { CX, CY, CZ, EQ, ESCALA_FP16, Q, SOLIDO, W, equilibrio, opp, smagorinsky, type Precisao } from "./lbm";
+import { CX, CY, CZ, EQ, ESCALA_FP16, Q, SOLIDO, W, equilibrio, meiaParaFloat, opp, smagorinsky, type Precisao } from "./lbm";
 
 export interface ConfigGpu {
   nx: number;
@@ -40,6 +41,18 @@ function wgslBase(precisao: Precisao, leituraEscrita: boolean): string {
     : `fn ld(i: u32, c: u32) -> f32 {
   let v = unpack2x16float(fa[i * (p.n / 2u) + (c >> 1u)]);
   return select(v.x, v.y, (c & 1u) == 1u) * ${num(1 / ESCALA_FP16)};
+}
+fn meiaBits(v: f32) -> u32 {
+  let u = bitcast<u32>(v);
+  let s = (u >> 16u) & 0x8000u;
+  let e = i32((u >> 23u) & 0xffu) - 112;
+  if (e <= 0) { return s; }
+  if (e >= 31) { return s | 0x7bffu; }
+  let m = u & 0x7fffffu;
+  var h = (u32(e) << 10u) | (m >> 13u);
+  let resto = m & 0x1fffu;
+  if (resto > 0x1000u || (resto == 0x1000u && (h & 1u) == 1u)) { h += 1u; }
+  return s | min(h, 0x7bffu);
 }`;
   return `
 struct P { nx: u32, ny: u32, nz: u32, n: u32, tau: f32, smag: f32, ux: f32, uy: f32, uz: f32, gx: u32, gxf: f32, gyf: f32, gzf: f32, z: u32, escala: f32, pad: u32 };
@@ -127,7 +140,7 @@ function wgslEq(): string {
 function wgslPasso(precisao: Precisao): string {
   const gravar = precisao === "fp32"
     ? `for (var i = 0u; i < 19u; i++) { fb[i * p.n + c0] = a[i]; fb[i * p.n + c0 + 1u] = b[i]; }`
-    : `for (var i = 0u; i < 19u; i++) { fb[i * (p.n / 2u) + k] = pack2x16float(vec2<f32>(a[i], b[i]) * ${num(ESCALA_FP16)}); }`;
+    : `for (var i = 0u; i < 19u; i++) { fb[i * (p.n / 2u) + k] = meiaBits(a[i] * ${num(ESCALA_FP16)}) | (meiaBits(b[i] * ${num(ESCALA_FP16)}) << 16u); }`;
   return `${wgslBase(precisao, true)}
 ${wgslEq()}
 ${wgslCelula()}
@@ -368,16 +381,6 @@ export class LbmGpu {
     this.tipos.destroy();
     this.uniforme.destroy();
   }
-}
-
-/** IEEE 754 meia precisão → número. */
-export function meiaParaFloat(h: number): number {
-  const s = h & 0x8000 ? -1 : 1;
-  const e = (h >> 10) & 0x1f;
-  const m = h & 0x3ff;
-  if (e === 0) return s * m * 2 ** -24;
-  if (e === 31) return m ? NaN : s * Infinity;
-  return s * (1 + m / 1024) * 2 ** (e - 15);
 }
 
 /** f̃ᵉᵠ da corrente livre, para conferir células EQ na verificação. */

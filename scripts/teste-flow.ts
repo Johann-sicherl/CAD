@@ -1,6 +1,6 @@
 // Teste do núcleo do WJFlow em Node: propriedades da rede D3Q19 e casos com solução exata
 // (Taylor–Green, Poiseuille), conservação de massa, LES e conversão de unidades.
-import { AR, CX, CY, CZ, EQ, ESCALA_FP16, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, meia, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
+import { AR, CX, CY, CZ, EQ, ESCALA_FP16, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, meia, meiaBits, meiaParaFloat, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
 
 let falhas = 0;
 function perto(nome: string, obtido: number, esperado: number, tol: number) {
@@ -140,13 +140,13 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
     }
     return new LbmCpu({ nx: 16, ny: 12, nz: 8, tau: 0.8, g: [2e-5, 0, 0] }, t);
   };
-  const erroFp16 = (escala: number) => {
-    const ref = canal(), s = canal();
+  const erroFp16 = (escala: number, truncar = false, caso = canal) => {
+    const ref = caso(), s = caso();
     let e = 0, m = 0;
     for (let t = 0; t < 60; t++) {
       ref.passo();
       s.passo();
-      for (let j = 0; j < s.f.length; j++) s.f[j] = meia(s.f[j] * escala, true) / escala;
+      for (let j = 0; j < s.f.length; j++) s.f[j] = meia(s.f[j] * escala, true, truncar) / escala;
     }
     for (let j = 0; j < s.f.length; j++) {
       e = Math.max(e, Math.abs(s.f[j] - ref.f[j]));
@@ -154,8 +154,25 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
     }
     return e / m;
   };
-  perto("FP16 com zeramento, sem escala: perde o escoamento (reproduz a falha do tablet)", erroFp16(1) > 0.5 ? 1 : 0, 1, 0);
+  const esfera = () => new LbmCpu({ nx: 32, ny: 16, nz: 16, tau: 0.56, cs: 0.1, u: [0.05, 0, 0] }, tunelEsfera(32, 16, 16, 6, 10));
+  perto("FP16 com zeramento, sem escala: perde o escoamento (1ª falha do tablet)", erroFp16(1) > 0.5 ? 1 : 0, 1, 0);
   perto("FP16 com zeramento, escala 2¹⁴: erro relativo", erroFp16(ESCALA_FP16), 0, 1e-3);
+  // 2ª falha do tablet: o pack2x16float da Adreno trunca; o erro sistemático acumula (1,7 %)
+  perto("FP16 truncado, esfera: erro relativo acima do limite (2ª falha do tablet)", erroFp16(ESCALA_FP16, true, esfera) > 1e-2 ? 1 : 0, 1, 0);
+  perto("FP16 ao par mais próximo, esfera: erro relativo", erroFp16(ESCALA_FP16, false, esfera), 0, 3e-3);
+  // conversão inteira do shader (meiaBits) = arredondamento IEEE ao par mais próximo
+  let difBits = 0;
+  const amostra = new Float32Array(1);
+  for (let k = 0; k < 1_000_000; k++) {
+    amostra[0] = (Math.random() < 0.5 ? -1 : 1) * 2 ** (-30 + 33 * Math.random());
+    const v = amostra[0];
+    if (meiaParaFloat(meiaBits(v)) !== Math.min(meia(v, true), 65504) && !(Math.abs(v) > 65504)) difBits++;
+  }
+  for (const v of [0, -0, 1, 1 / 3, 65504, 1e9, 2 ** -14, 2 ** -15, 1 + 2 ** -11, 1 + 3 * 2 ** -11]) {
+    const esperado = Math.abs(v) > 65504 ? 65504 * Math.sign(v) : meia(v, true);
+    if (meiaParaFloat(meiaBits(v)) !== esperado) difBits++;
+  }
+  perto("meiaBits (shader) = FP16 IEEE ao par mais próximo em 1 milhão de valores", difBits, 0, 0);
   perto("FP16: arredondamento de 1/3", meia(1 / 3), 0.333251953125, 0);
 }
 
