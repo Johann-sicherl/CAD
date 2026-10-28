@@ -55,6 +55,11 @@ const FACES: Face[] = [
     descricao: "Gestão integrada ao WJPDM e ao WJCAD: compras, estoque, PCP/MRP, vendas e financeiro.",
     icone: svg(`<path d="M4 20V10l4-3v13M8 20V7l5 3v10M13 20v-7l7-3v10"/><path d="M3 20h18" stroke="${C}"/>`),
   },
+  {
+    id: "airflow", nome: "WJAirFlow", url: "airflow/",
+    descricao: "Escoamento de ar nas peças do WJCAD. Por enquanto, protótipo que mede o desempenho deste aparelho.",
+    icone: svg(`<path d="M3 8h9a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/><path d="M14 8.5c2 .8 2 2.2 0 3" stroke="${C}"/>`),
+  },
 ];
 
 /** Nome do último documento do WJCAD guardado neste aparelho (autosave). */

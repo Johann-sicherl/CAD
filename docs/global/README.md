@@ -15,6 +15,7 @@ e identidade de objetos.
 | **WJApresentation** | apresentações | software de apresentações profissional | `.wjapn` | [apresentacoes.md](apresentacoes.md) |
 | **WJCronProject** | cronogramas e projetos | gerenciador de projetos com Gantt | `.wjcron` | [cronograma.md](cronograma.md) |
 | **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
+| **WJAirFlow** | escoamento de ar nas peças do WJCAD (túnel de vento virtual, dutos, EDF) | ferramentas de CFD | `.wjair` | [wjairflow.md](wjairflow.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
@@ -186,3 +187,6 @@ no INPI: **WJWord** junta o prefixo a "Word", marca registrada de processador de
 classe de software, e é o nome com mais risco. Alternativas sem esse risco: WJDoc, WJTexto, WJWriter.
 "Project" (em WJCronProject) é palavra genérica, risco menor. Trocar o nome depois custa pouco
 (está concentrado na UI e nos docs); a extensão `.wjdoc` não depende dele.
+**WJAirFlow**: "Airflow" é marca da Apache Software Foundation (software de fluxos de dados), mesma
+classe de software; risco menor que o de WJWord por ser outra área. Alternativas: WJFlow, WJAero, WJVento
+(`wjairflow.md` §11).
