@@ -37,6 +37,7 @@ import { desenharCota, textoCota } from "./esboco/cotas";
 import { CotasNoModelo, type RotuloModelo } from "./ui/cotasModelo";
 import { abrirCopias, abrirDoCofre, desligar, instalarPainelCofre, precisaToque, salvarNoCofre, sincronizarAoAbrir } from "./comum/cofre";
 import { botaoDiagnostico, registrarMetrica } from "./comum/diagnostico";
+import { Armazem } from "./comum/armazem";
 import {
   ativarConfiguracao, capturarAtiva, configurarParametro, definirSupressao, definirValorNaConfiguracao, desconfigurarParametro,
   excluirConfiguracao, limparConfiguracoes, listarParametros, novaConfiguracao, PARAMETROS_RECURSO, prepararConfiguracoes,
@@ -140,6 +141,8 @@ let aberto = false;
 let doc: Documento = documentoVazio();
 /** Tempo (ms) da última reconstrução, para a janela de diagnóstico. */
 let ultimaReconstrucao: number | null = null;
+/** Malha triangulada da peça na última reconstrução (vai para o WJFlow). */
+let ultimaMalha: ResultadoRegeneracao["malha"] = null;
 let selecao: Selecao = null;
 /** Outros itens da seleção múltipla da árvore (Ctrl/Shift); `selecao` é o último tocado. */
 let selExtras: NonNullable<Selecao>[] = [];
@@ -232,6 +235,7 @@ function previaAtiva() {
 function aoRegenerar(r: ResultadoRegeneracao, ms: number) {
   estadoKernel = "pronto";
   viewport.mostrarMalha(r.malha, r.topologia);
+  ultimaMalha = r.malha;
   viewport.mostrarPrevia(previaAtiva() ? r.previaRemovido : null);
   if (primeiraRegeneracao && r.malha) {
     viewport.enquadrar(false);
@@ -3435,6 +3439,7 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   abrirCofre: { rotulo: "Abrir do cofre (WJPDM)…", icone: "pasta", fazer: () => void abrirDoCofre("cad") },
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
+  fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
   cotas: { rotulo: "Exibir todas as cotas", icone: "cota", fazer: () => (recursoComCotas === TODAS_AS_COTAS ? fecharCotasNoModelo() : mostrarTodasAsCotas()) },
@@ -3444,6 +3449,18 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   atalhos: { rotulo: "Atalhos de teclado e mouse", icone: "menu", fazer: mostrarAtalhos },
   sobre: { rotulo: "Sobre e licenças", icone: "menu", fazer: mostrarSobre },
 };
+
+/** Manda a malha da peça para o WJFlow (IndexedDB do aparelho) e abre o WJFlow com ela. */
+async function abrirNoWJFlow() {
+  if (!ultimaMalha) return avisar("A peça ainda não tem sólido para analisar.");
+  try {
+    const b = await Armazem.abrir("wjflow", ["estudos"]);
+    await b.por("estudos", { id: "do-cad", nome: doc.nome, vertices: ultimaMalha.vertices, triangulos: ultimaMalha.triangulos } as { id: string });
+    location.href = `${import.meta.env.BASE_URL}flow/#peca-do-cad`;
+  } catch (e) {
+    avisar(`Não foi possível abrir no WJFlow: ${(e as Error).message}`);
+  }
+}
 
 /** Componentes de terceiros usados no app (com as licenças). */
 function mostrarSobre() {

@@ -1,320 +1,630 @@
-// WJFlow — protótipo de medição (fase A0 de docs/global/wjflow.md).
-// 1) Autoverificação: o shader da GPU tem de dar o mesmo resultado da referência em CPU (lbm.ts).
-// 2) Medição: passos/s e MLUPS (milhões de células atualizadas por segundo) em malhas crescentes,
-//    em FP32 e FP16, para dimensionar o túnel neste aparelho.
-// 3) Túnel ao vivo: esfera no túnel, plano central colorido pela velocidade.
+// WJFlow: escoamento de ar na peça do WJCAD (fase A1 de docs/global/wjflow.md).
+// Estudo (peça, ar, malha) → túnel voxelizado num worker → LBM D3Q19 na GPU (gpu.ts) com a
+// força medida por troca de momento → Cd/Cl/Cs com média na última travessia e cortes ao vivo.
+// Teste do aparelho (autoverificação e desempenho) em flow/aparelho/.
 
 import "./flow.css";
-import { LbmCpu, Q, bytesPorCelula, tunelEsfera, type Precisao } from "./lbm";
-import { LbmGpu, abrirGpu, cabe } from "./gpu";
-import { botaoDiagnostico, registrarMetrica } from "../comum/diagnostico";
+import { $, baixar, Casca, escapar, escolherArquivo, registrarOffline, salvarArquivo } from "../comum/casca";
+import { Armazem } from "../comum/armazem";
+import { registrarMetrica } from "../comum/diagnostico";
+import { abrirGpu, cabe, GRANDEZAS, LbmGpu, type Grandeza, type Plano } from "./gpu";
+import { coeficientes, desserializar, estudoNovo, forcaReal, Historico, MODOS, serializar, TUNEIS, U_REDE, UNIDADES, type Estudo, type Modo, type Preparo, type Tunel, type Unidade } from "./estudo";
+import { DIRECOES, esfera, lerStl, propriedadesAr, type Direcao, type Malha } from "./geometria";
+import { SOLIDO, bytesPorCelula } from "./lbm";
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const saida = $<HTMLPreElement>("af-saida");
-const estado = $<HTMLParagraphElement>("af-estado");
-const U = 0.05; // velocidade do ar na rede (Mach de rede ≈ 0,087)
-const MALHAS: [number, number, number][] = [[64, 32, 32], [128, 64, 64], [160, 80, 80], [192, 96, 96], [256, 128, 128], [320, 160, 160]];
-const relatorio: string[] = [];
+const CHAVE_COFRE = "wjflow:estudo";
+const CHAVE_MLUPS = "wjflow:mlups";
+const CS = 0.1; // constante de Smagorinsky (LES)
+
+let estudo: Estudo = estudoNovo();
+let malha: Malha | null = null;
+let preparo: Preparo | null = null;
+let preparando: Promise<Preparo | null> | null = null;
+let erroPreparo = "";
 let gpu: Awaited<ReturnType<typeof abrirGpu>> | null = null;
 let erroGpu = "";
-let ocupado = false;
+interface Simulacao {
+  s: LbmGpu;
+  hist: Historico;
+  rodando: boolean;
+  quadro: number;
+  porQuadro: number;
+  tMedida: number;
+  pMedida: number;
+  ritmo: number;
+  instavel: boolean;
+}
+let sim: Simulacao | null = null;
+let ultimosResultados = 0;
+const corte = { plano: 0 as Plano, indice: -1, grandeza: "velocidade" as Grandeza };
 
 const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const mb = (b: number) => `${fmt(b / 1048576)} MB`;
-function escrever(linha: string) {
-  relatorio.push(linha);
-  saida.textContent = relatorio.join("\n");
-  saida.scrollTop = saida.scrollHeight;
-}
-const pausa = () => new Promise((r) => setTimeout(r, 0));
+const sig = (v: number, s = 3) => (Math.abs(v) >= 1e-3 && Math.abs(v) < 1e5 ? fmt(v, Math.max(0, s - 1 - Math.floor(Math.log10(Math.abs(v) || 1)))) : v.toExponential(2).replace(".", ","));
+const minutos = (s: number) => (s < 90 ? `${fmt(s)} s` : `${fmt(s / 60, 1)} min`);
+const mlupsDoAparelho = () => {
+  const v = Number(localStorage.getItem(CHAVE_MLUPS));
+  return v > 0 ? v : 30;
+};
 
-async function mostrarAparelho() {
-  const dl = $<HTMLDListElement>("af-aparelho");
-  const linhas: [string, string][] = [];
-  const nav = navigator as Navigator & { deviceMemory?: number };
-  try {
-    gpu = await abrirGpu();
-    const i = gpu.adaptador.info;
-    const l = gpu.device.limits;
-    linhas.push(
-      ["WebGPU", "disponível ✓"],
-      ["GPU", [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(" · ") || "(o navegador não informa)"],
-      ["Maior buffer", `${mb(l.maxStorageBufferBindingSize)} por vínculo, ${mb(l.maxBufferSize)} por buffer`],
-      ["FP16 em shader", gpu.adaptador.features.has("shader-f16") ? "sim" : "não (o armazenamento FP16 funciona mesmo assim)"],
-    );
-    gpu.device.lost.then((x) => escrever(`!! GPU perdida: ${x.message || x.reason}`));
-  } catch (e) {
-    erroGpu = (e as Error).message;
-    linhas.push(["WebGPU", `indisponível — ${erroGpu}`]);
-  }
-  linhas.push(
-    ["Memória do aparelho", nav.deviceMemory ? `≈ ${nav.deviceMemory} GB (valor arredondado pelo navegador)` : "(não informada)"],
-    ["Núcleos de CPU", String(navigator.hardwareConcurrency || "?")],
-    ["Navegador", navigator.userAgent],
-  );
-  dl.innerHTML = linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v.replace(/[<>&]/g, "")}</dd>`).join("");
-  for (const [k, v] of linhas) relatorio.push(`${k}: ${v}`);
-  relatorio.push("");
-  saida.textContent = relatorio.join("\n");
-  const sel = $<HTMLSelectElement>("af-malha");
-  sel.innerHTML = MALHAS.slice(0, 5).map(([x, y, z], k) => `<option value="${k}"${k === 1 ? " selected" : ""}>${x}×${y}×${z} (${fmt((x * y * z) / 1e6, 1)} M células)</option>`).join("");
-  if (!gpu) for (const b of ["af-verificar", "af-medir", "af-vivo"]) $<HTMLButtonElement>(b).disabled = true;
+// ---------------------------------------------------------------------------------------------
+// armazenamento: autosave no IndexedDB (o .wjflow leva a peça, grande demais para o localStorage)
+
+let banco: Promise<Armazem> | null = null;
+const db = () => (banco ??= Armazem.abrir("wjflow", ["estudos"]));
+let autosaveT = 0;
+function autosave() {
+  clearTimeout(autosaveT);
+  autosaveT = window.setTimeout(() => {
+    void db().then((b) => b.por("estudos", { id: "autosave", texto: serializar(estudo, malha) } as { id: string })).catch(() => {});
+  }, 500);
 }
 
-/** Faixa de andamento acima do relatório: "em andamento", "concluído" ou "erro". */
-function progresso(texto: string, tipo: "" | "ok" | "erro" = "") {
-  const p = $<HTMLParagraphElement>("af-progresso");
-  p.hidden = false;
-  p.className = `af-progresso ${tipo}`;
-  p.textContent = texto;
-}
-
-/**
- * Roda uma tarefa exclusiva (um teste por vez), com os botões travados. Mantém a tela acesa:
- * com a tela apagada o Android pausa a página e a medição sairia errada.
- */
-async function exclusivo(nome: string, f: () => Promise<void>) {
-  if (ocupado) return;
-  ocupado = true;
-  pararVivo();
-  document.querySelectorAll<HTMLButtonElement>(".af-botoes button").forEach((b) => (b.disabled = true));
-  progresso(`⏳ ${nome} em andamento… não saia desta tela.`);
-  const tela = await navigator.wakeLock?.request("screen").catch(() => null);
-  try {
-    await f();
-    progresso(`✓ ${nome} concluída. Toque em "Copiar resultados" e cole na conversa.`, "ok");
-  } catch (e) {
-    escrever(`!! erro: ${(e as Error).message}`);
-    progresso(`✗ ${nome} parou com erro (detalhe no relatório abaixo).`, "erro");
-  } finally {
-    void tela?.release().catch(() => {});
-    navigator.vibrate?.(200);
-    ocupado = false;
-    document.querySelectorAll<HTMLButtonElement>(".af-botoes button").forEach((b) => (b.disabled = !gpu && b.id !== "af-cpu" && b.id !== "af-copiar"));
-  }
-}
-
-/** Compara GPU × CPU no mesmo caso: túnel com esfera (LES) e canal com força (Guo). */
-async function verificar() {
-  const casos: { nome: string; nx: number; ny: number; nz: number; tau: number; cs: number; u: [number, number, number]; g: [number, number, number]; tipo: Uint8Array; passos: number }[] = [
-    { nome: "túnel com esfera + LES", nx: 32, ny: 16, nz: 16, tau: 0.56, cs: 0.1, u: [U, 0, 0], g: [0, 0, 0], tipo: tunelEsfera(32, 16, 16, 6, 10), passos: 60 },
-    { nome: "canal periódico com força", nx: 16, ny: 12, nz: 8, tau: 0.8, cs: 0, u: [0, 0, 0], g: [2e-5, 0, 0], tipo: canal(16, 12, 8), passos: 60 },
-  ];
-  escrever("== Autoverificação (GPU × referência em CPU) ==");
-  let ok = true;
-  for (const prec of ["fp32", "fp16"] as Precisao[]) {
-    for (const c of casos) {
-      const cpu = new LbmCpu({ nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, g: c.g }, c.tipo);
-      const g = new LbmGpu(gpu!.device, { nx: c.nx, ny: c.ny, nz: c.nz, tau: c.tau, cs: c.cs, u: c.u, precisao: prec, tipo: c.tipo, forca: c.g.some((v) => v !== 0) });
-      g.escreverParametros(c.g);
-      for (let k = 0; k < c.passos; k++) cpu.passo();
-      g.avancar(c.passos);
-      const f = await g.ler();
-      g.destruir();
-      let erro = 0, ref = 0;
-      for (let j = 0; j < f.length; j++) {
-        if (!Number.isFinite(f[j])) erro = Infinity;
-        erro = Math.max(erro, Math.abs(f[j] - cpu.f[j]));
-        ref = Math.max(ref, Math.abs(cpu.f[j]));
-      }
-      // FP32: só arredondamento; FP16: 11 bits de mantissa e arredondamento que varia entre drivers.
-      // Um driver com defeito erra na ordem do próprio valor, muito acima destes limites.
-      const lim = prec === "fp32" ? 1e-5 * ref + 1e-7 : 1e-2 * ref + 1e-6;
-      const passou = erro <= lim;
-      ok &&= passou;
-      escrever(`${passou ? "ok   " : "FALHA"} ${prec} · ${c.nome}: diferença máx. ${erro.toExponential(2)} (limite ${lim.toExponential(1)})`);
-      await pausa();
+async function carregarInicial() {
+  // aberto pelo WJPDM: o cofre deixou o arquivo no localStorage
+  const doCofre = localStorage.getItem(CHAVE_COFRE);
+  if (doCofre) {
+    localStorage.removeItem(CHAVE_COFRE);
+    try {
+      return abrirTexto(doCofre);
+    } catch (e) {
+      casca.avisar((e as Error).message, 6000);
     }
   }
-  escrever(ok ? "Autoverificação: a GPU deste aparelho calcula igual à referência ✓\n" : "Autoverificação FALHOU: o driver desta GPU não calcula igual à referência.\n");
-  if (!ok) throw new Error("a GPU não calculou igual à referência");
-}
-
-function canal(nx: number, ny: number, nz: number): Uint8Array {
-  const t = new Uint8Array(nx * ny * nz);
-  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++) {
-    t[x + nx * (0 + ny * z)] = 1;
-    t[x + nx * (ny - 1 + ny * z)] = 1;
+  if (location.hash === "#peca-do-cad") {
+    history.replaceState(null, "", location.pathname + location.search);
+    if (await pecaDoCad(false)) return;
   }
-  return t;
+  try {
+    const a = await (await db()).ler<{ texto: string }>("estudos", "autosave");
+    if (a) abrirTexto(a.texto, false);
+  } catch {
+    /* sem autosave */
+  }
+  atualizarTudo();
 }
 
-/** Passos/s sustentados: lotes de ~150 ms até `ms` milissegundos. */
-async function cronometrar(s: LbmGpu, ms: number): Promise<number> {
+function abrirTexto(texto: string, guardar = true) {
+  const r = desserializar(texto);
+  pararSimulacao();
+  estudo = r.estudo;
+  malha = r.malha;
+  invalidar(false);
+  if (guardar) autosave();
+}
+
+/** Peça mandada pelo WJCAD (menu Arquivo → Abrir no WJFlow). */
+async function pecaDoCad(avisarSeFaltar = true): Promise<boolean> {
+  const p = await (await db()).ler<{ nome: string; vertices: Float32Array; triangulos: Uint32Array }>("estudos", "do-cad").catch(() => undefined);
+  if (!p) {
+    if (avisarSeFaltar) casca.avisar("Nenhuma peça recebida do WJCAD. No WJCAD, use o menu Arquivo → Abrir no WJFlow.", 6000);
+    return false;
+  }
+  usarPeca({ vertices: p.vertices, triangulos: p.triangulos }, p.nome, "wjcad", "mm");
+  return true;
+}
+
+function usarPeca(m: Malha, nome: string, origem: Estudo["peca"]["origem"], unidade: Unidade) {
+  pararSimulacao();
+  malha = m;
+  estudo.peca = { nome, origem, unidade };
+  delete estudo.referencia;
+  if (estudo.nome === estudoNovo().nome || !estudo.nome) estudo.nome = `Escoamento — ${nome}`;
+  invalidar();
+  casca.avisar(`Peça carregada: ${nome} (${fmt(m.triangulos.length / 3)} triângulos).`);
+}
+
+async function importarStl() {
+  const a = await escolherArquivo(true);
+  if (!a?.dados) return;
+  try {
+    usarPeca(lerStl(a.dados), a.nome.replace(/\.[^.]+$/, ""), "stl", estudo.peca.unidade);
+  } catch (e) {
+    casca.avisar((e as Error).message, 6000);
+  }
+}
+
+/** Esfera em Re = 100: Cd de referência 1,09 (Schiller–Naumann). */
+function validacaoEsfera() {
+  const d = 0.1;
+  const ar = propriedadesAr(20, 0);
+  usarPeca(esfera(d / 2, [0, 0, 0], 32, 64), "Esfera de validação (Re 100)", "validacao", "m");
+  Object.assign(estudo, { velocidade: +((100 * ar.nu) / d).toPrecision(5), temperatura: 20, altitude: 0, direcao: "+x", modo: "padrao", tunel: "amplo", travessias: 4, areaReferencia: undefined });
+  estudo.referencia = { cd: (24 / 100) * (1 + 0.15 * 100 ** 0.687), fonte: "Schiller–Naumann (1933), esfera em Re 100" };
+  estudo.nome = "Validação — esfera Re 100";
+  invalidar();
+}
+
+// ---------------------------------------------------------------------------------------------
+// preparo do túnel (worker)
+
+function invalidar(guardar = true) {
+  pararSimulacao(true);
+  preparo = null;
+  erroPreparo = "";
+  if (guardar) {
+    delete estudo.resultado;
+    autosave();
+  }
+  atualizarTudo();
+  agendarPreparo();
+}
+
+let preparoT = 0;
+function agendarPreparo() {
+  clearTimeout(preparoT);
+  if (!malha) return;
+  preparoT = window.setTimeout(() => void prepararAgora(), 250);
+}
+
+function prepararAgora(): Promise<Preparo | null> {
+  if (preparo) return Promise.resolve(preparo);
+  if (!malha) return Promise.resolve(null);
+  if (preparando) return preparando;
+  const pedido = JSON.stringify(estudo);
+  casca.definirStatus("Montando o túnel e voxelizando a peça…");
+  preparando = new Promise<Preparo | null>((ok) => {
+    const w = new Worker(new URL("./preparo-worker.ts", import.meta.url), { type: "module" });
+    w.onmessage = (e: MessageEvent<{ preparo?: Preparo; erro?: string }>) => {
+      w.terminate();
+      preparando = null;
+      if (JSON.stringify(estudo) !== pedido) return ok(prepararAgora()); // mudou no meio: refaz
+      preparo = e.data.preparo ?? null;
+      erroPreparo = e.data.erro ?? "";
+      atualizarTudo();
+      ok(preparo);
+    };
+    w.postMessage({ estudo, malha });
+  });
+  return preparando;
+}
+
+// ---------------------------------------------------------------------------------------------
+// simulação
+
+async function calcular() {
+  if (sim?.rodando) return;
+  if (!malha) return casca.avisar("Carregue uma peça: do WJCAD, de um arquivo STL ou a esfera de validação.", 5000);
+  if (!gpu) {
+    try {
+      gpu = await abrirGpu();
+    } catch (e) {
+      erroGpu = (e as Error).message;
+      return casca.avisar(erroGpu, 7000);
+    }
+  }
+  const p = await prepararAgora();
+  if (!p) return casca.avisar(erroPreparo || "Não foi possível montar o túnel.", 6000);
+  if (!sim) {
+    const { nx, ny, nz, tipo } = p.dominio;
+    if (!cabe(gpu.device, nx * ny * nz, p.precisao)) return casca.avisar("Esta malha não cabe na memória de GPU liberada para o navegador. Use um modo menor.", 7000);
+    // parte do ar parado e acelera até U∞ (partida suave: menos ondas de pressão)
+    const s = new LbmGpu(gpu.device, { nx, ny, nz, tau: p.tau, cs: CS, u: [0, 0, 0], precisao: p.precisao, tipo, esponja: p.esponja, regularizado: true });
+    s.ligarCanvas($<HTMLCanvasElement>("#fl-gpu"));
+    sim = { s, hist: new Historico(), rodando: false, quadro: 0, porQuadro: 2, tMedida: performance.now(), pMedida: 0, ritmo: 0, instavel: false };
+    aplicarCorte();
+    delete estudo.resultado;
+  }
+  sim.rodando = true;
+  sim.tMedida = performance.now();
+  sim.pMedida = sim.s.passos;
+  telaAtiva(true);
+  void manterTelaAcesa();
+  sim.quadro = requestAnimationFrame(laco);
+  casca.renderizar();
+}
+
+function laco() {
+  const m = sim;
+  const p = preparo;
+  if (!m || !m.rodando || !p) return;
   const t0 = performance.now();
-  s.avancar(4);
-  await s.esperar();
-  const est = Math.max(1, performance.now() - t0) / 4;
-  const lote = Math.max(2, Math.min(200, Math.round(150 / est)));
-  let passos = 0;
-  const t1 = performance.now();
-  while (performance.now() - t1 < ms) {
-    s.avancar(lote);
-    await s.esperar();
-    passos += lote;
+  const k = Math.min(m.porQuadro, p.passosTotal - m.s.passos);
+  const rampa = p.passosTravessia / 4;
+  if (m.s.passos < rampa + k) {
+    const f = Math.min(1, m.s.passos / rampa);
+    m.s.definirVelocidade([U_REDE * 0.5 * (1 - Math.cos(Math.PI * f)), 0, 0]);
   }
-  return passos / ((performance.now() - t1) / 1000);
-}
-
-async function medir() {
-  const dev = gpu!.device;
-  // 1) tamanho do grupo de threads que rende mais nesta GPU (malha de 0,5 M células)
-  escrever("== Ajuste do kernel (128×64×64, threads por grupo) ==");
-  const melhorGrupo: Record<Precisao, number> = { fp32: 64, fp16: 64 };
-  for (const prec of ["fp32", "fp16"] as Precisao[]) {
-    let melhor = 0;
-    const linha: string[] = [];
-    for (const grupo of [32, 64, 128]) {
-      progresso(`⏳ Ajustando o kernel: ${prec.toUpperCase()}, ${grupo} threads por grupo… não saia desta tela.`);
-      const s = new LbmGpu(dev, { nx: 128, ny: 64, nz: 64, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(128, 64, 64, 16), grupo });
-      const mlups = ((await cronometrar(s, 1500)) * s.n) / 1e6;
-      s.destruir();
-      linha.push(`${grupo}: ${fmt(mlups, 1)}`);
-      if (mlups > melhor) {
-        melhor = mlups;
-        melhorGrupo[prec] = grupo;
-      }
+  m.s.avancar(k);
+  m.s.desenhar();
+  void m.s.forca().then((f) => {
+    if (sim !== m) return;
+    if (f) {
+      if (!f.every(Number.isFinite)) m.instavel = true;
+      else m.hist.adicionar(m.s.passos, f);
     }
-    escrever(`${prec}  MLUPS por tamanho de grupo → ${linha.join(" · ")}  (usa ${melhorGrupo[prec]})`);
-  }
-  escrever("");
-  escrever("== Desempenho (esfera no túnel, BGK + LES, u = 0,05) ==");
-  escrever("malha              células  prec.  memória   passos/s   MLUPS   1 travessia");
-  const resultados: { celulas: number; prec: Precisao; mlups: number }[] = [];
-  let etapa = 0;
-  externo: for (const [nx, ny, nz] of MALHAS) {
-    const n = nx * ny * nz;
-    for (const prec of ["fp32", "fp16"] as Precisao[]) {
-      progresso(`⏳ Medindo ${nx}×${ny}×${nz} ${prec.toUpperCase()} (etapa ${++etapa} de até ${MALHAS.length * 2})… não saia desta tela.`);
-      const mem = n * bytesPorCelula(prec);
-      const nome = `${nx}×${ny}×${nz}`.padEnd(16);
-      if (!cabe(dev, n, prec)) {
-        escrever(`${nome} ${fmt(n / 1e6, 2).padStart(7)} M ${prec}   não cabe nos limites da GPU`);
-        continue;
-      }
-      dev.pushErrorScope("out-of-memory");
-      const s = new LbmGpu(dev, { nx, ny, nz, tau: 0.53, cs: 0.1, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, ny / 4), grupo: melhorGrupo[prec] });
-      const semMemoria = await dev.popErrorScope();
-      if (semMemoria) {
-        s.destruir();
-        escrever(`${nome} ${fmt(n / 1e6, 2).padStart(7)} M ${prec}   sem memória na GPU`);
-        continue;
-      }
-      const pps = await cronometrar(s, n > 2e6 ? 3000 : 2000);
-      const verif = await s.ler().then((f) => f.slice(0, Q * 64).every(Number.isFinite)).catch(() => true);
-      s.destruir();
-      const mlups = (pps * n) / 1e6;
-      resultados.push({ celulas: n, prec, mlups });
-      const travessia = nx / U / pps;
-      escrever(`${nome} ${fmt(n / 1e6, 2).padStart(7)} M ${prec}  ${mb(mem).padStart(8)}  ${fmt(pps, 1).padStart(8)}  ${fmt(mlups, 1).padStart(6)}   ${fmt(travessia, 0).padStart(5)} s${verif ? "" : "  (instável: NaN)"}`);
-      await pausa();
-      if (travessia > 600) break externo; // malhas maiores seriam lentas demais para uso
+    const agora = performance.now();
+    // passos por quadro para ~25 quadros/s sem travar a interface
+    const dt = agora - t0;
+    m.porQuadro = Math.max(1, Math.min(80, Math.round(m.porQuadro * (dt < 34 ? 1.2 : dt > 50 ? 0.8 : 1))));
+    if (agora - m.tMedida > 1500) {
+      m.ritmo = (m.s.passos - m.pMedida) / ((agora - m.tMedida) / 1000);
+      m.tMedida = agora;
+      m.pMedida = m.s.passos;
+      if (m.ritmo > 0) localStorage.setItem(CHAVE_MLUPS, String(Math.round((m.ritmo * m.s.n) / 1e6)));
     }
-  }
-  const melhor = resultados.reduce((a, b) => (b.mlups > a.mlups ? b : a), resultados[0]);
-  if (melhor) escrever(`Pico: ${fmt(melhor.mlups, 1)} MLUPS (${melhor.prec}, ${fmt(melhor.celulas / 1e6, 2)} M células).`);
-  escrever("1 travessia = tempo para o ar cruzar o túnel uma vez; um resultado estável pede de 2 a 4.");
-  escrever("== Medição concluída ==\n");
-}
-
-function baseCpu(): Promise<void> {
-  return new Promise((resolve) => {
-    escrever("== Base em CPU (1 thread, JavaScript, 64×32×32) ==");
-    const w = new Worker(new URL("./cpu-worker.ts", import.meta.url), { type: "module" });
-    w.onmessage = (e: MessageEvent<{ celulas: number; passos: number; segundos: number; mlups: number }>) => {
-      escrever(`${fmt(e.data.passos)} passos em ${fmt(e.data.segundos, 1)} s → ${fmt(e.data.mlups, 2)} MLUPS por núcleo\n`);
-      w.terminate();
-      resolve();
-    };
-    w.onerror = (e) => {
-      escrever(`!! erro no worker: ${e.message}`);
-      w.terminate();
-      resolve();
-    };
-    w.postMessage({ nx: 64, ny: 32, nz: 32, ms: 3000 });
+    if (agora - ultimosResultados > 250) {
+      ultimosResultados = agora;
+      atualizarResultados();
+    }
+    if (m.instavel) return concluir("O cálculo ficou instável (valores infinitos). Tente o modo Qualidade (malha mais fina) ou uma velocidade menor.");
+    if (m.s.passos >= p.passosTotal) return concluir();
+    if (m.rodando) m.quadro = requestAnimationFrame(laco);
   });
 }
 
-// --- túnel ao vivo ---
-let vivo: { s: LbmGpu; quadro: number; porQuadro: number; t0: number; p0: number } | null = null;
-
-function pararVivo() {
-  if (!vivo) return;
-  cancelAnimationFrame(vivo.quadro);
-  vivo.s.destruir();
-  vivo = null;
-  $<HTMLButtonElement>("af-vivo").textContent = "Iniciar";
+function concluir(erro?: string) {
+  const m = sim!;
+  const p = preparo!;
+  m.rodando = false;
+  telaAtiva(false);
+  const media = m.hist.media(p.inicioMedia) ?? m.hist.forcas.at(-1);
+  if (media) {
+    const [cd, cl, cs] = coeficientes(media, p);
+    estudo.resultado = { cd, cl, cs, forca: forcaReal(media, p), area: p.areaRef, re: p.re, travessias: m.s.passos / p.passosTravessia, data: new Date().toISOString(), instavel: !!erro || undefined };
+    autosave();
+  }
+  navigator.vibrate?.(200);
+  casca.avisar(erro ?? "Cálculo concluído. Resultados com média na última travessia.", 7000);
+  atualizarResultados();
+  casca.renderizar();
 }
 
-function iniciarVivo() {
-  if (vivo) return pararVivo();
-  const [nx, ny, nz] = MALHAS[+$<HTMLSelectElement>("af-malha").value];
-  const prec = $<HTMLSelectElement>("af-precisao").value as Precisao;
-  const re = +$<HTMLSelectElement>("af-re").value;
-  const d = Math.round(ny / 4);
-  const nu = (U * d) / re;
-  const tau = 3 * nu + 0.5;
-  const cs = re > 300 ? 0.1 : 0;
-  if (!cabe(gpu!.device, nx * ny * nz, prec)) {
-    estado.textContent = "Essa malha não cabe nos limites da GPU deste aparelho.";
+function pausar() {
+  if (!sim?.rodando) return;
+  sim.rodando = false;
+  cancelAnimationFrame(sim.quadro);
+  telaAtiva(false);
+  atualizarResultados();
+  casca.renderizar();
+}
+
+function pararSimulacao(descartar = true) {
+  if (!sim) return;
+  sim.rodando = false;
+  cancelAnimationFrame(sim.quadro);
+  if (descartar) {
+    sim.s.destruir();
+    sim = null;
+    telaAtiva(false);
+  }
+}
+
+function recomecar() {
+  pararSimulacao(true);
+  delete estudo.resultado;
+  atualizarTudo();
+  void calcular();
+}
+
+let travaTela: WakeLockSentinel | null = null;
+async function manterTelaAcesa() {
+  travaTela = (await navigator.wakeLock?.request("screen").catch(() => null)) ?? null;
+}
+function telaAtiva(rodando: boolean) {
+  if (!rodando) {
+    void travaTela?.release().catch(() => {});
+    travaTela = null;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// corte
+
+function aplicarCorte() {
+  const p = preparo;
+  if (!p) return;
+  const max = (corte.plano === 0 ? p.dominio.nz : p.dominio.ny) - 1;
+  if (corte.indice < 0 || corte.indice > max) corte.indice = Math.floor(max / 2);
+  const ind = $<HTMLInputElement>("#fl-indice");
+  ind.max = String(max);
+  ind.value = String(corte.indice);
+  sim?.s.definirCorte({ plano: corte.plano, indice: corte.indice, grandeza: corte.grandeza, escala: 1 / U_REDE, escalaVort: p.dominio.celulasNoCorpo / (8 * U_REDE) });
+  sim?.s.desenhar();
+  desenharPrevia();
+  legenda();
+}
+
+function legenda() {
+  const seq = "linear-gradient(90deg, #2e4dbf, #33b3d9, #66cc59, #fad140, #d9382e)";
+  const div = "linear-gradient(90deg, #2b54c7, #f7f7f7, #d6301f)";
+  const L: Record<Grandeza, [string, string, string]> = {
+    velocidade: ["0", "1,5 × U∞", seq],
+    ux: ["−1,5 U∞ (contra o ar)", "+1,5 U∞", div],
+    cp: ["Cp −1,5 (sucção)", "Cp +1,5 (pressão)", div],
+    vorticidade: ["giro horário", "giro anti-horário", div],
+  };
+  const [a, b, g] = L[corte.grandeza];
+  $("#fl-leg-min").textContent = a;
+  $("#fl-leg-max").textContent = b;
+  $("#fl-leg-barra").style.background = g;
+}
+
+/** Antes de calcular: a peça voxelizada no plano do corte (cinza) dentro do túnel. */
+function desenharPrevia() {
+  const cv = $<HTMLCanvasElement>("#fl-previa");
+  const gpuCv = $<HTMLCanvasElement>("#fl-gpu");
+  const comSim = !!sim;
+  gpuCv.hidden = !comSim;
+  cv.hidden = comSim;
+  const vazio = $("#fl-vazio");
+  if (!malha) {
+    vazio.innerHTML = `Carregue uma peça para começar:<br><b>Peça do WJCAD</b> (no WJCAD: menu Arquivo → Abrir no WJFlow), <b>Importar STL</b> ou a <b>Esfera de validação</b>.`;
+    cv.width = 0;
     return;
   }
-  const s = new LbmGpu(gpu!.device, { nx, ny, nz, tau, cs, u: [U, 0, 0], precisao: prec, tipo: tunelEsfera(nx, ny, nz, d) });
-  const canvas = $<HTMLCanvasElement>("af-canvas");
-  canvas.width = nx * 4;
-  canvas.height = ny * 4;
-  s.ligarCanvas(canvas);
-  s.escreverParametros([0, 0, 0], 1 / (1.5 * U));
-  vivo = { s, quadro: 0, porQuadro: 2, t0: performance.now(), p0: 0 };
-  $<HTMLButtonElement>("af-vivo").textContent = "Parar";
-  let ultimo = performance.now();
-  const laco = () => {
-    if (!vivo) return;
-    const v = vivo;
-    v.s.avancar(v.porQuadro);
-    v.s.desenhar();
-    void v.s.esperar().then(() => {
-      if (vivo !== v) return;
-      const agora = performance.now();
-      // ajusta os passos por quadro para ~30 quadros/s sem travar a interface
-      const dt = agora - ultimo;
-      ultimo = agora;
-      v.porQuadro = Math.max(1, Math.min(60, Math.round(v.porQuadro * (dt < 28 ? 1.15 : dt > 40 ? 0.85 : 1))));
-      const seg = (agora - v.t0) / 1000;
-      if (seg > 1) {
-        const pps = (v.s.passos - v.p0) / seg;
-        estado.textContent = `Re ${fmt(re)} · τ₀ = ${fmt(tau, 4)}${cs ? " + LES" : ""} · ${fmt(pps, 0)} passos/s · ${fmt((pps * v.s.n) / 1e6, 1)} MLUPS · ${fmt((v.s.passos * U) / nx, 2)} travessias`;
-        v.t0 = agora;
-        v.p0 = v.s.passos;
+  if (!preparo) {
+    vazio.textContent = erroPreparo || "Montando o túnel…";
+    return;
+  }
+  vazio.textContent = "";
+  if (comSim) return;
+  const { nx, ny, nz, tipo } = preparo.dominio;
+  const h = corte.plano === 0 ? ny : nz;
+  cv.width = nx;
+  cv.height = h;
+  const ctx = cv.getContext("2d")!;
+  const img = ctx.createImageData(nx, h);
+  const esp = preparo.esponja.x0;
+  for (let r = 0; r < h; r++) {
+    for (let x = 0; x < nx; x++) {
+      const y = corte.plano === 0 ? ny - 1 - r : corte.indice;
+      const z = corte.plano === 0 ? corte.indice : r;
+      const c = x + nx * (y + ny * z);
+      const o = 4 * (r * nx + x);
+      const solido = (tipo[c] & 3) === SOLIDO;
+      const cor = solido ? [138, 147, 158] : x > esp ? [232, 236, 241] : [248, 250, 252];
+      img.data.set([...cor, 255], o);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// painel do estudo
+
+function campo(rotulo: string, html: string) {
+  return `<label class="fl-campo"><span>${rotulo}</span>${html}</label>`;
+}
+
+function renderizarPainel() {
+  const e = estudo;
+  const desab = sim?.rodando ? " disabled" : "";
+  const opcoes = (lista: [string, string][], v: string) => lista.map(([k, r]) => `<option value="${k}"${k === v ? " selected" : ""}>${escapar(r)}</option>`).join("");
+  const p = preparo;
+  const ar = propriedadesAr(e.temperatura, e.altitude);
+  let info = "";
+  if (p) {
+    const { nx, ny, nz } = p.dominio;
+    const n = nx * ny * nz;
+    const tempo = (p.passosTotal * n) / (mlupsDoAparelho() * 1e6);
+    info = `<h3>Túnel</h3><dl class="fl-info">
+      <dt>Malha</dt><dd>${nx} × ${ny} × ${nz} = ${fmt(n / 1e6, 2)} M células</dd>
+      <dt>Célula</dt><dd>${sig(p.dx * 1000)} mm · ${fmt(p.dominio.celulasNoCorpo, 0)} células no comprimento da peça</dd>
+      <dt>Memória da GPU</dt><dd>${fmt((n * bytesPorCelula(p.precisao)) / 1048576)} MB (${p.precisao.toUpperCase()})</dd>
+      <dt>Reynolds</dt><dd>${sig(p.re)} (comprimento ${sig(p.comprimento * 1000)} mm)</dd>
+      <dt>Mach</dt><dd>${fmt(p.mach, 3)}</dd>
+      <dt>Passos</dt><dd>${fmt(p.passosTotal)} (${e.travessias} travessias de ${fmt(p.passosTravessia)})</dd>
+      <dt>Tempo estimado</dt><dd>~${minutos(tempo)} a ${fmt(mlupsDoAparelho())} MLUPS</dd>
+      <dt>Área de referência</dt><dd>${sig(p.areaRef * 1e4)} cm² ${e.areaReferencia ? "(informada)" : "(frontal)"}</dd>
+    </dl>
+    ${p.mach > 0.3 ? `<p class="fl-alerta">Mach acima de 0,3: o ar se comprime e o resultado (ar incompressível) perde validade.</p>` : ""}
+    ${p.dominio.colunasSuspeitas > 0 ? `<p class="fl-alerta">A malha da peça parece aberta (${p.dominio.colunasSuspeitas} colunas com cruzamento ímpar): confira se o sólido é fechado.</p>` : ""}
+    ${p.dominio.celulasNoCorpo < 20 ? `<p class="fl-alerta">Poucas células na peça: use um modo de malha maior para ver detalhes.</p>` : ""}
+    ${p.reCelula > 1000 ? `<p class="fl-alerta">Camada limite muito fina para esta malha (Re da célula ${sig(p.reCelula)}): o padrão do escoamento é confiável; o Cd absoluto, aproximado (ver especificação §3.3).</p>` : ""}`;
+  } else if (erroPreparo) info = `<p class="fl-alerta">${escapar(erroPreparo)}</p>`;
+  $("#fl-painel").innerHTML = `
+    <h3>Peça</h3>
+    <div class="fl-peca">${malha ? `<strong>${escapar(e.peca.nome)}</strong><br>${fmt(malha.triangulos.length / 3)} triângulos · origem: ${e.peca.origem === "wjcad" ? "WJCAD" : e.peca.origem === "stl" ? "STL" : "validação"}` : "Nenhuma peça carregada."}</div>
+    ${campo("Unidade da peça", `<select data-c="unidade"${desab}>${opcoes((Object.keys(UNIDADES) as Unidade[]).map((u) => [u, u === "pol" ? "polegada" : u]), e.peca.unidade)}</select>`)}
+    ${campo("Direção do ar", `<select data-c="direcao"${desab}>${opcoes(DIRECOES, e.direcao)}</select>`)}
+    <h3>Ar</h3>
+    ${campo("Velocidade (m/s)", `<input data-c="velocidade" type="number" min="0.001" step="any" value="${e.velocidade}"${desab}>`)}
+    ${campo("Temperatura (°C)", `<input data-c="temperatura" type="number" step="any" value="${e.temperatura}"${desab}>`)}
+    ${campo("Altitude (m)", `<input data-c="altitude" type="number" step="any" value="${e.altitude}"${desab}>`)}
+    <dl class="fl-info"><dt>Densidade</dt><dd>${fmt(ar.rho, 3)} kg/m³</dd><dt>Viscosidade</dt><dd>${sig(ar.nu * 1e6)}·10⁻⁶ m²/s</dd></dl>
+    <h3>Cálculo</h3>
+    ${campo("Malha", `<select data-c="modo"${desab}>${opcoes((Object.keys(MODOS) as Modo[]).map((m) => [m, MODOS[m].nome]), e.modo)}</select>`)}
+    ${campo("Túnel", `<select data-c="tunel"${desab}>${opcoes((Object.keys(TUNEIS) as Tunel[]).map((t) => [t, TUNEIS[t].nome]), e.tunel ?? "padrao")}</select>`)}
+    ${campo("Travessias", `<input data-c="travessias" type="number" min="1" max="20" step="1" value="${e.travessias}"${desab}>`)}
+    ${campo("Área de referência (cm²)", `<input data-c="area" type="number" min="0" step="any" placeholder="frontal" value="${e.areaReferencia ? e.areaReferencia * 1e4 : ""}"${desab}>`)}
+    ${info}`;
+  $("#fl-painel").querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-c]").forEach((x) => {
+    x.onchange = () => {
+      const v = x.value;
+      switch (x.dataset.c) {
+        case "unidade": e.peca.unidade = v as Unidade; break;
+        case "direcao": e.direcao = v as Direcao; break;
+        case "velocidade": e.velocidade = Math.max(1e-6, +v || e.velocidade); break;
+        case "temperatura": e.temperatura = +v; break;
+        case "altitude": e.altitude = +v; break;
+        case "modo": e.modo = v as Modo; break;
+        case "tunel": e.tunel = v as Tunel; break;
+        case "travessias": e.travessias = Math.max(1, Math.min(20, Math.round(+v) || 3)); break;
+        case "area": e.areaReferencia = +v > 0 ? +v / 1e4 : undefined; break;
       }
-      v.quadro = requestAnimationFrame(laco);
-    });
-  };
-  vivo.quadro = requestAnimationFrame(laco);
+      delete e.referencia;
+      invalidar();
+    };
+  });
 }
 
-$("af-verificar").onclick = () => void exclusivo("Autoverificação", verificar);
-$("af-medir").onclick = () => void exclusivo("Medição de desempenho", medir);
-$("af-cpu").onclick = () => void exclusivo("Base em CPU", baseCpu);
-$("af-vivo").onclick = () => (ocupado ? undefined : iniciarVivo());
-$("af-copiar").onclick = async () => {
-  try {
-    await navigator.clipboard.writeText(relatorio.join("\n"));
-    $("af-copiar").textContent = "Copiado ✓";
-  } catch {
-    getSelection()?.selectAllChildren(saida);
-    $("af-copiar").textContent = "Selecionado: copie";
+// ---------------------------------------------------------------------------------------------
+// resultados
+
+function atualizarResultados() {
+  const alvo = $("#fl-resultados");
+  const p = preparo;
+  const r = estudo.resultado;
+  const m = sim;
+  const cartoes: string[] = [];
+  if (m && p) {
+    const frac = Math.min(1, m.s.passos / p.passosTotal);
+    const restante = m.ritmo > 0 ? (p.passosTotal - m.s.passos) / m.ritmo : NaN;
+    cartoes.push(`<div class="fl-progresso">${m.rodando ? "Calculando" : frac >= 1 ? "Concluído" : "Pausado"} · travessia ${fmt(m.s.passos / p.passosTravessia, 2)} de ${estudo.travessias} · ${fmt(100 * frac)} %${m.rodando && Number.isFinite(restante) ? ` · faltam ~${minutos(restante)}` : ""}${m.ritmo ? ` · ${fmt(m.ritmo, 1)} passos/s (${fmt((m.ritmo * m.s.n) / 1e6, 1)} MLUPS)` : ""}<div class="barra"><i style="width:${100 * frac}%"></i></div></div>`);
   }
-  setTimeout(() => ($("af-copiar").textContent = "Copiar resultados"), 2000);
+  const ultima = m?.hist.forcas.at(-1);
+  const media = m && p ? m.hist.media(p.inicioMedia) : null;
+  const mostrar = media ?? (r ? null : ultima);
+  if (p && (mostrar || r)) {
+    const c = mostrar ? coeficientes(mostrar, p) : [r!.cd, r!.cl, r!.cs];
+    const fN = mostrar ? forcaReal(mostrar, p) : r!.forca;
+    const tipo = media || r ? "média da última travessia" : "instantâneo (a média começa na última travessia)";
+    const ref = estudo.referencia;
+    cartoes.push(
+      `<div class="fl-cartao"><small>Cd · arrasto</small><b>${fmt(c[0], 3)}</b><em>${tipo}${ref ? ` · referência ${fmt(ref.cd, 2)} (${fmt((100 * (c[0] - ref.cd)) / ref.cd, 1)} %)` : ""}</em></div>`,
+      `<div class="fl-cartao"><small>Cl · sustentação (+Y)</small><b>${fmt(c[1], 3)}</b></div>`,
+      `<div class="fl-cartao"><small>Cs · lateral (+Z)</small><b>${fmt(c[2], 3)}</b></div>`,
+      `<div class="fl-cartao"><small>Força de arrasto</small><b>${sig(fN[0])} N</b><em>sustentação ${sig(fN[1])} N · lateral ${sig(fN[2])} N</em></div>`,
+    );
+  } else if (r && !p) {
+    cartoes.push(`<div class="fl-cartao"><small>Último resultado salvo</small><b>Cd ${fmt(r.cd, 3)}</b><em>Cl ${fmt(r.cl, 3)} · Re ${sig(r.re)}</em></div>`);
+  }
+  if (m && m.hist.passos.length > 1 && p) cartoes.push(`<div class="fl-cartao fl-grafico"><small>Cd ao longo do cálculo (faixa clara: média)</small><canvas id="fl-graf"></canvas></div>`);
+  alvo.innerHTML = cartoes.join("");
+  if (m && p && m.hist.passos.length > 1) grafico($<HTMLCanvasElement>("#fl-graf"), m.hist, p);
+}
+
+function grafico(cv: HTMLCanvasElement, h: Historico, p: Preparo) {
+  const w = (cv.width = cv.clientWidth * devicePixelRatio);
+  const hh = (cv.height = 120 * devicePixelRatio);
+  const ctx = cv.getContext("2d")!;
+  const cds = h.forcas.map((f) => coeficientes(f, p)[0]);
+  // escala robusta: ignora o pico da partida impulsiva
+  const meio = cds.slice(Math.floor(cds.length / 4));
+  let lo = Math.min(...meio), hi = Math.max(...meio);
+  if (hi - lo < 1e-6) (hi += 0.5), (lo -= 0.5);
+  const pad = 0.1 * (hi - lo);
+  lo -= pad;
+  hi += pad;
+  const X = (ps: number) => (ps / p.passosTotal) * w;
+  const Y = (v: number) => hh - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * hh;
+  ctx.fillStyle = "rgba(47,127,208,0.08)";
+  ctx.fillRect(X(p.inicioMedia), 0, w - X(p.inicioMedia), hh);
+  if (estudo.referencia) {
+    ctx.strokeStyle = "#2e8b57";
+    ctx.setLineDash([6 * devicePixelRatio, 4 * devicePixelRatio]);
+    ctx.beginPath();
+    ctx.moveTo(0, Y(estudo.referencia.cd));
+    ctx.lineTo(w, Y(estudo.referencia.cd));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = "#2f7fd0";
+  ctx.lineWidth = 1.5 * devicePixelRatio;
+  ctx.beginPath();
+  cds.forEach((v, i) => (i ? ctx.lineTo(X(h.passos[i]), Y(v)) : ctx.moveTo(X(h.passos[i]), Y(v))));
+  ctx.stroke();
+  ctx.fillStyle = "#5e6b78";
+  ctx.font = `${11 * devicePixelRatio}px system-ui`;
+  ctx.fillText(fmt(hi, 2), 4, 12 * devicePixelRatio);
+  ctx.fillText(fmt(lo, 2), 4, hh - 4);
+}
+
+function textoResultados(): string {
+  const e = estudo, r = e.resultado, p = preparo;
+  const L = [`WJFlow — ${e.nome}`, `Peça: ${e.peca.nome} (${e.peca.origem}), ar em ${e.direcao}, ${sig(e.velocidade)} m/s, ${e.temperatura} °C, ${e.altitude} m`];
+  if (p) L.push(`Túnel: ${p.dominio.nx}×${p.dominio.ny}×${p.dominio.nz}, célula ${sig(p.dx * 1000)} mm, ${fmt(p.dominio.celulasNoCorpo)} células na peça, Re ${sig(p.re)}, Mach ${fmt(p.mach, 3)}`);
+  if (r) {
+    L.push(`Cd ${fmt(r.cd, 4)} · Cl ${fmt(r.cl, 4)} · Cs ${fmt(r.cs, 4)} (área de referência ${sig(r.area * 1e4)} cm²)`);
+    L.push(`Forças: arrasto ${sig(r.forca[0])} N · sustentação ${sig(r.forca[1])} N · lateral ${sig(r.forca[2])} N`);
+    if (e.referencia) L.push(`Referência: Cd ${fmt(e.referencia.cd, 3)} — ${e.referencia.fonte} (diferença ${fmt((100 * (r.cd - e.referencia.cd)) / e.referencia.cd, 1)} %)`);
+    if (r.instavel) L.push("Atenção: o cálculo ficou instável antes do fim.");
+  } else L.push("Sem resultado (calcule o estudo).");
+  if (sim) L.push(`Ritmo: ${fmt(sim.ritmo, 1)} passos/s, ${fmt((sim.ritmo * sim.s.n) / 1e6, 1)} MLUPS`);
+  return L.join("\n");
+}
+
+// ---------------------------------------------------------------------------------------------
+// casca
+
+function atualizarTudo() {
+  renderizarPainel();
+  aplicarCorte();
+  desenharPrevia();
+  atualizarResultados();
+  casca.renderizar();
+  casca.definirStatus(
+    sim?.rodando ? "Calculando…" : preparo ? `Pronto · ${preparo.dominio.nx}×${preparo.dominio.ny}×${preparo.dominio.nz}` : malha ? "Montando o túnel…" : "Sem peça",
+  );
+}
+
+const casca: Casca = new Casca({
+  app: "WJFlow",
+  icone: "",
+  extensao: "wjflow",
+  nomeDoc: () => estudo.nome,
+  renomear: (n) => {
+    estudo.nome = n;
+    autosave();
+    casca.renderizar();
+  },
+  novo: () => {
+    pararSimulacao();
+    estudo = estudoNovo();
+    malha = null;
+    invalidar();
+  },
+  abrir: () =>
+    void escolherArquivo().then((a) => {
+      if (!a?.texto) return;
+      try {
+        abrirTexto(a.texto);
+      } catch (e) {
+        casca.avisar((e as Error).message, 6000);
+      }
+    }),
+  salvar: () => {
+    casca.avisar("Salvando no cofre…");
+    salvarArquivo(serializar(estudo, malha), estudo.nome, "wjflow");
+  },
+  abas: [
+    {
+      id: "estudo", rotulo: "Estudo", grupos: [
+        [
+          { id: "cad", rotulo: "Peça do WJCAD", icone: "peca", dica: "Última peça mandada pelo WJCAD (menu Arquivo → Abrir no WJFlow)", acao: () => void pecaDoCad() },
+          { id: "stl", rotulo: "Importar STL", icone: "importar", acao: () => void importarStl() },
+        ],
+        [{ id: "val", rotulo: "Esfera de validação", icone: "validar", dica: "Esfera em Re 100: compara o Cd com a referência da literatura", acao: validacaoEsfera }],
+        [{ id: "aparelho", rotulo: "Teste do aparelho", icone: "aparelho", dica: "Autoverificação da GPU e medição de desempenho", acao: () => (location.href = "aparelho/") }],
+      ],
+    },
+    {
+      id: "calcular", rotulo: "Calcular", grupos: [
+        [
+          { id: "rodar", rotulo: "Calcular", icone: "rodar", dica: "Calcular (ou continuar depois de pausar)", acao: () => void calcular(), desabilitado: () => !!sim?.rodando || !malha },
+          { id: "pausar", rotulo: "Pausar", icone: "pausar", acao: pausar, desabilitado: () => !sim?.rodando },
+          { id: "recomecar", rotulo: "Recomeçar", icone: "recomecar", acao: recomecar, desabilitado: () => !sim },
+        ],
+      ],
+    },
+    {
+      id: "resultados", rotulo: "Resultados", grupos: [
+        [
+          { id: "copiar", rotulo: "Copiar resultados", icone: "copiar", acao: () => void navigator.clipboard.writeText(textoResultados()).then(() => casca.avisar("Resultados copiados.")) },
+          { id: "csv", rotulo: "Histórico (CSV)", icone: "exportar", dica: "Forças e coeficientes ao longo do cálculo", acao: () => (sim && preparo ? baixar(sim.hist.csv(preparo), estudo.nome, "csv", "text/csv") : casca.avisar("Calcule o estudo primeiro.")) },
+        ],
+      ],
+    },
+  ],
+});
+
+// controles do corte
+$<HTMLSelectElement>("#fl-grandeza").innerHTML = GRANDEZAS.map(([g, r]) => `<option value="${g}">${escapar(r)}</option>`).join("");
+$<HTMLSelectElement>("#fl-plano").onchange = (e) => {
+  corte.plano = +(e.target as HTMLSelectElement).value as Plano;
+  corte.indice = -1;
+  aplicarCorte();
 };
+$<HTMLSelectElement>("#fl-grandeza").onchange = (e) => {
+  corte.grandeza = (e.target as HTMLSelectElement).value as Grandeza;
+  aplicarCorte();
+};
+$<HTMLInputElement>("#fl-indice").oninput = (e) => {
+  corte.indice = +(e.target as HTMLInputElement).value;
+  aplicarCorte();
+};
+addEventListener("resize", () => sim && preparo && atualizarResultados());
 
-void mostrarAparelho();
-{
-  const b = botaoDiagnostico();
-  if (b) {
-    b.style.marginLeft = "auto";
-    document.querySelector(".af-topo")!.append(b);
-    registrarMetrica("Túnel ao vivo", () => (vivo ? estado.textContent : "parado"));
-  }
-}
-if ("serviceWorker" in navigator && import.meta.env.PROD) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+registrarMetrica("WJFlow", () => (sim ? `${fmt(sim.ritmo, 1)} passos/s · ${fmt((sim.ritmo * sim.s.n) / 1e6, 1)} MLUPS · passo ${fmt(sim.s.passos)}` : "parado"));
+registrarOffline();
+void carregarInicial();

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/wjpromaster.svg" type="image/svg+xml" />
+    <title>Teste do aparelho — WJFlow</title>
+  </head>
+  <body>
+    <header class="af-topo">
+      <a href="../../" title="Início do WJProMaster"><img src="/wjpromaster.svg" alt="WJProMaster" class="af-logo" /></a>
+      <div>
+        <h1>WJFlow <small>teste do aparelho · <a href="../">voltar ao WJFlow</a></small></h1>
+        <p>Túnel de vento virtual (Lattice-Boltzmann D3Q19 na GPU). Mede o que este aparelho aguenta.</p>
+      </div>
+    </header>
+    <main class="af-principal">
+      <section class="af-cartao">
+        <h2>Aparelho</h2>
+        <dl id="af-aparelho" class="af-dados"></dl>
+      </section>
+      <section class="af-cartao">
+        <h2>Testes</h2>
+        <div class="af-botoes">
+          <button id="af-verificar" class="destaque">1. Autoverificação</button>
+          <button id="af-medir">2. Medir desempenho</button>
+          <button id="af-cpu">Base em CPU</button>
+          <button id="af-copiar">Copiar resultados</button>
+        </div>
+        <p class="af-nota">A medição completa leva de 1 a 3 minutos e esquenta o aparelho. Deixe o tablet na tomada; a tela fica acesa sozinha durante o teste.</p>
+        <p id="af-progresso" class="af-progresso" hidden></p>
+        <pre id="af-saida" class="af-saida"></pre>
+      </section>
+      <section class="af-cartao">
+        <h2>Túnel ao vivo <small>esfera, plano central, cor = velocidade / velocidade do ar</small></h2>
+        <div class="af-botoes">
+          <label>Malha <select id="af-malha"></select></label>
+          <label>Precisão <select id="af-precisao"><option value="fp16">FP16 (metade da memória)</option><option value="fp32">FP32</option></select></label>
+          <label>Reynolds <select id="af-re"><option value="100">100 (laminar)</option><option value="1000" selected>1 000</option><option value="20000">20 000 (turbulento, LES)</option></select></label>
+          <button id="af-vivo" class="destaque">Iniciar</button>
+        </div>
+        <canvas id="af-canvas" class="af-canvas" width="512" height="256"></canvas>
+        <div class="af-escala"><span>0</span><i></i><span>1,5 × U∞</span></div>
+        <p id="af-estado" class="af-nota"></p>
+      </section>
+    </main>
+    <script type="module" src="/src/flow/aparelho.ts"></script>
+  </body>
+</html>

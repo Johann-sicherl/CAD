@@ -1,26 +1,41 @@
-/* WJFlow (protótipo de medição): tema claro, alvos de toque folgados. */
-@import "../comum/comum.css";
-
-body { overflow-y: auto; height: auto; min-height: 100%; }
-.af-topo { display: flex; align-items: center; gap: 14px; max-width: 1040px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px 4px; }
-.af-logo { width: 46px; height: 46px; border-radius: 10px; box-shadow: var(--sombra); display: block; }
-.af-topo h1 { margin: 0; font-size: 22px; }
-.af-topo h1 small, .af-cartao h2 small { font-size: 13px; font-weight: 400; color: var(--texto-2); }
-.af-topo p { margin: 2px 0 0; color: var(--texto-2); }
-.af-principal { max-width: 1040px; margin: 0 auto; padding: 8px 16px 32px; display: grid; gap: 14px; }
-.af-cartao { background: var(--painel); border: 1px solid var(--linha); border-radius: 12px; padding: 12px 16px 14px; }
-.af-cartao h2 { margin: 0 0 10px; font-size: 16px; }
-.af-dados { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
-.af-dados dt { color: var(--texto-2); }
-.af-dados dd { margin: 0; overflow-wrap: anywhere; }
-.af-botoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.af-botoes button, .af-botoes select { min-height: var(--toque); }
-.af-botoes label { display: flex; gap: 6px; align-items: center; color: var(--texto-2); }
-.af-nota { color: var(--texto-2); font-size: 13px; margin: 8px 0 0; }
-.af-saida { background: var(--painel-2); border: 1px solid var(--linha); border-radius: 8px; padding: 10px; margin: 10px 0 0; min-height: 60px; max-height: 420px; overflow: auto; font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; }
-.af-canvas { width: 100%; height: auto; margin-top: 10px; border: 1px solid var(--linha); border-radius: 8px; background: #fff; image-rendering: pixelated; }
-.af-escala { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--texto-2); margin-top: 4px; }
-.af-escala i { flex: 1; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2e4dbf, #33b3d9, #66cc59, #fad140, #d9382e); }
-.af-progresso { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; font-weight: 600; background: var(--acento-suave); color: var(--acento); }
-.af-progresso.ok { background: #e4f4ea; color: var(--ok); }
-.af-progresso.erro { background: #fbe6e4; color: var(--erro); }
+/* WJFlow: painel do estudo à esquerda, corte do escoamento e resultados à direita. Tema claro. */
+.fl-principal { display: grid; grid-template-columns: minmax(270px, 330px) minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.fl-painel { overflow: auto; padding: 10px 12px 16px; border-right: 1px solid var(--linha); background: var(--painel); }
+.fl-painel h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento); }
+.fl-painel h3:first-child { margin-top: 0; }
+.fl-campo { display: grid; grid-template-columns: 1fr minmax(0, 150px); gap: 6px; align-items: center; margin: 4px 0; }
+.fl-campo span { color: var(--texto-2); font-size: 14px; }
+.fl-campo input, .fl-campo select { width: 100%; min-height: 36px; }
+.fl-peca { padding: 8px 10px; border: 1px dashed var(--linha-forte); border-radius: 8px; color: var(--texto-2); font-size: 14px; }
+.fl-peca strong { color: var(--texto); }
+.fl-info { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin: 0; font-size: 13.5px; }
+.fl-info dt { color: var(--texto-2); }
+.fl-info dd { margin: 0; font-variant-numeric: tabular-nums; }
+.fl-alerta { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px; background: #fff4e0; color: #8a5300; font-size: 13px; }
+.fl-vista { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; padding: 8px 12px 12px; gap: 8px; }
+.fl-controles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fl-controles select { min-height: 38px; max-width: 100%; }
+.fl-fatia { display: flex; align-items: center; gap: 8px; color: var(--texto-2); font-size: 14px; flex: 1 1 200px; }
+.fl-fatia input { flex: 1; min-height: 32px; }
+.fl-tela { flex: none; position: relative; background: #f4f6f8; border: 1px solid var(--linha); border-radius: 10px; min-height: 160px; display: grid; place-items: center; overflow: hidden; }
+.fl-canvas { width: 100%; height: auto; max-height: 62vh; object-fit: contain; display: block; image-rendering: auto; }
+.fl-canvas[hidden] { display: none; }
+.fl-vazio { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--texto-2); }
+.fl-vazio:empty { display: none; }
+.fl-legenda { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--texto-2); }
+.fl-legenda i { flex: 1; height: 10px; border-radius: 5px; }
+.fl-resultados { flex: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.fl-cartao { background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; padding: 8px 10px; }
+.fl-cartao small { display: block; color: var(--texto-2); font-size: 12px; }
+.fl-cartao b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.fl-cartao em { display: block; font-style: normal; font-size: 12px; color: var(--texto-2); }
+.fl-grafico { grid-column: 1 / -1; }
+.fl-grafico canvas { width: 100%; height: 120px; display: block; }
+.fl-progresso { grid-column: 1 / -1; font-size: 14px; }
+.fl-progresso .barra { height: 8px; border-radius: 4px; background: var(--painel-2); border: 1px solid var(--linha); overflow: hidden; margin-top: 4px; }
+.fl-progresso .barra i { display: block; height: 100%; background: var(--acento); }
+@media (max-width: 760px) {
+  .fl-principal { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+  .fl-painel { border-right: 0; border-bottom: 1px solid var(--linha); overflow: visible; }
+  .fl-vista { overflow: visible; order: -1; }
+}
