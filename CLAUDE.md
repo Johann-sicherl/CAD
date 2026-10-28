@@ -2,16 +2,16 @@
 
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
 > **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
-> (planilhas), **WJWord** (documentos), **WJApresentation** (apresentações), **WJCronProject**
-> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD) e **WJAirFlow** (escoamento de ar nas
-> peças do WJCAD; `docs/global/wjairflow.md`). Tudo roda no **celular, tablet e
+> (planilhas), **WJWrite** (documentos), **WJApresentation** (apresentações), **WJCronProject**
+> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD) e **WJFlow** (escoamento de ar nas
+> peças do WJCAD; `docs/global/wjflow.md`). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
 > versões locais das outras faces (seção "Outras faces"). As regras de inspiração sem
 > cópia valem para todas as faces: nomes registrados de terceiros ficam proibidos na UI;
-> importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann; o
-> risco de marca de "WJWord" está anotado em `docs/global/README.md` §6.
+> importar e exportar formatos abertos é permitido. Os nomes das faces são decisão do Johann
+> (WJWord → WJWrite e WJAirFlow → WJFlow em 28/10/2026; notas de marca em `docs/global/README.md` §6).
 
 ## Regras 001 (definidas pelo Johann, 26/10/2026 — valem sempre)
 
@@ -85,12 +85,12 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | Face | Página | Código | Motor testado | Arquivo / dados |
 |---|---|---|---|---|
 | WJPlan | `planilha/` | `src/planilha/` | `src/formulas/` (`teste-formulas.ts`) | `.wjpl`, autosave `wjpl:documento` |
-| WJWord | `documento/` | `src/documento/` | — | `.wjdoc`, autosave `wjdoc:documento` |
+| WJWrite | `documento/` | `src/documento/` | — | `.wjdoc`, autosave `wjdoc:documento` |
 | WJApresentation | `apresentacao/` | `src/apresentacao/` | — | `.wjapn`, autosave `wjapn:documento` |
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
-| WJAirFlow | `airflow/` | `src/airflow/` | `src/airflow/lbm.ts` (`teste-airflow.ts`) | fase A0: protótipo de medição (LBM D3Q19 em WebGPU); `.wjair` na A1 |
+| WJFlow | `flow/` | `src/flow/` | `src/flow/lbm.ts` (`teste-flow.ts`) | fase A0: protótipo de medição (LBM D3Q19 em WebGPU); `.wjflow` na A1 |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
 com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e

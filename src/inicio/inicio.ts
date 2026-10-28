@@ -36,7 +36,7 @@ const FACES: Face[] = [
     icone: svg(`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/><path d="M12.5 17l2-5 2 3 2-4" stroke="${C}"/>`),
   },
   {
-    id: "documentos", nome: "WJWord", url: "documento/",
+    id: "documentos", nome: "WJWrite", url: "documento/",
     descricao: "Documentos com estilos, sumário, campos ligados aos projetos e controle de alterações.",
     icone: svg(`<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 11h6M9 14h6M9 17h4" stroke="${C}"/>`),
   },
@@ -56,7 +56,7 @@ const FACES: Face[] = [
     icone: svg(`<path d="M4 20V10l4-3v13M8 20V7l5 3v10M13 20v-7l7-3v10"/><path d="M3 20h18" stroke="${C}"/>`),
   },
   {
-    id: "airflow", nome: "WJAirFlow", url: "airflow/",
+    id: "flow", nome: "WJFlow", url: "flow/",
     descricao: "Escoamento de ar nas peças do WJCAD. Por enquanto, protótipo que mede o desempenho deste aparelho.",
     icone: svg(`<path d="M3 8h9a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/><path d="M14 8.5c2 .8 2 2.2 0 3" stroke="${C}"/>`),
   },

@@ -1,4 +1,4 @@
-/* WJWord: folha de papel com margens reais (mm), estilos do documento e impressão. */
+/* WJWrite: folha de papel com margens reais (mm), estilos do documento e impressão. */
 .dc-principal { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; }
 .dc-navegacao { grid-column: 1; }
 .dc-rolagem { grid-column: 2; }

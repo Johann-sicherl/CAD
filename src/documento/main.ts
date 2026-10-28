@@ -1,4 +1,4 @@
-// WJWord: processador de texto do WJProMaster (especificação: docs/global/documentos.md).
+// WJWrite: processador de texto do WJProMaster (especificação: docs/global/documentos.md).
 // v1: texto rico sobre contenteditable (estilos, listas, tabelas, imagens, links), página com
 // tamanho/margens reais, cabeçalho e rodapé numerados na impressão, sumário, navegação,
 // localizar/substituir, contagem de palavras, arquivos .wjdoc, HTML, Markdown e PDF (impressão).
@@ -36,7 +36,7 @@ const docVazio = (): DocTexto => ({
 
 function validar(d: unknown): DocTexto {
   const x = d as DocTexto;
-  if (!x || x.formato !== "wjdoc" || typeof x.html !== "string") throw new Error("Arquivo não é um documento do WJWord (.wjdoc).");
+  if (!x || x.formato !== "wjdoc" || typeof x.html !== "string") throw new Error("Arquivo não é um documento do WJWrite (.wjdoc).");
   x.pagina = { ...docVazio().pagina, ...(x.pagina ?? {}) };
   return x;
 }
@@ -746,7 +746,7 @@ function definirZoom(z: number) {
 }
 
 const casca: Casca = new Casca({
-  app: "WJWord",
+  app: "WJWrite",
   icone: "",
   extensao: "wjdoc",
   abas,

@@ -26,7 +26,7 @@ const APPS: Record<string, { app: string; chave: string; url: string }> = {
   wjcad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave" },
   jlscad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave" },
   wjpl: { app: "WJPlan", chave: "wjpl:documento", url: "planilha/" },
-  wjdoc: { app: "WJWord", chave: "wjdoc:documento", url: "documento/" },
+  wjdoc: { app: "WJWrite", chave: "wjdoc:documento", url: "documento/" },
   wjapn: { app: "WJApresentation", chave: "wjapn:documento", url: "apresentacao/" },
   wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/" },
 };
@@ -908,7 +908,7 @@ const casca: Casca = new Casca({
         ],
         [
           { id: "obter", rotulo: "Obter", icone: "exportar", dica: "Baixar a versão atual", acao: exigeArquivo((a) => void obter(a)) },
-          { id: "abrirApp", rotulo: "Abrir no app", icone: "abrir", dica: "Abrir no WJCAD, WJPlan, WJWord, WJApresentation ou WJCronProject", acao: exigeArquivo((a) => void abrirNoApp(a)) },
+          { id: "abrirApp", rotulo: "Abrir no app", icone: "abrir", dica: "Abrir no WJCAD, WJPlan, WJWrite, WJApresentation ou WJCronProject", acao: exigeArquivo((a) => void abrirNoApp(a)) },
         ],
         [
           { id: "co", rotulo: "GO-OUT", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },

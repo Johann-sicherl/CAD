@@ -1,6 +1,6 @@
-// Teste do núcleo do WJAirFlow em Node: propriedades da rede D3Q19 e casos com solução exata
+// Teste do núcleo do WJFlow em Node: propriedades da rede D3Q19 e casos com solução exata
 // (Taylor–Green, Poiseuille), conservação de massa, LES e conversão de unidades.
-import { AR, CX, CY, CZ, EQ, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, opp, reynolds, tunelEsfera } from "../src/airflow/lbm";
+import { AR, CX, CY, CZ, EQ, LbmCpu, Q, SOLIDO, W, bytesPorCelula, equilibrio, escalar, opp, reynolds, tunelEsfera } from "../src/flow/lbm";
 
 let falhas = 0;
 function perto(nome: string, obtido: number, esperado: number, tol: number) {
@@ -143,7 +143,7 @@ function taylorGreen(tau: number, cs: number, passos: number): { medido: number;
 }
 
 if (falhas) {
-  console.log(`\n${falhas} falha(s) no WJAirFlow`);
+  console.log(`\n${falhas} falha(s) no WJFlow`);
   process.exit(1);
 }
-console.log("\nWJAirFlow: todos os testes passaram");
+console.log("\nWJFlow: todos os testes passaram");

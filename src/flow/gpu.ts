@@ -1,5 +1,5 @@
-// WJAirFlow: solver D3Q19 em WebGPU (compute shader) e desenho de um plano de corte.
-// Mesmo algoritmo de src/airflow/lbm.ts (referência em CPU): populações deslocadas, passo "pull",
+// WJFlow: solver D3Q19 em WebGPU (compute shader) e desenho de um plano de corte.
+// Mesmo algoritmo de src/flow/lbm.ts (referência em CPU): populações deslocadas, passo "pull",
 // bounce-back, células EQ, BGK + Smagorinsky + força de Guo. O WGSL é gerado com as 19 direções
 // desenroladas (sem índices dinâmicos em constantes, que alguns drivers móveis tratam mal).
 //

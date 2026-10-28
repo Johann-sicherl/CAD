@@ -1,11 +1,11 @@
-# WJAirFlow — escoamento de ar nas peças do WJCAD
+# WJFlow — escoamento de ar nas peças do WJCAD
 
 Face do WJProMaster para simular o **escoamento de ar** em volta e por dentro de qualquer peça
 projetada no WJCAD: veículos, aeronaves, drones, tubulações abertas, dutos e motores EDF.
 Roda no **celular, tablet e computador** (navegador). Neste início, **só ar**, isotérmico.
 
-- Página: `airflow/` · código: `src/airflow/` · motor testado: `src/airflow/lbm.ts` (`scripts/teste-airflow.ts`)
-- Arquivo: `.wjair` (fase A1) · autosave `wjair:estudo`
+- Página: `flow/` · código: `src/flow/` · motor testado: `src/flow/lbm.ts` (`scripts/teste-flow.ts`)
+- Arquivo: `.wjflow` (fase A1) · autosave `wjflow:estudo`
 - Status: **A0 entregue** (protótipo de medição, 28/10/2026). O restante está planejado (fases A1–A6, §9).
 
 Legenda: ✅ existe · 🟡 parcial · **A0…A6** fase deste documento · ⏸ registrado, fora do escopo atual.
@@ -20,7 +20,7 @@ Legenda: ✅ existe · 🟡 parcial · **A0…A6** fase deste documento · ⏸ r
 | O que não dá no tablet? | Coeficientes absolutos com precisão de túnel de vento (±2–5 %), camada limite resolvida, transição laminar–turbulenta, crise do arrasto, rotor girando com pás resolvidas. Isso fica para o **servidor** (A6). |
 | Método | **Lattice-Boltzmann (LBM) D3Q19** em **WebGPU** (compute shader). Malha cartesiana de voxels gerada da peça, sem malhador de CFD. Turbulência por **LES** (Smagorinsky; depois WALE/cumulante). |
 | Por que LBM e não volumes finitos (RANS)? | É explícito e local (cada célula só fala com as 18 vizinhas). Isso é perfeito para GPU. Também não precisa de malha ajustada ao corpo (a parte mais frágil e cara de um CFD clássico), aceita geometria "suja" e é transiente por natureza (mostra o escoamento evoluindo). |
-| Onde fica no ecossistema | **Face separada** (como WJPlan, WJPDM…). O WJCAD continua sem simulação (decisão do Johann). O WJAirFlow lê a peça do WJCAD/WJPDM. |
+| Onde fica no ecossistema | **Face separada** (como WJPlan, WJPDM…). O WJCAD continua sem simulação (decisão do Johann). O WJFlow lê a peça do WJCAD/WJPDM. |
 
 ## 2. Casos de uso (pedidos do Johann)
 
@@ -120,7 +120,7 @@ resolvido. Ele vira um **disco atuador** (força de corpo; §3.6). Todo o resto 
   1/√f = −2 log₁₀(ε/(3,7D) + 2,51/(Re√f)), ou da forma explícita de Haaland
   1/√f = −1,8 log₁₀[(ε/D/3,7)^1,11 + 6,9/Re].
 - **Perdas localizadas:** Δp = K ½ρV² (curvas, expansões, contrações, entradas com/sem lábio).
-  O WJAirFlow **calcula** K para a geometria real e compara com a tabela clássica.
+  O WJFlow **calcula** K para a geometria real e compara com a tabela clássica.
 - **Comprimento de entrada:** laminar L_e ≈ 0,05 Re D; turbulento L_e ≈ 4,4 Re^(1/6) D.
   - O app prolonga entradas e saídas abertas automaticamente (no mínimo 5–10 D), para o perfil
     chegar desenvolvido e a saída não contaminar o resultado.
@@ -304,7 +304,7 @@ Memória × malha:
   em uma travessia).
 - **Comparar versões:** o mesmo estudo em duas revisões da peça (WJPDM), lado a lado e em
   diferença percentual. Esse é o uso mais forte no tablet, porque o erro sistemático se cancela.
-- **Exportar:** CSV para o WJPlan, imagens e tabela para o WJWord, e VTK (formato aberto, para
+- **Exportar:** CSV para o WJPlan, imagens e tabela para o WJWrite, e VTK (formato aberto, para
   ParaView) no computador.
 
 ## 5. Viabilidade no aparelho do Johann
@@ -383,7 +383,7 @@ Memória × malha:
 
 | Caso | Referência | Tolerância no tablet | Status |
 |---|---|---|---|
-| Isotropia D3Q19, equilíbrio, opostas | exato | 10⁻¹² | ✅ `teste-airflow` |
+| Isotropia D3Q19, equilíbrio, opostas | exato | 10⁻¹² | ✅ `teste-flow` |
 | Taylor–Green (decaimento viscoso) | exp(−2νk²t) | 1 % | ✅ |
 | Poiseuille plano com força de Guo | perfil parabólico | 1 % (medido: 0,25 %) | ✅ |
 | Conservação de massa (caixa fechada com obstáculo) | Σρ constante | 10⁻⁵ | ✅ |
@@ -397,24 +397,24 @@ Memória × malha:
 | Asa NACA 0012, AR finito | CL_α (linha sustentadora) | 10 % | A4 |
 | Degrau descendente | recolamento ≈ 6–7 h | 15 % | A5 |
 
-## 8. Formato `.wjair` e integração
+## 8. Formato `.wjflow` e integração
 
 - JSON versionado: `{ versao, peca: { uri: "wj://pdm/<item>/<revisão>", malhaHash }, fluido, dominio, contornos, ventiladores, malha, metas, resultados: { resumo, historico } }`.
 - Os campos de resultado 3D **não** vão no arquivo (seriam centenas de MB). O app guarda o
   resumo e a configuração e recalcula quando precisar.
 - **Integrações:**
-  - WJCAD: botão "Abrir no WJAirFlow" no menu Arquivo (A1). É um atalho de navegação; o WJCAD não
+  - WJCAD: botão "Abrir no WJFlow" no menu Arquivo (A1). É um atalho de navegação; o WJCAD não
     ganha comandos de simulação.
   - WJPDM: estudo vinculado à revisão.
   - WJPlan: tabelas de resultado.
-  - WJWord: relatório.
+  - WJWrite: relatório.
 
-## 9. Roteiro do WJAirFlow
+## 9. Roteiro do WJFlow
 
 | Fase | Entrega | Critério de pronto |
 |---|---|---|
 | **A0** ✅ | Protótipo de medição: LBM D3Q19 em WebGPU (FP32/FP16, LES, força de Guo), autoverificação GPU × CPU, medição de MLUPS por malha, base em CPU, túnel ao vivo com esfera | autoverificação ok no TCL; números de desempenho anotados aqui |
-| **A1** | Túnel externo com a peça do WJCAD/STL: voxelização na GPU, entrada e saída de verdade, simetria, esponja, planos de corte (velocidade/Cp/vorticidade), forças por troca de momento, Cd/Cl com média, `.wjair` | esfera e cilindro validados |
+| **A1** | Túnel externo com a peça do WJCAD/STL: voxelização na GPU, entrada e saída de verdade, simetria, esponja, planos de corte (velocidade/Cp/vorticidade), forças por troca de momento, Cd/Cl com média, `.wjflow` | esfera e cilindro validados |
 | **A2** | Escoamento interno: entradas e saídas em faces tocadas (vazão, velocidade, pressão), prolongamentos automáticos, Δp e K, comparação com Moody | tubo e expansão validados |
 | **A3** | EDF: disco atuador por célula (empuxo, curva do ventilador ou C_T/C_P), giro opcional, empuxo/vazão/V_e/potência | disco estático validado |
 | **A4** | Veículos e aeronaves: solo móvel, rodas girando, varredura de ângulo (polar), momentos, área frontal automática, correção de bloqueio | Ahmed e NACA 0012 validados |
@@ -435,11 +435,10 @@ O app deixa claro o que não resolve:
 
 ## 11. Nome
 
-"Airflow" é marca registrada da Apache Software Foundation (Apache Airflow, software de fluxos
-de dados). É outra área, mas a mesma classe (software). O risco é parecido com o de "WJWord"
-(`README.md` §6).
-- **Alternativas:** WJFlow, WJAero, WJVento, WJTúnel.
-- A decisão é do Johann. Trocar custa pouco (UI e docs).
+**WJFlow**, definido pelo Johann em 28/10/2026. O nome anterior era WJAirFlow; "Airflow" é marca
+da Apache Software Foundation.
+- "Flow" é palavra genérica, e o risco de marca é baixo.
+- Na UI, evitar nomes de produtos de CFD de terceiros (por exemplo, "Flow Simulation").
 
 ## 12. Referências técnicas (conceitos públicos; nenhum código de terceiros)
 
@@ -460,10 +459,10 @@ de dados). É outra área, mas a mesma classe (software). O risco é parecido co
 ## 13. Estado (28/10/2026)
 
 - ✅ **A0 entregue:**
-  - motor `src/airflow/lbm.ts` (referência em CPU, unidades) com 26 verificações em `pnpm teste`;
-  - solver WebGPU `src/airflow/gpu.ts` (FP32/FP16, Smagorinsky, Guo; WGSL gerado com as
+  - motor `src/flow/lbm.ts` (referência em CPU, unidades) com 26 verificações em `pnpm teste`;
+  - solver WebGPU `src/flow/gpu.ts` (FP32/FP16, Smagorinsky, Guo; WGSL gerado com as
     direções desenroladas);
-  - página `airflow/` com autoverificação, medição, base em CPU e túnel ao vivo.
+  - página `flow/` com autoverificação, medição, base em CPU e túnel ao vivo.
 - Verificado no Chromium (GPU por software): GPU = CPU dentro de 2·10⁻⁸ (FP32) e 2·10⁻⁵ (FP16).
 - ⏳ **Falta:** os números do TCL Tab A1 Plus. O Johann roda "Autoverificação" e "Medir
   desempenho" e cola o resultado ("Copiar resultados"). Esses números definem a malha padrão da A1.
