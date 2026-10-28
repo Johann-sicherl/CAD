@@ -7,6 +7,7 @@
 import "./flow.css";
 import { LbmCpu, Q, bytesPorCelula, tunelEsfera, type Precisao } from "./lbm";
 import { LbmGpu, abrirGpu, cabe } from "./gpu";
+import { botaoDiagnostico, registrarMetrica } from "../comum/diagnostico";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const saida = $<HTMLPreElement>("af-saida");
@@ -288,4 +289,12 @@ $("af-copiar").onclick = async () => {
 };
 
 void mostrarAparelho();
+{
+  const b = botaoDiagnostico();
+  if (b) {
+    b.style.marginLeft = "auto";
+    document.querySelector(".af-topo")!.append(b);
+    registrarMetrica("Túnel ao vivo", () => (vivo ? estado.textContent : "parado"));
+  }
+}
 if ("serviceWorker" in navigator && import.meta.env.PROD) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});

@@ -2,6 +2,7 @@
 // de arquivo), faixa de comandos por abas, barra de status, avisos, janelas, menus, perfil de
 // dispositivo, desfazer/refazer por fotografias do documento, salvar/abrir arquivos.
 
+import { botaoDiagnostico } from "./diagnostico";
 import { abrirCopias, abrirDoCofre, APPS, desligar, salvarNoCofre, type ChaveApp } from "./cofre";
 import "./comum.css";
 import { IC, type NomeIc } from "./icones";
@@ -137,6 +138,8 @@ export class Casca {
     }
     const dir = $(".wj-direita", topo);
     for (const c of o.direita ?? []) dir.append(this.botao(c));
+    const diag = botaoDiagnostico("wj-ic");
+    if (diag) dir.append(diag);
     document.title = `${o.nomeDoc()} — ${o.app}`;
     this.renderizar();
     document.addEventListener("keydown", (e) => {

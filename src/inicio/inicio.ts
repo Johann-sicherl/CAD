@@ -3,6 +3,7 @@
 // o usuário entra nele. Roteiro e especificação de cada face: docs/global/.
 
 import "./inicio.css";
+import { botaoDiagnostico } from "../comum/diagnostico";
 
 interface Face {
   id: string;
@@ -115,6 +116,13 @@ async function estadoOffline() {
 
 montarCaixas();
 void estadoOffline();
+{
+  const b = botaoDiagnostico();
+  if (b) {
+    b.style.marginLeft = "auto";
+    document.querySelector(".topo")!.append(b);
+  }
+}
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
