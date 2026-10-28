@@ -3,7 +3,8 @@
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
 > **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
 > (planilhas), **WJWord** (documentos), **WJApresentation** (apresentações), **WJCronProject**
-> (cronogramas) e **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD). Tudo roda no **celular, tablet e
+> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD) e **WJAirFlow** (escoamento de ar nas
+> peças do WJCAD; `docs/global/wjairflow.md`). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
@@ -89,6 +90,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
+| WJAirFlow | `airflow/` | `src/airflow/` | `src/airflow/lbm.ts` (`teste-airflow.ts`) | fase A0: protótipo de medição (LBM D3Q19 em WebGPU); `.wjair` na A1 |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
 com `cad/#abrir-autosave`) e faz check-in do documento aberto num app; o WJERP importa itens e
