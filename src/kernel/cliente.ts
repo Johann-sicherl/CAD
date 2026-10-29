@@ -4,7 +4,7 @@
 import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { ResultadoRegeneracao } from "./regenerar";
-import type { Projecao } from "./projecao";
+import type { Corte, Projecao } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
 import type { ResumoPlanificado } from "./dxf";
 import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
@@ -12,7 +12,11 @@ import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from ".
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
 /** Peça de um componente: malha, topologia (para selecionar e posicionar), volume e erros. */
-export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros">;
+export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros"> & {
+  /** só com planificar: linhas de dobra (3D) e o plano da chapa planificada */
+  dobras?: [number, number, number][][];
+  plano?: { olho: [number, number, number]; direita: [number, number, number] };
+};
 
 export class ClienteKernel {
   private worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
@@ -81,8 +85,8 @@ export class ClienteKernel {
     return this.pedir<ResultadoVerificacao>({ tipo: "verificar" });
   }
   /** Vista de desenho: projeção dos sólidos (chaves de `componente`) em suas posições. */
-  projetar(itens: { chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[], orientacao: Orientacao | Camera, tol = 0.2) {
-    return this.pedir<Projecao>({ tipo: "projetar", itens, orientacao, tol });
+  projetar(itens: { chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[], orientacao: Orientacao | Camera, tol = 0.2, corte?: Corte) {
+    return this.pedir<Projecao>({ tipo: "projetar", itens, orientacao, tol, ...(corte ? { corte } : {}) });
   }
   interferencia(itens: { comp: string; chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[]) {
     return this.pedir<{ a: string; b: string; volume: number }[]>({ tipo: "interferencia", itens });
@@ -94,8 +98,8 @@ export class ClienteKernel {
     return this.pedir<ResultadoMedida>({ tipo: "medirMontagem", itens, refs });
   }
   /** Regenera a peça de um componente (montagem/desenho); o sólido fica guardado no kernel pela chave. */
-  componente(chave: string, features: Feature[]) {
-    return this.pedir<ResultadoComponente>({ tipo: "componente", chave, features });
+  componente(chave: string, features: Feature[], planificar = false) {
+    return this.pedir<ResultadoComponente>({ tipo: "componente", chave, features, ...(planificar ? { planificar } : {}) });
   }
 
   private enviar(p: PedidoKernel) {

@@ -62,6 +62,20 @@ igual("frontal: Y do modelo para cima (topo do ressalto em y = 30)", r1(topoFr),
   igual("o sólido guardado não é consumido", r1(projetar([peca], "frontal").caixa.x1), 40);
 }
 
+{
+  // vista de seção: corte no plano Z = 0 visto de frente; a região cortada é base + ressalto − furo
+  const sec = projetar([peca], "frontal", 0.2, { p: [0, 0, 0], n: [0, 0, 1] });
+  const area = (l: [number, number][]) => Math.abs(l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+  const total = (sec.cortes ?? []).reduce((s, c) => s + c.lacos.map(area).reduce((a, b) => a + b, 0), 0);
+  igual("seção A-A: área cortada = 80×12 + 30×18 − 14×30 = 1080", Math.round(total), 1080);
+  igual("seção: metade de trás com a mesma silhueta frontal", dims(sec.caixa), [80, 30]);
+  igual("seção: duas regiões cortadas (o furo divide o meio)", sec.cortes?.length, 2);
+  igual("o sólido guardado continua inteiro depois da seção", r1(projetar([peca], "superior").caixa.y1 - projetar([peca], "superior").caixa.y0), 50);
+  let erro = "";
+  try { projetar([peca], "frontal", 0.2, { p: [0, 0, 500], n: [0, 0, -1] }); } catch (e) { erro = (e as Error).message; }
+  igual("plano fora do modelo: mensagem clara", erro, "O plano de corte não passa pelo modelo.");
+}
+
 // ---------- modelo do desenho ----------
 igual("1º diedro: à direita da frontal fica a lateral esquerda", orientacaoDe(cameraProjetada(CAMERAS.frontal, "direita", 1)), "esquerda");
 igual("1º diedro: abaixo da frontal fica a superior", orientacaoDe(cameraProjetada(CAMERAS.frontal, "abaixo", 1)), "superior");
