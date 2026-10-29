@@ -187,5 +187,25 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   igual("pasta do dispositivo fica com o conteúdo novo e libera o antigo", [tab.blobs.has("n2"), tab.blobs.has("w2"), tab.blobs.has("n1"), tab.blobs.has("w1")], [true, true, false, false]);
 }
 
+// 11. tabela de referências: viaja entre cópias, exclusão propaga e pai "só no dispositivo" não vai ao pendrive
+{
+  const ap = new Memoria("aparelho"), pen = new Memoria("pendrive");
+  pen.publicado = true;
+  com(ap, [arq("Mont", ["m1"], "2026-10-29T10:00:00.000Z"), arq("Rasc", ["r1"], "2026-10-29T10:00:00.000Z", { soLocal: true })], { m1: "m", r1: "r" });
+  ap.indice!.referencias = [
+    { id: "Mont>Eixo>", pai: "Mont", filho: "Eixo", tipo: "componente", quantidade: 2, mod: "2026-10-29T10:00:00.000Z" },
+    { id: "Rasc>Eixo>", pai: "Rasc", filho: "Eixo", tipo: "componente", quantidade: 1, mod: "2026-10-29T10:00:00.000Z" },
+  ];
+  await sincronizar([ap, pen], AGORA);
+  igual("pendrive recebe só a referência do arquivo publicado", pen.indice!.referencias.map((r) => r.id), ["Mont>Eixo>"]);
+  ap.indice = { ...ap.indice!, referencias: ap.indice!.referencias.filter((r) => r.pai !== "Mont"), exclusoes: [{ id: "Mont>Eixo>", tipo: "referencia", data: "2026-10-29T11:00:00.000Z" }] };
+  await sincronizar([ap, pen], AGORA);
+  igual("referência excluída some do pendrive", pen.indice!.referencias.length, 0);
+  const velho = new Memoria("antigo");
+  velho.indice = { ...indiceVazio(), referencias: undefined } as unknown as Indice;
+  const r = await sincronizar([ap, velho], AGORA);
+  igual("índice antigo sem a tabela não quebra", r.falhas, []);
+}
+
 console.log(falhas ? `\nsincronia: ${falhas} falha(s)` : "\nsincronia: tudo certo");
 if (falhas) process.exit(1);

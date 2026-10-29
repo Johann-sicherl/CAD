@@ -9,27 +9,29 @@ import { Armazem } from "./armazem";
 import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } from "./repositorios";
 import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
-import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, usarFluxo, type Arquivo, type Pasta } from "../pdm/regras";
+import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, trocarReferencias, usarFluxo, type Arquivo, type DadosModelo, type Pasta, type ReferenciaArquivo } from "../pdm/regras";
 
-export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow";
+export type ChaveApp = "cad" | "asm" | "drw" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow";
 export const NOME_APP: Record<ChaveApp, string> = {
-  cad: "WJCAD", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow",
+  cad: "WJCAD", asm: "WJCAD (montagem)", drw: "WJCAD (desenho)", plan: "WJPlan", word: "WJWrite", cron: "WJCronProject", apn: "WJApresentation", pdm: "WJPDM", erp: "WJERP", flow: "WJFlow",
 };
 /** Pasta padrão de cada face na raiz do cofre. */
 export const PASTA_DA_FACE: Record<ChaveApp, string> = {
-  cad: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento",
+  cad: "CAD", asm: "CAD", drw: "CAD", plan: "Planilhas", word: "Documentos", cron: "Cronogramas", apn: "Apresentações", pdm: "PDM", erp: "ERP", flow: "Escoamento",
 };
 /** Apps por extensão: chave do salvamento automático e endereço (abrir arquivo do cofre no app). */
 export const APPS: Record<string, { app: string; chave: string; url: string; face: ChaveApp }> = {
   wjcad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave", face: "cad" },
   jlscad: { app: "WJCAD", chave: "jlscad:documento", url: "cad/#abrir-autosave", face: "cad" },
+  wjasm: { app: "WJCAD (montagem)", chave: "wjcad:montagem", url: "cad/montagem/#abrir-autosave", face: "asm" },
+  wjdrw: { app: "WJCAD (desenho)", chave: "wjcad:desenho", url: "cad/desenho/#abrir-autosave", face: "drw" },
   wjpl: { app: "WJPlan", chave: "wjpl:documento", url: "planilha/", face: "plan" },
   wjdoc: { app: "WJWrite", chave: "wjdoc:documento", url: "documento/", face: "word" },
   wjapn: { app: "WJApresentation", chave: "wjapn:documento", url: "apresentacao/", face: "apn" },
   wjcron: { app: "WJCronProject", chave: "wjcron:documento", url: "cronograma/", face: "cron" },
   wjflow: { app: "WJFlow", chave: "wjflow:estudo", url: "flow/", face: "flow" },
 };
-const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"] };
+const EXT_DA_FACE: Record<ChaveApp, string[]> = { cad: ["wjcad", "jlscad"], asm: ["wjasm"], drw: ["wjdrw"], plan: ["wjpl"], word: ["wjdoc"], cron: ["wjcron"], apn: ["wjapn"], pdm: ["wjpdm"], erp: ["wjerp"], flow: ["wjflow"] };
 
 const agora = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -283,7 +285,14 @@ async function escolherLocal(app: ChaveApp, nomeArquivo: string): Promise<{ past
  * (faz o GO-OUT se o arquivo estiver livre). Primeira vez: pergunta a pasta do cofre e o nome; o
  * arquivo entra em GO-OUT e "só no dispositivo" até o primeiro GO-IN (publicação).
  */
-export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: Blob, renomear?: (nome: string) => void): Promise<string> {
+export interface ExtrasSalvar {
+  /** o que o arquivo usa (componentes da montagem, modelo do desenho): tabela de referências */
+  referencias?: Omit<ReferenciaArquivo, "id" | "pai" | "mod">[];
+  /** dados do modelo (tipo, configurações, material, massa, volume) */
+  modelo?: DadosModelo;
+}
+
+export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: Blob, renomear?: (nome: string) => void, extras: ExtrasSalvar = {}): Promise<string> {
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
   let a = vinculo(app) ? await db.ler<Arquivo>("arquivos", vinculo(app)!) : undefined;
@@ -337,11 +346,57 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     // o documento aberto passa a ter o nome escolhido (senão o próximo salvar renomearia de volta)
     if (nome !== nomeArquivo) renomear?.(nome.replace(/\.[^.]+$/, ""));
   }
+  if (extras.modelo) {
+    a.modelo = extras.modelo;
+    // material do CAD preenche o cartão vazio
+    if (extras.modelo.material && !a.cartao.material) a.cartao.material = extras.modelo.material;
+    await db.por("arquivos", a);
+  }
+  if (extras.referencias) await gravarReferencias(db, a.id, extras.referencias);
   ligar(app, a.id);
   avisarMudanca();
   const sinc = await sincronizarCofre({ pedir: true, publicar: false });
   const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
   return `Salvo no dispositivo, em GO-OUT: ${onde ? `${onde}/` : ""}${a.nome}. ${sinc} Faça o GO-IN para publicar no pendrive e no Drive.${aviso}`;
+}
+
+/** Troca as referências do arquivo (montagem/desenho) na tabela; as que saíram viram exclusão. */
+async function gravarReferencias(db: Armazem, pai: string, novas: Omit<ReferenciaArquivo, "id" | "pai" | "mod">[]) {
+  const t = agora();
+  const { gravar, sair } = trocarReferencias(await db.todos<ReferenciaArquivo>("referencias"), pai, novas, t);
+  for (const r of gravar) await db.por("referencias", r);
+  for (const id of sair) {
+    await db.apagar("referencias", id);
+    await db.por("exclusoes", { id, tipo: "referencia", data: t } as { id: string });
+  }
+}
+
+/** Arquivos do cofre com estas extensões (fora da lixeira), mais recentes primeiro, com o caminho. */
+export async function documentosDoCofre(exts: string[]): Promise<{ arquivo: Arquivo; caminho: string }[]> {
+  const db = await abrirCofre();
+  usarFluxo((await db.ler<MetaCofre>("meta", "meta"))?.fluxo);
+  const ps = await db.todos<Pasta>("pastas");
+  return (await db.todos<Arquivo>("arquivos"))
+    .filter((a) => !a.lixeira && exts.includes(extensao(a.nome)))
+    .sort((a, b) => (b.mod ?? "").localeCompare(a.mod ?? ""))
+    .map((arquivo) => ({ arquivo, caminho: caminhoDaPasta(ps, arquivo.pasta) || "(raiz)" }));
+}
+
+/** Conteúdo atual de um arquivo do cofre (cópia de trabalho ou última versão). */
+export async function lerDoCofre(id: string): Promise<{ arquivo: Arquivo; texto: string; versao: number } | null> {
+  const db = await abrirCofre();
+  const a = await db.ler<Arquivo>("arquivos", id);
+  if (!a || a.lixeira) return null;
+  const blob = a.trabalho?.blob ?? a.versoes[a.versoes.length - 1]?.blob;
+  const b = blob ? await db.blob(blob) : undefined;
+  if (!b) return null;
+  return { arquivo: a, texto: await b.text(), versao: a.versoes[a.versoes.length - 1]?.n ?? 1 };
+}
+
+/** Referências da tabela: o que o arquivo contém e onde ele é usado. */
+export async function referenciasDe(id: string): Promise<{ contem: ReferenciaArquivo[]; usadoEm: ReferenciaArquivo[] }> {
+  const rs = await (await abrirCofre()).todos<ReferenciaArquivo>("referencias");
+  return { contem: rs.filter((r) => r.pai === id), usadoEm: rs.filter((r) => r.filho === id) };
 }
 
 // ---------- GO-OUT / GO-IN (painel lateral e WJPDM) ----------

@@ -9,7 +9,7 @@ import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
   aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, extensao, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
-  transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Fluxo, type Item, type Pasta, type TipoItem, type Versao,
+  transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Fluxo, type Item, type Pasta, type ReferenciaArquivo, type TipoItem, type Versao,
 } from "./regras";
 
 const RAIZ = "raiz";
@@ -41,6 +41,8 @@ let meta: Meta = { id: "meta", nome: "Cofre local", usuario: "", mascara: "12-##
 let pastas: Pasta[] = [];
 let arquivos: Arquivo[] = [];
 let itens: Item[] = [];
+/** Tabela de referências (montagem → peças, desenho → modelo). */
+let referencias: ReferenciaArquivo[] = [];
 
 type Local = { tipo: "pasta"; id: string } | { tipo: "itens" } | { tipo: "lixeira" } | { tipo: "busca"; q: string };
 let local: Local = { tipo: "pasta", id: RAIZ };
@@ -65,7 +67,7 @@ const usuario = () => meta.usuario || "Usuário";
 const gravarArquivo = (a: Arquivo) => db.por("arquivos", Object.assign(a, { mod: agora() }));
 const gravar = <T extends { id: string; mod?: string }>(loja: "pastas" | "itens" | "meta", x: T) => db.por(loja, Object.assign(x, { mod: agora() }));
 /** Destruído: registra a exclusão para ela chegar às outras cópias do cofre. */
-const registrarExclusao = (id: string, tipo: "arquivo" | "pasta" | "item") => db.por("exclusoes", { id, tipo, data: agora() } as { id: string });
+const registrarExclusao = (id: string, tipo: "arquivo" | "pasta" | "item" | "referencia") => db.por("exclusoes", { id, tipo, data: agora() } as { id: string });
 
 function caminho(id: string): Pasta[] {
   const r: Pasta[] = [];
@@ -186,7 +188,7 @@ lista.addEventListener("click", (e) => {
   else if (tr.dataset.item) sel = { tipo: "item", id: tr.dataset.item };
   else return;
   if (sel.tipo === "item" && aba !== "item" && aba !== "bom" && aba !== "usado" && aba !== "arquivos") aba = "item";
-  if (sel.tipo === "arquivo" && !["cartao", "previa", "versoes", "historico"].includes(aba)) aba = "cartao";
+  if (sel.tipo === "arquivo" && !["cartao", "previa", "versoes", "historico", "referencias"].includes(aba)) aba = "cartao";
   renderizar();
 });
 function abrirLinha(tr: HTMLTableRowElement) {
@@ -294,13 +296,14 @@ function renderizarPainel() {
   if (urlPrevia) URL.revokeObjectURL(urlPrevia), (urlPrevia = "");
   const a = arquivoSel(), it = itemSel();
   const abas: [string, string][] = a
-    ? [["cartao", "Cartão de dados"], ["previa", "Visualizar"], ["versoes", `Versões (${a.versoes.length})`], ["historico", "Histórico"]]
+    ? [["cartao", "Cartão de dados"], ["previa", "Visualizar"], ["versoes", `Versões (${a.versoes.length})`], ["referencias", `Referências (${referencias.filter((r) => r.pai === a.id || r.filho === a.id).length})`], ["historico", "Histórico"]]
     : it ? [["item", "Item"], ["bom", `Lista de materiais (${it.bom.length})`], ["usado", "Onde é usado"], ["arquivos", "Arquivos"]] : [];
   abasEl.innerHTML = abas.map(([k, n]) => `<button role="tab" data-aba="${k}" aria-selected="${k === aba}">${n}</button>`).join("");
   if (a) {
     if (aba === "cartao") return painelCartao(a);
     if (aba === "previa") return void painelPrevia(a);
     if (aba === "versoes") return painelVersoes(a);
+    if (aba === "referencias") return painelReferencias(a);
     return painelHistorico(a);
   }
   if (it) {
@@ -395,6 +398,29 @@ async function painelPrevia(a: Arquivo, v: Versao = versaoAtual(a)) {
     return;
   }
   conteudo.innerHTML = `<p class="pd-dica">Sem visualização para arquivos .${escapar(ext || "?")} (${tamanho(b.size)}). Use <b>Obter</b> para baixar.</p>`;
+}
+
+/** Contém (o que a montagem/desenho usa) e Onde é usado (montagens e desenhos que usam o arquivo). */
+function painelReferencias(a: Arquivo) {
+  const contem = referencias.filter((r) => r.pai === a.id), usado = referencias.filter((r) => r.filho === a.id);
+  const linha = (id: string, r: ReferenciaArquivo) => {
+    const x = arquivos.find((f) => f.id === id);
+    const tipo = r.tipo === "desenho" ? "desenho" : "componente";
+    return `<tr data-ir="${id}" style="cursor:pointer"><td>${x ? escapar(x.nome) : "<em>arquivo fora do cofre</em>"}</td><td>${tipo}</td><td>${r.quantidade}</td><td>${escapar(r.configuracao ?? "")}</td>
+      <td>${x ? `${versaoAtual(x).n}` : ""}</td><td>${x ? escapar(x.revisao || "—") : ""}</td><td>${x ? estadoHtml(x) : ""}</td></tr>`;
+  };
+  const tabela = (lista: ReferenciaArquivo[], lado: "filho" | "pai") => lista.length
+    ? `<table class="pd-tab"><thead><tr><th>Arquivo</th><th>Tipo</th><th>Qtd.</th><th>Configuração</th><th>Versão</th><th>Rev.</th><th>Estado</th></tr></thead><tbody>${lista.map((r) => linha(r[lado], r)).join("")}</tbody></table>`
+    : `<p class="pd-dica">${lado === "filho" ? "Não usa outros arquivos (peça)." : "Nenhuma montagem ou desenho usa este arquivo."}</p>`;
+  conteudo.innerHTML = `<h3 class="pd-sub">Contém</h3>${tabela(contem, "filho")}<h3 class="pd-sub">Onde é usado</h3>${tabela(usado, "pai")}
+    <p class="pd-dica">As referências são gravadas pelo WJCAD ao salvar montagens e desenhos.</p>`;
+  conteudo.querySelectorAll<HTMLElement>("[data-ir]").forEach((tr) => (tr.onclick = () => {
+    const x = arquivos.find((f) => f.id === tr.dataset.ir);
+    if (!x || x.lixeira) return casca.avisar("Esse arquivo não está mais no cofre.");
+    local = { tipo: "pasta", id: x.pasta };
+    sel = { tipo: "arquivo", id: x.id };
+    renderizar();
+  }));
 }
 
 function painelVersoes(a: Arquivo) {
@@ -876,6 +902,12 @@ async function destruir(a: Arquivo) {
   for (const b of [...a.versoes.map((v) => v.blob), ...(a.trabalho ? [a.trabalho.blob] : [])]) await db.apagar("blobs", b);
   await db.apagar("arquivos", a.id);
   await registrarExclusao(a.id, "arquivo");
+  // as referências que ele fazia saem junto (as que apontam para ele ficam: "fora do cofre")
+  for (const r of referencias.filter((x) => x.pai === a.id)) {
+    await db.apagar("referencias", r.id);
+    await registrarExclusao(r.id, "referencia");
+  }
+  referencias = referencias.filter((x) => x.pai !== a.id);
   arquivos = arquivos.filter((x) => x !== a);
   sel = null;
   renderizar();
@@ -1006,7 +1038,7 @@ async function exportarCofre() {
     const b = await db.blob(v.blob);
     if (b) blobs[v.blob] = { t: b.type, d: await paraBase64(b) };
   }
-  const dados = { formato: "wjpdm-copia", versao: 1, data: agora(), meta, pastas, arquivos, itens, blobs };
+  const dados = { formato: "wjpdm-copia", versao: 1, data: agora(), meta, pastas, arquivos, itens, referencias, blobs };
   salvarArquivo(JSON.stringify(dados), `${meta.nome} ${agora().slice(0, 10)}`, "wjpdm", "application/json");
 }
 
@@ -1022,6 +1054,7 @@ async function importarCofre() {
     for (const p of d.pastas) await gravar("pastas", p);
     for (const a of d.arquivos) await db.por("arquivos", a);
     for (const i of d.itens) await db.por("itens", i);
+    for (const r of d.referencias ?? []) await db.por("referencias", r);
     await db.por("meta", { ...d.meta, usuario: meta.usuario || d.meta.usuario });
     await carregar();
     casca.avisar("Cofre restaurado.");
@@ -1149,6 +1182,7 @@ async function carregar() {
   pastas = await db.todos<Pasta>("pastas");
   arquivos = await db.todos<Arquivo>("arquivos");
   itens = await db.todos<Item>("itens");
+  referencias = await db.todos<ReferenciaArquivo>("referencias");
   // mantém a seleção se o registro continua existindo (recarga ao voltar para o WJPDM)
   if (sel && !(sel.tipo === "arquivo" ? arquivos : sel.tipo === "pasta" ? pastas : itens).some((x) => x.id === sel!.id)) sel = null;
   renderizar();

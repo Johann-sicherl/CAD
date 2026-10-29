@@ -73,3 +73,4 @@ tr.pd-trabalho td { background: #f2f7fd; }
 .pd-fl-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 13px; }
 .pd-fl-chips label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .pd-fl-lista button, [data-fluxo] > button { min-width: 36px; min-height: 36px; }
+.pd-sub { margin: 10px 0 4px; font-size: 14px; color: var(--texto-2, #5e6b78); }

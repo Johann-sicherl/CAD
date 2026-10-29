@@ -59,6 +59,11 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   isométrica de (1, 1, 1)), render só quando algo muda. Arquivos até a versão 2 (Z para cima) são
   migrados ao abrir (`validarDocumento`)
 - Modelo: lista de features serializada em JSON (`.wjcad`; abre `.jlscad` e `.cadt` antigos), em `src/model.ts`
+- **Ambientes do WJCAD**: Peça em `cad/` (`src/main.ts`), **Montagem** em `cad/montagem/` (`src/montagem/`:
+  modelo, cena junta, solver de posicionamentos, testados em `scripts/teste-montagem.ts`) e **Desenho** em
+  `cad/desenho/` (D-A). Mesma interface (barra, faixa, árvore, painel de comando; peças comuns em
+  `src/ui/basico.ts`). Arquivos `.wjasm`/`.wjdrw` no cofre (apps `asm`/`drw`); ao salvar, a montagem grava a
+  tabela `referencias` do WJPDM. Especificação em `docs/funcional/montagem.md` e `desenho.md`.
 - **Várias páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
   `src/inicio/`, leve: sem Three.js nem kernel), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
   por face (seção "Outras faces"). O logo de cada app volta ao início. Em desenvolvimento: `/` é o início,

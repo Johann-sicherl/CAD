@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <title>Montagem — WJCAD</title>
+  </head>
+  <body class="ambiente-montagem">
+    <!-- mesma estrutura da página da peça (cad/index.html): barra superior, faixa, árvore, viewport, status -->
+    <header class="barra-topo">
+      <button id="btn-lateral" class="btn-ic" title="Árvore / painel do comando" data-requer-doc></button>
+      <a class="marca" href="../../" title="Voltar ao WJProMaster"><img src="/icone.svg" alt="" class="logo" /> WJCAD</a>
+      <div class="menu-wrap">
+        <button id="btn-menu" class="btn-ic" aria-haspopup="true" aria-expanded="false" title="Menu"></button>
+        <div id="menu-arquivo" class="menu" role="menu" hidden></div>
+      </div>
+      <div id="rapidas" class="rapidas"></div>
+      <input id="nome-doc" class="nome-doc" aria-label="Nome da montagem" data-requer-doc />
+    </header>
+
+    <nav class="comandos" data-requer-doc>
+      <div id="faixa-comandos" class="faixa-comandos" role="toolbar"></div>
+      <div id="abas" class="abas" role="tablist"></div>
+    </nav>
+
+    <main class="area">
+      <aside class="lateral" aria-label="Árvore da montagem" data-requer-doc>
+        <ol id="arvore" class="arvore"></ol>
+        <div id="painel-comando" class="painel-comando" hidden></div>
+      </aside>
+
+      <section class="viewport-wrap">
+        <div id="viewport" class="viewport"></div>
+        <div id="overlay-esboco" class="overlay-esboco"></div>
+        <div id="barra-vistas" class="barra-vistas" role="toolbar" aria-label="Vistas"></div>
+        <div id="canto-confirmacao" class="canto-confirmacao" hidden>
+          <button id="cc-ok" title="OK (Enter)">✓</button>
+          <button id="cc-cancelar" title="Cancelar (Esc)">✕</button>
+        </div>
+        <div id="barra-contexto" class="barra-contexto" hidden></div>
+        <div id="janela" class="janela" hidden>
+          <header><strong id="janela-titulo"></strong><button id="janela-fechar" class="btn-ic" title="Fechar">✕</button></header>
+          <div id="janela-corpo"></div>
+        </div>
+        <div id="carregando" class="carregando">Carregando o núcleo geométrico…</div>
+        <div id="aviso" class="aviso" role="status" hidden></div>
+      </section>
+      <section id="tela-inicial" class="tela-inicial" hidden>
+        <div class="tela-inicial-acoes">
+          <button id="ti-novo" class="destaque"></button>
+          <button id="ti-abrir"></button>
+        </div>
+        <div id="ti-recentes" class="tela-inicial-recentes"></div>
+      </section>
+    </main>
+
+    <footer class="status">
+      <span id="st-estado" class="st-estado">Montagem</span>
+      <span id="st-kernel">Kernel: iniciando</span>
+      <span id="st-info"></span>
+      <span class="st-dir" title="Sistema de unidades">MMGS (mm, g, s)</span>
+    </footer>
+
+    <input type="file" id="arquivo" hidden />
+    <script type="module" src="/src/montagem/main.ts"></script>
+  </body>
+</html>

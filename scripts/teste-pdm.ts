@@ -1,7 +1,7 @@
 // Teste das regras do cofre do WJPDM em Node.
 import {
   aplicarTransicao, bloqueioDaTransicao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
-  proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Item,
+  proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, trocarReferencias, usarFluxo, validarFluxo, type Arquivo, type Item,
 } from "../src/pdm/regras";
 
 let falhas = 0;
@@ -88,6 +88,14 @@ igual("transição para estado inexistente é erro", validarFluxo(sem).length > 
 usarFluxo(sem);
 igual("fluxo inválido: volta ao de fábrica", fluxoAtual() === FLUXO_PADRAO, true);
 usarFluxo(null);
+
+// tabela de referências: troca as do pai, soma repetidas, iguais não regravam
+{
+  const r1 = trocarReferencias([], "M", [{ filho: "A", tipo: "componente", quantidade: 1 }, { filho: "A", tipo: "componente", quantidade: 1 }, { filho: "B", tipo: "componente", quantidade: 4 }], "t1");
+  igual("soma instâncias da mesma peça", r1.gravar.map((x) => `${x.filho}×${x.quantidade}`).join(" "), "A×2 B×4");
+  const r2 = trocarReferencias(r1.gravar, "M", [{ filho: "A", tipo: "componente", quantidade: 2 }, { filho: "C", tipo: "componente", quantidade: 1 }], "t2");
+  igual("mantém iguais, grava novas, tira as que saíram", `${r2.gravar.map((x) => x.filho).join(",")} | ${r2.sair.join(",")}`, "C | M>B>");
+}
 
 // lista de materiais
 const it = (id: string, codigo: string, bom: Item["bom"] = []): Item => ({ id, codigo, descricao: codigo, tipo: "fabricado", unidade: "pç", bom });
