@@ -115,6 +115,18 @@ export class RepositorioDrive implements Repositorio {
     return ((await r.json()) as { id: string }).id;
   }
 
+  /** Texto de um arquivo fora do cofre (ex.: Meu Drive/WJTaskPlan/tarefas.json); null se não existe. */
+  async lerArquivo(pasta: string[], nome: string): Promise<string | null> {
+    const p = await this.acharPasta(pasta);
+    const id = p && (await this.arquivoNa(p, nome));
+    return id ? (await this.baixar(id)).text() : null;
+  }
+  /** Grava (cria ou atualiza no lugar) um arquivo fora do cofre. */
+  async gravarArquivo(pasta: string[], nome: string, dados: Blob) {
+    const p = await this.pasta(pasta);
+    await this.enviar(dados, nome, p, await this.arquivoNa(p, nome));
+  }
+
   private sis = () => this.pasta(["WJPDM", ".wjpdm"]);
   private blobsPasta = () => this.pasta(["WJPDM", ".wjpdm", "blobs"]);
 
@@ -257,6 +269,9 @@ const valido = () => {
   const a = lerAcesso();
   return !!a && a.expira - Date.now() > 120000;
 };
+
+/** Drive com o acesso atual (para pastas irmãs do cofre, como Meu Drive/WJTaskPlan). */
+export const driveGoogle = () => new RepositorioDrive(() => lerAcesso()?.token ?? "");
 
 export const nuvemGoogle: DestinoNuvem = {
   nome: "Google Drive",

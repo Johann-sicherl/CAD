@@ -16,6 +16,7 @@ e identidade de objetos.
 | **WJCronProject** | cronogramas e projetos | gerenciador de projetos com Gantt | `.wjcron` | [cronograma.md](cronograma.md) |
 | **WJERP** | gestão empresarial SaaS ligada ao WJPDM/WJCAD | ERP brasileiro de mercado | banco no servidor | [erp.md](erp.md) |
 | **WJFlow** | escoamento de ar nas peças do WJCAD (túnel de vento virtual, dutos, EDF) | ferramentas de CFD | `.wjflow` | [wjflow.md](wjflow.md) |
+| **WJTaskPlan** | tarefas em pastas, escritas à mão com a caneta, estados, prazos com alerta e painel | lista de tarefas com quadro de indicadores | `WJTaskPlan/tarefas.json` (+ `.csv`) ao lado do cofre | [taskplan.md](taskplan.md) |
 | Integrações entre as faces | — | — | [integracoes.md](integracoes.md) |
 | Prompt-mestre para desenvolver | — | — | [prompt-mestre.md](prompt-mestre.md) |
 
