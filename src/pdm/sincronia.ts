@@ -6,7 +6,7 @@
 // Tudo puro e testável em Node (scripts/teste-sincronia.ts); quem lê e grava cada cópia é um
 // Repositorio.
 
-import type { Arquivo, Item, Pasta } from "./regras";
+import type { Arquivo, Fluxo, Item, Pasta } from "./regras";
 import { extensao } from "./regras";
 
 export interface MetaCofre {
@@ -14,6 +14,8 @@ export interface MetaCofre {
   nome: string;
   usuario: string;
   mascara: string;
+  /** fluxo de trabalho editável (ausente: o de fábrica) */
+  fluxo?: Fluxo;
   mod?: string;
 }
 

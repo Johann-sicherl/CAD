@@ -1,14 +1,112 @@
 // Regras do cofre do WJPDM (puras, testadas em scripts/teste-pdm.ts): modelo de dados, fluxo de
 // estados com transições e condições, check-out, sequência de revisões e numeração automática.
 
-export type Estado = "trabalho" | "revisao" | "liberado" | "obsoleto";
+/** Id de um estado do fluxo de trabalho (o fluxo é editável: ver Fluxo). */
+export type Estado = string;
 
-export const ESTADOS: Record<Estado, { nome: string; cor: string; bloqueado: boolean }> = {
-  trabalho: { nome: "Em trabalho", cor: "#2f7fd0", bloqueado: false },
-  revisao: { nome: "Em revisão", cor: "#c98a12", bloqueado: true },
-  liberado: { nome: "Liberado", cor: "#2e8b57", bloqueado: true },
-  obsoleto: { nome: "Obsoleto", cor: "#8a96a3", bloqueado: true },
-};
+export interface EstadoFluxo {
+  id: string;
+  nome: string;
+  cor: string;
+  /** trava a edição (sem GO-OUT, sem renomear) */
+  bloqueado: boolean;
+  /** impede excluir o arquivo (ex.: em produção: torne-o obsoleto antes) */
+  naoExcluir?: boolean;
+  /** primeira revisão desta fase ("P1", "01", "A"): a revisão sobe nesse esquema ao entrar no estado */
+  esquemaRevisao?: string;
+}
+
+export interface Transicao {
+  id: string;
+  nome: string;
+  de: Estado[];
+  para: Estado;
+  /** a revisão sobe ao executar, no esquema do estado de destino */
+  sobeRevisao?: boolean;
+  /** campos do cartão que precisam estar preenchidos */
+  exigeCampos?: string[];
+  /** pede um comentário (motivo) */
+  exigeComentario?: boolean;
+}
+
+/** Fluxo de trabalho do cofre (um só, editável em Ferramentas → Fluxo de trabalho). */
+export interface Fluxo {
+  nome: string;
+  /** estado dos arquivos novos */
+  inicial: Estado;
+  estados: EstadoFluxo[];
+  transicoes: Transicao[];
+}
+
+const COR = { dev: "#2f7fd0", prod: "#2e8b57", rev: "#c98a12", obs: "#8a96a3" };
+
+/**
+ * Fluxo de fábrica (Johann, 29/10/2026): Protótipo → Pré-série → Série, cada fase em
+ * desenvolvimento (editável), em produção (travado, revisão sobe) e em revisão (fora da linha de
+ * produção e fora do desenvolvimento: travado até ser aprovado ou devolvido). A fase Protótipo usa
+ * os ids antigos (trabalho/revisao/liberado) para os arquivos que já existem.
+ */
+function fluxoPadrao(): Fluxo {
+  const fases = [
+    { nome: "Protótipo", dev: "trabalho", prod: "liberado", rev: "revisao", esquema: "P1", pre: "" },
+    { nome: "Pré-série", dev: "pre-dev", prod: "pre-prod", rev: "pre-rev", esquema: "01", pre: "pre-" },
+    { nome: "Série", dev: "serie-dev", prod: "serie-prod", rev: "serie-rev", esquema: "A", pre: "serie-" },
+  ];
+  const estados: EstadoFluxo[] = fases.flatMap((f) => [
+    { id: f.dev, nome: `${f.nome} em desenvolvimento`, cor: COR.dev, bloqueado: false },
+    { id: f.prod, nome: `${f.nome} em produção`, cor: COR.prod, bloqueado: true, naoExcluir: true, esquemaRevisao: f.esquema },
+    { id: f.rev, nome: `${f.nome} em revisão`, cor: COR.rev, bloqueado: true },
+  ]);
+  estados.push({ id: "obsoleto", nome: "Obsoleto", cor: COR.obs, bloqueado: true });
+  const transicoes: Transicao[] = fases.flatMap((f, k) => {
+    const prox = fases[k + 1];
+    return [
+      { id: `${f.pre}enviar`, nome: "Enviar para revisão", de: [f.dev], para: f.rev, exigeCampos: ["codigo", "descricao"] },
+      { id: `${f.pre}aprovar`, nome: "Aprovar para produção", de: [f.rev], para: f.prod, sobeRevisao: true },
+      { id: `${f.pre}rejeitar`, nome: "Devolver ao desenvolvimento", de: [f.rev], para: f.dev },
+      { id: `${f.pre}revisar`, nome: "Colocar em revisão (sai da produção)", de: [f.prod], para: f.rev, exigeComentario: true },
+      ...(prox ? [{ id: `${f.pre}avancar`, nome: `Avançar para ${prox.nome}`, de: [f.prod], para: prox.dev }] : []),
+    ];
+  });
+  transicoes.push(
+    { id: "obsoleto", nome: "Tornar obsoleto", de: fases.flatMap((f) => [f.dev, f.prod]), para: "obsoleto", exigeComentario: true },
+    { id: "reativar", nome: "Reativar", de: ["obsoleto"], para: "trabalho" },
+  );
+  return { nome: "Ciclo de vida do componente", inicial: "trabalho", estados, transicoes };
+}
+export const FLUXO_PADRAO: Fluxo = fluxoPadrao();
+export const copiaDoFluxo = (f: Fluxo): Fluxo => JSON.parse(JSON.stringify(f));
+
+let fluxo: Fluxo = FLUXO_PADRAO;
+/** Fluxo em uso (o do cofre, ou o de fábrica). */
+export const fluxoAtual = () => fluxo;
+/** Passa a usar o fluxo do cofre (inválido ou ausente: o de fábrica). */
+export function usarFluxo(f?: Fluxo | null) {
+  fluxo = f && !validarFluxo(f).length ? f : FLUXO_PADRAO;
+}
+/** Dados do estado; um estado que saiu do fluxo aparece com o próprio id e sem trava. */
+export const estadoDe = (id: Estado): EstadoFluxo => fluxo.estados.find((e) => e.id === id) ?? { id, nome: `${id} (fora do fluxo)`, cor: COR.obs, bloqueado: false };
+
+/** Problemas do fluxo (vazio = válido). `emUso`: estados que algum arquivo tem agora. */
+export function validarFluxo(f: Fluxo, emUso: Iterable<Estado> = []): string[] {
+  const erros: string[] = [];
+  const ids = new Set(f.estados.map((e) => e.id));
+  if (!f.estados.length) erros.push("O fluxo precisa de pelo menos um estado.");
+  const nomes = f.estados.map((e) => e.nome.trim().toLowerCase());
+  if (nomes.some((n) => !n)) erros.push("Todo estado precisa de nome.");
+  if (new Set(nomes).size !== nomes.length) erros.push("Há estados com o mesmo nome.");
+  if (ids.size !== f.estados.length) erros.push("Há estados repetidos.");
+  if (!ids.has(f.inicial)) erros.push("Escolha o estado inicial (arquivos novos).");
+  for (const t of f.transicoes) {
+    const n = t.nome.trim() || "(sem nome)";
+    if (!t.nome.trim()) erros.push("Toda transição precisa de nome.");
+    if (!t.de.length) erros.push(`"${n}": marque de quais estados ela sai.`);
+    if (t.de.some((d) => !ids.has(d)) || !ids.has(t.para)) erros.push(`"${n}": usa um estado que não existe.`);
+  }
+  const faltam = [...new Set(emUso)].filter((e) => !ids.has(e));
+  if (faltam.length) erros.push(`Há arquivos nos estados removidos (${faltam.join(", ")}): mude o estado deles antes de remover.`);
+  return erros;
+}
 
 export interface Evento {
   data: string;
@@ -92,9 +190,9 @@ export interface Item {
 }
 
 /** Campos do cartão de dados (ordem do formulário). */
-export const CAMPOS_CARTAO: { id: string; nome: string; obrigatorioNaRevisao?: boolean; lista?: string[] }[] = [
-  { id: "codigo", nome: "Código", obrigatorioNaRevisao: true },
-  { id: "descricao", nome: "Descrição", obrigatorioNaRevisao: true },
+export const CAMPOS_CARTAO: { id: string; nome: string; lista?: string[] }[] = [
+  { id: "codigo", nome: "Código" },
+  { id: "descricao", nome: "Descrição" },
   { id: "material", nome: "Material" },
   { id: "projetista", nome: "Projetista" },
   { id: "projeto", nome: "Projeto / cliente" },
@@ -111,46 +209,36 @@ export interface Transicao {
   sobeRevisao?: boolean;
 }
 
-export const TRANSICOES: Transicao[] = [
-  { id: "enviar", nome: "Enviar para revisão", de: ["trabalho"], para: "revisao" },
-  { id: "aprovar", nome: "Aprovar e liberar", de: ["revisao"], para: "liberado", sobeRevisao: true },
-  { id: "rejeitar", nome: "Rejeitar (volta a Em trabalho)", de: ["revisao"], para: "trabalho" },
-  { id: "alterar", nome: "Nova revisão (volta a Em trabalho)", de: ["liberado"], para: "trabalho" },
-  { id: "obsoleto", nome: "Tornar obsoleto", de: ["liberado", "trabalho"], para: "obsoleto" },
-  { id: "reativar", nome: "Reativar", de: ["obsoleto"], para: "trabalho" },
-];
-
 /** Motivo pelo qual a transição não pode ser feita agora (ou null). */
 export function bloqueioDaTransicao(a: Arquivo, t: Transicao): string | null {
-  if (!t.de.includes(a.estado)) return `O arquivo está em "${ESTADOS[a.estado].nome}".`;
+  if (!t.de.includes(a.estado)) return `O arquivo está em "${estadoDe(a.estado).nome}".`;
   if (a.checkout) return `Está em GO-OUT com ${a.checkout.usuario}: faça o GO-IN antes.`;
   if (a.lixeira) return "O arquivo está na lixeira.";
-  if (t.id === "enviar") {
-    const faltam = CAMPOS_CARTAO.filter((c) => c.obrigatorioNaRevisao && !a.cartao[c.id]?.trim()).map((c) => c.nome);
-    if (faltam.length) return `Preencha no cartão de dados: ${faltam.join(", ")}.`;
-  }
+  const faltam = CAMPOS_CARTAO.filter((c) => t.exigeCampos?.includes(c.id) && !a.cartao[c.id]?.trim()).map((c) => c.nome);
+  if (faltam.length) return `Preencha no cartão de dados: ${faltam.join(", ")}.`;
   return null;
 }
 
 export function transicoesDe(a: Arquivo) {
-  return TRANSICOES.filter((t) => t.de.includes(a.estado)).map((t) => ({ t, bloqueio: bloqueioDaTransicao(a, t) }));
+  return fluxo.transicoes.filter((t) => t.de.includes(a.estado)).map((t) => ({ t, bloqueio: bloqueioDaTransicao(a, t) }));
 }
 
 /** Executa a transição (sem checar bloqueio). */
 export function aplicarTransicao(a: Arquivo, t: Transicao, usuario: string, agora: string, comentario = "") {
   const de = a.estado;
   a.estado = t.para;
-  if (t.sobeRevisao) a.revisao = proximaRevisao(a.revisao);
+  if (t.sobeRevisao) a.revisao = proximaRevisaoNoEsquema(a.revisao, estadoDe(t.para).esquemaRevisao);
   const ult = a.versoes[a.versoes.length - 1];
   if (ult && t.sobeRevisao) (ult.revisao = a.revisao), (ult.estado = a.estado);
-  a.historico.push({ data: agora, usuario, texto: `${t.nome}: ${ESTADOS[de].nome} → ${ESTADOS[t.para].nome}${t.sobeRevisao ? ` (revisão ${a.revisao})` : ""}${comentario ? ` — ${comentario}` : ""}` });
+  a.historico.push({ data: agora, usuario, texto: `${t.nome}: ${estadoDe(de).nome} → ${estadoDe(t.para).nome}${t.sobeRevisao ? ` (revisão ${a.revisao})` : ""}${comentario ? ` — ${comentario}` : ""}` });
 }
 
 /** GO-OUT (retirar para editar, o check-out dos PDMs): null se pode, ou o motivo. */
 export function bloqueioDoCheckout(a: Arquivo, usuario: string): string | null {
   if (a.lixeira) return "O arquivo está na lixeira.";
   if (a.checkout) return a.checkout.usuario === usuario ? "Este arquivo já está em GO-OUT com você." : `Em GO-OUT com ${a.checkout.usuario} desde ${a.checkout.data.slice(0, 10)}.`;
-  if (ESTADOS[a.estado].bloqueado) return `Arquivo "${ESTADOS[a.estado].nome}" não pode ser alterado${a.estado === "liberado" ? ": crie uma nova revisão (Alterar estado)" : ""}.`;
+  const e = estadoDe(a.estado);
+  if (e.bloqueado) return `Arquivo "${e.nome}" não pode ser alterado: mude o estado (Alterar estado) para um estado de desenvolvimento.`;
   return null;
 }
 
@@ -169,6 +257,19 @@ export function proximaRevisao(r: string): string {
     i--;
   }
   return `A${letras.join("")}`;
+}
+
+/**
+ * Revisão seguinte no esquema da fase ("P1" → P1, P2…; "01" → 01, 02…; "A" → A, B…): se a revisão
+ * atual já é desse esquema, sobe; se é de outra fase (ou vazia), começa no primeiro do esquema.
+ */
+export function proximaRevisaoNoEsquema(atual: string, esquema?: string): string {
+  const m = esquema ? /^(.*?)(\d+|[A-Za-z]+)$/.exec(esquema.trim()) : null;
+  if (!m) return proximaRevisao(atual);
+  const [, prefixo, base] = m;
+  const resto = atual.startsWith(prefixo) ? atual.slice(prefixo.length) : "";
+  const mesmoTipo = /^\d+$/.test(base) ? /^\d+$/.test(resto) : /^[A-Za-z]+$/.test(resto);
+  return resto && mesmoTipo ? prefixo + proximaRevisao(resto) : esquema!.trim();
 }
 
 /** Próximo código livre pela máscara (# = dígito), ex.: "12-####" → "12-0007". */

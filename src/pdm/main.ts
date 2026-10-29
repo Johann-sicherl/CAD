@@ -8,8 +8,8 @@ import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, sincronizarCofre } 
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
-  aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, ESTADOS, explodirBOM, extensao, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
-  transicoesDe, type Arquivo, type Item, type Pasta, type TipoItem, type Versao,
+  aplicarTransicao, bloqueioDoCheckout, CAMPOS_CARTAO, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, extensao, nomeLivre, ondeEUsado, proximoCodigo, TIPOS_ITEM,
+  transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Fluxo, type Item, type Pasta, type TipoItem, type Versao,
 } from "./regras";
 
 const RAIZ = "raiz";
@@ -32,6 +32,8 @@ interface Meta {
   nome: string;
   usuario: string;
   mascara: string;
+  /** fluxo de trabalho editado (ausente: o de fábrica) */
+  fluxo?: Fluxo;
 }
 
 let db: Armazem;
@@ -125,7 +127,7 @@ function travaHtml(a: Arquivo) {
   const minha = a.checkout.usuario === usuario();
   return `<span class="pd-trava ${minha ? "minha" : "outro"}" title="GO-OUT de ${escapar(a.checkout.usuario)} em ${quando(a.checkout.data)}">${IC.cadeado}</span>${trab}`;
 }
-const estadoHtml = (a: Arquivo) => `<span class="pd-estado" style="background:${ESTADOS[a.estado].cor}">${ESTADOS[a.estado].nome}</span>`;
+const estadoHtml = (a: Arquivo) => `<span class="pd-estado" style="background:${estadoDe(a.estado).cor}">${escapar(estadoDe(a.estado).nome)}</span>`;
 
 function renderizarLista() {
   const cab = (cols: string[]) => `<thead><tr>${cols.map((c) => `<th${c.startsWith("·") ? ' class="pd-opc"' : ""}>${c.replace(/^·/, "")}</th>`).join("")}</tr></thead>`;
@@ -322,7 +324,7 @@ function painelCartao(a: Arquivo) {
   conteudo.innerHTML = `<div class="pd-cab"><strong>${escapar(a.nome)}</strong>${estadoHtml(a)}<span>versão ${versaoAtual(a).n} · revisão ${a.revisao || "—"}</span>
       ${a.checkout ? `<span class="pd-trava ${editavel ? "minha" : "outro"}">${IC.cadeado} GO-OUT de ${escapar(a.checkout.usuario)}</span>` : ""}</div>
     ${editavel ? "" : `<p class="pd-dica">${a.checkout ? "Outro usuário está com o arquivo." : "Faça o <b>GO-OUT</b> para editar o cartão de dados."}</p>`}
-    <div class="pd-cartao">${CAMPOS_CARTAO.map((c) => `<div class="wj-campo"><label>${c.nome}${c.obrigatorioNaRevisao ? " *" : ""}</label>${
+    <div class="pd-cartao">${CAMPOS_CARTAO.map((c) => `<div class="wj-campo"><label>${c.nome}${fluxoAtual().transicoes.some((t) => t.exigeCampos?.includes(c.id)) ? " *" : ""}</label>${
       c.lista
         ? `<select data-campo="${c.id}" ${editavel ? "" : "disabled"}>${c.lista.map((o) => `<option${(a.cartao[c.id] ?? "") === o ? " selected" : ""}>${escapar(o)}</option>`).join("")}</select>`
         : `<input data-campo="${c.id}" value="${escapar(a.cartao[c.id] ?? "")}" ${editavel ? "" : "disabled"} />`
@@ -399,7 +401,7 @@ function painelVersoes(a: Arquivo) {
   const podeRestaurar = a.checkout?.usuario === usuario();
   conteudo.innerHTML = `<table class="pd-tab"><thead><tr><th>Versão</th><th>Revisão</th><th>Estado</th><th>Data</th><th>Autor</th><th>Comentário</th><th>Tamanho</th><th></th></tr></thead><tbody>
     ${a.trabalho ? `<tr class="pd-trabalho"><td>✎</td><td colspan="2">Cópia de trabalho (salva no app, ainda sem GO-IN)</td><td>${quando(a.trabalho.data)}</td><td>${escapar(a.trabalho.autor)}</td><td></td><td>${tamanho(a.trabalho.tamanho)}</td><td><button data-obter-trabalho>Obter</button></td></tr>` : ""}
-    ${[...a.versoes].reverse().map((v) => `<tr><td>${v.n}</td><td>${v.revisao || "—"}</td><td>${ESTADOS[v.estado]?.nome ?? ""}</td><td>${quando(v.data)}</td><td>${escapar(v.autor)}</td><td>${escapar(v.comentario)}</td><td>${tamanho(v.tamanho)}</td>
+    ${[...a.versoes].reverse().map((v) => `<tr><td>${v.n}</td><td>${v.revisao || "—"}</td><td>${escapar(estadoDe(v.estado).nome)}</td><td>${quando(v.data)}</td><td>${escapar(v.autor)}</td><td>${escapar(v.comentario)}</td><td>${tamanho(v.tamanho)}</td>
       <td style="white-space:nowrap"><button data-obter="${v.n}">Obter</button>${podeRestaurar && v !== versaoAtual(a) ? ` <button data-restaurar="${v.n}" title="Cria uma versão nova com este conteúdo">Restaurar</button>` : ""}</td></tr>`).join("")}
     </tbody></table>`;
   conteudo.querySelector<HTMLElement>("[data-obter-trabalho]")?.addEventListener("click", () => void obter(a, versaoAtual(a), true));
@@ -560,9 +562,9 @@ async function adicionar(files: File[], pasta: string) {
     await db.porBlob(blob, f);
     const base = f.name.replace(/\.[^.]+$/, "");
     const a: Arquivo = {
-      id: uid(), nome, pasta, revisao: "", estado: "trabalho", historico: [],
+      id: uid(), nome, pasta, revisao: "", estado: fluxoAtual().inicial, historico: [],
       cartao: { descricao: base, projetista: usuario(), ...(pastaCartao ? { projeto: pastaCartao } : {}) },
-      versoes: [{ n: 1, blob, tamanho: f.size, autor: usuario(), data: agora(), comentario: "Adicionado ao cofre", revisao: "", estado: "trabalho" }],
+      versoes: [{ n: 1, blob, tamanho: f.size, autor: usuario(), data: agora(), comentario: "Adicionado ao cofre", revisao: "", estado: fluxoAtual().inicial }],
     };
     historico(a, `Adicionado ao cofre${nome !== f.name ? ` (renomeado de ${f.name})` : ""}`);
     arquivos.push(a);
@@ -680,25 +682,149 @@ function alterarEstado(a: Arquivo) {
   if (!ts.length) return casca.avisar("Não há transições a partir deste estado.");
   const { corpo } = janela(`Alterar estado — ${a.nome}`, `
     <p>Estado atual: ${estadoHtml(a)} · revisão ${a.revisao || "—"}</p>
-    <div class="wj-campo">${ts.map(({ t, bloqueio }, k) => `<label style="display:block;margin:4px 0"><input type="radio" name="tr" value="${t.id}" ${bloqueio ? "disabled" : k === ts.findIndex((x) => !x.bloqueio) ? "checked" : ""}/> ${escapar(t.nome)} → ${ESTADOS[t.para].nome}${bloqueio ? `<br><small style="color:var(--erro);margin-left:22px">${escapar(bloqueio)}</small>` : ""}</label>`).join("")}</div>
-    <div class="wj-campo"><label>Comentário</label><input id="tr-com" /></div>`, [
+    <div class="wj-campo">${ts.map(({ t, bloqueio }, k) => `<label style="display:block;margin:4px 0"><input type="radio" name="tr" value="${t.id}" ${bloqueio ? "disabled" : k === ts.findIndex((x) => !x.bloqueio) ? "checked" : ""}/> ${escapar(t.nome)} → ${escapar(estadoDe(t.para).nome)}${t.sobeRevisao ? " (sobe a revisão)" : ""}${bloqueio ? `<br><small style="color:var(--erro);margin-left:22px">${escapar(bloqueio)}</small>` : ""}</label>`).join("")}</div>
+    <div class="wj-campo"><label>Comentário <small data-obrig></small></label><input id="tr-com" /></div>`, [
     { rotulo: "Cancelar" },
     {
       rotulo: "Executar", destaque: true, acao: (b) => {
         const id = (b.querySelector('input[name="tr"]:checked') as HTMLInputElement | null)?.value;
         const t = ts.find((x) => x.t.id === id);
         if (!t || t.bloqueio) return void casca.avisar("Escolha uma transição disponível."), false;
-        aplicarTransicao(a, t.t, usuario(), agora(), (b.querySelector("#tr-com") as HTMLInputElement).value.trim());
+        const com = (b.querySelector("#tr-com") as HTMLInputElement).value.trim();
+        if (t.t.exigeComentario && !com) return void casca.avisar(`"${t.t.nome}" pede um comentário (motivo).`), false;
+        aplicarTransicao(a, t.t, usuario(), agora(), com);
         void gravarArquivo(a).then(renderizar);
       },
     },
   ]);
-  void corpo;
+  // comentário obrigatório conforme a transição marcada
+  const marcar = () => {
+    const t = ts.find((x) => x.t.id === corpo.querySelector<HTMLInputElement>('input[name="tr"]:checked')?.value);
+    corpo.querySelector("[data-obrig]")!.textContent = t?.t.exigeComentario ? "(obrigatório)" : "";
+  };
+  corpo.querySelectorAll<HTMLInputElement>('input[name="tr"]').forEach((r) => (r.onchange = marcar));
+  marcar();
+}
+
+/**
+ * Editor do fluxo de trabalho (um só para o cofre): estados (nome, cor, trava, protegido, esquema
+ * de revisão), estado inicial e transições (de/para, sobe revisão, campos obrigatórios, comentário).
+ * Fica no registro "meta" do cofre e viaja com as cópias (pendrive, Drive, pasta do dispositivo).
+ */
+function editarFluxo() {
+  let f = copiaDoFluxo(fluxoAtual());
+  const { corpo, fechar } = janela("Fluxo de trabalho do cofre", `<div data-fluxo></div>`, [
+    { rotulo: "Restaurar o de fábrica", acao: () => ((f = copiaDoFluxo(FLUXO_PADRAO)), desenhar(), false) },
+    { rotulo: "Cancelar" },
+    {
+      rotulo: "Salvar", destaque: true, acao: () => {
+        const erros = validarFluxo(f, arquivos.map((a) => a.estado));
+        if (erros.length) return void casca.avisar(erros.join(" "), 8000), false;
+        meta.fluxo = f;
+        void gravar("meta", meta).then(() => {
+          usarFluxo(meta.fluxo);
+          renderizar();
+          casca.avisar("Fluxo de trabalho salvo. Sincronizando…", 20000);
+          return sincronizarCofre({ pedir: false, publicar: true }).then((m) => casca.avisar(m, 6000));
+        });
+      },
+    },
+  ], true);
+  void fechar;
+  const area = corpo.querySelector<HTMLElement>("[data-fluxo]")!;
+  const esc = escapar;
+  const novoId = (base: string) => {
+    let id = base.normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "estado";
+    for (let k = 2; f.estados.some((e) => e.id === id) || f.transicoes.some((t) => t.id === id); k++) id = `${id.replace(/-\d+$/, "")}-${k}`;
+    return id;
+  };
+  const emUso = (id: string) => arquivos.filter((a) => a.estado === id).length;
+  function desenhar() {
+    const opc = (sel: string) => f.estados.map((e) => `<option value="${e.id}"${e.id === sel ? " selected" : ""}>${esc(e.nome)}</option>`).join("");
+    area.innerHTML = `
+      <p class="pd-dica">Um fluxo para todo o cofre. <b>Trava edição</b>: sem GO-OUT no estado. <b>Protegido</b>: não pode ser excluído.
+        <b>Revisão</b>: primeira revisão da fase (ex.: P1, 01, A); ao entrar no estado por uma transição que sobe a revisão, ela anda nesse esquema e recomeça ao mudar de fase.</p>
+      <div class="wj-campo"><label>Nome do fluxo</label><input data-f="nome" value="${esc(f.nome)}" /></div>
+      <h3 class="pd-fl-tit">Estados</h3>
+      <div class="pd-fl-lista">${f.estados.map((e, k) => `
+        <div class="pd-fl-estado" data-k="${k}">
+          <input type="color" data-e="cor" value="${e.cor}" aria-label="Cor" />
+          <input data-e="nome" value="${esc(e.nome)}" aria-label="Nome do estado" />
+          <label><input type="checkbox" data-e="bloqueado" ${e.bloqueado ? "checked" : ""}/> Trava edição</label>
+          <label><input type="checkbox" data-e="naoExcluir" ${e.naoExcluir ? "checked" : ""}/> Protegido</label>
+          <input data-e="esquemaRevisao" value="${esc(e.esquemaRevisao ?? "")}" placeholder="Revisão" aria-label="Esquema de revisão" class="pd-fl-rev" />
+          <span class="pd-fl-uso">${emUso(e.id) ? `${emUso(e.id)} arq.` : ""}</span>
+          <button data-acao="subirE" title="Subir">↑</button><button data-acao="descerE" title="Descer">↓</button>
+          <button data-acao="apagarE" title="Remover estado">✕</button>
+        </div>`).join("")}</div>
+      <button data-acao="novoE">+ Estado</button>
+      <div class="wj-campo"><label>Estado inicial (arquivos novos)</label><select data-f="inicial">${opc(f.inicial)}</select></div>
+      <h3 class="pd-fl-tit">Transições</h3>
+      <div class="pd-fl-lista">${f.transicoes.map((t, k) => `
+        <div class="pd-fl-trans" data-k="${k}">
+          <div class="pd-fl-linha"><input data-t="nome" value="${esc(t.nome)}" aria-label="Nome da transição" />
+            <span>→</span><select data-t="para" aria-label="Para">${opc(t.para)}</select>
+            <button data-acao="subirT" title="Subir">↑</button><button data-acao="descerT" title="Descer">↓</button><button data-acao="apagarT" title="Remover transição">✕</button></div>
+          <div class="pd-fl-chips"><small>De:</small>${f.estados.map((e) => `<label><input type="checkbox" data-de="${e.id}" ${t.de.includes(e.id) ? "checked" : ""}/> ${esc(e.nome)}</label>`).join("")}</div>
+          <div class="pd-fl-chips"><label><input type="checkbox" data-t="sobeRevisao" ${t.sobeRevisao ? "checked" : ""}/> Sobe a revisão</label>
+            <label><input type="checkbox" data-t="exigeComentario" ${t.exigeComentario ? "checked" : ""}/> Exige comentário</label>
+            <small>Exige no cartão:</small>${CAMPOS_CARTAO.map((c) => `<label><input type="checkbox" data-campo="${c.id}" ${t.exigeCampos?.includes(c.id) ? "checked" : ""}/> ${esc(c.nome)}</label>`).join("")}</div>
+        </div>`).join("")}</div>
+      <button data-acao="novoT">+ Transição</button>`;
+  }
+  // edição sem redesenhar (o foco e o teclado ficam onde estão)
+  area.addEventListener("input", (ev) => {
+    const x = ev.target as HTMLInputElement;
+    const ke = x.closest<HTMLElement>(".pd-fl-estado")?.dataset.k, kt = x.closest<HTMLElement>(".pd-fl-trans")?.dataset.k;
+    if (x.dataset.f === "nome") f.nome = x.value;
+    else if (x.dataset.f === "inicial") f.inicial = x.value;
+    else if (ke !== undefined && x.dataset.e) {
+      const e = f.estados[+ke];
+      if (x.dataset.e === "bloqueado" || x.dataset.e === "naoExcluir") e[x.dataset.e] = x.checked;
+      else if (x.dataset.e === "esquemaRevisao") e.esquemaRevisao = x.value.trim() || undefined;
+      else e[x.dataset.e as "nome" | "cor"] = x.value;
+    } else if (kt !== undefined) {
+      const t = f.transicoes[+kt];
+      if (x.dataset.de) t.de = x.checked ? [...new Set([...t.de, x.dataset.de])] : t.de.filter((d) => d !== x.dataset.de);
+      else if (x.dataset.campo) t.exigeCampos = x.checked ? [...new Set([...(t.exigeCampos ?? []), x.dataset.campo])] : (t.exigeCampos ?? []).filter((c) => c !== x.dataset.campo);
+      else if (x.dataset.t === "sobeRevisao" || x.dataset.t === "exigeComentario") t[x.dataset.t] = x.checked;
+      else if (x.dataset.t === "nome") t.nome = x.value;
+      else if (x.dataset.t === "para") t.para = x.value;
+    }
+  });
+  // nome de estado mudou: as listas de estados (De, Para, inicial) acompanham ao sair do campo
+  area.addEventListener("change", (ev) => (ev.target as HTMLElement).dataset.e === "nome" && desenhar());
+  area.addEventListener("click", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-acao]");
+    if (!b) return;
+    const ke = Number(b.closest<HTMLElement>(".pd-fl-estado")?.dataset.k), kt = Number(b.closest<HTMLElement>(".pd-fl-trans")?.dataset.k);
+    const mover = <T,>(l: T[], k: number, d: number) => k + d >= 0 && k + d < l.length && ([l[k], l[k + d]] = [l[k + d], l[k]]);
+    switch (b.dataset.acao) {
+      case "novoE": f.estados.push({ id: novoId("estado"), nome: `Estado ${f.estados.length + 1}`, cor: "#5b6b7c", bloqueado: false }); break;
+      case "apagarE": {
+        const e = f.estados[ke];
+        if (emUso(e.id)) return casca.avisar(`${emUso(e.id)} arquivo(s) estão em "${e.nome}": mude o estado deles antes de remover.`, 6000);
+        f.estados.splice(ke, 1);
+        for (const t of f.transicoes) t.de = t.de.filter((d) => d !== e.id);
+        f.transicoes = f.transicoes.filter((t) => t.para !== e.id);
+        if (f.inicial === e.id) f.inicial = f.estados[0]?.id ?? "";
+        break;
+      }
+      case "subirE": mover(f.estados, ke, -1); break;
+      case "descerE": mover(f.estados, ke, 1); break;
+      case "novoT": f.transicoes.push({ id: novoId("transicao"), nome: "Nova transição", de: [], para: f.inicial }); break;
+      case "apagarT": f.transicoes.splice(kt, 1); break;
+      case "subirT": mover(f.transicoes, kt, -1); break;
+      case "descerT": mover(f.transicoes, kt, 1); break;
+    }
+    desenhar();
+  });
+  desenhar();
 }
 
 function renomearArquivo(a: Arquivo) {
   if (a.checkout && a.checkout.usuario !== usuario()) return casca.avisar(`Check-out de ${a.checkout.usuario}.`);
-  if (ESTADOS[a.estado].bloqueado) return casca.avisar(`Arquivo "${ESTADOS[a.estado].nome}" não pode ser renomeado.`);
+  if (estadoDe(a.estado).bloqueado) return casca.avisar(`Arquivo "${estadoDe(a.estado).nome}" não pode ser renomeado.`);
   pedirTexto("Renomear arquivo", "Nome", a.nome, async (n) => {
     if (arquivos.some((x) => x !== a && x.pasta === a.pasta && !x.lixeira && x.nome.toLowerCase() === n.toLowerCase())) return "Já existe um arquivo com esse nome na pasta.";
     historico(a, `Renomeado de ${a.nome} para ${n}`);
@@ -728,7 +854,7 @@ function moverArquivo(a: Arquivo) {
 
 async function excluirArquivo(a: Arquivo) {
   if (a.checkout) return casca.avisar(`Está com check-out de ${a.checkout.usuario}: faça o check-in ou desfaça antes.`);
-  if (a.estado === "liberado") return casca.avisar("Arquivo liberado não pode ser excluído (torne-o obsoleto antes).");
+  if (estadoDe(a.estado).naoExcluir) return casca.avisar(`Arquivo "${estadoDe(a.estado).nome}" não pode ser excluído (torne-o obsoleto antes).`);
   a.lixeira = true;
   a.lixeiraData = agora();
   historico(a, "Enviado para a lixeira (destruído sozinho em 30 dias)");
@@ -809,14 +935,14 @@ async function excluirPasta(id: string) {
   const deOutros = dentro.filter((a) => a.checkout && a.checkout.usuario !== usuario());
   if (deOutros.length)
     return casca.avisar(`Não dá para excluir: em GO-OUT com outra pessoa — ${deOutros.map((a) => `${a.nome} (${a.checkout!.usuario})`).join(", ")}.`, 7000);
-  const liberados = dentro.filter((a) => a.estado === "liberado").length;
+  const liberados = dentro.filter((a) => estadoDe(a.estado).naoExcluir).length;
   const meusGoOut = dentro.filter((a) => a.checkout).length;
   const nome = pastas.find((p) => p.id === id)?.nome ?? "";
   const partes = [
     `Excluir a pasta "${nome}"${ids.length > 1 ? ` com ${ids.length - 1} subpasta(s)` : ""} e ${dentro.length} arquivo(s)?`,
     dentro.length ? "Os arquivos vão para a lixeira do cofre (restauráveis por 30 dias, voltam para a raiz)." : "",
     meusGoOut ? `${meusGoOut} em GO-OUT com você: o GO-OUT é encerrado e a cópia de trabalho vai junto para a lixeira.` : "",
-    liberados ? `Atenção: ${liberados} arquivo(s) LIBERADO(S) também serão excluídos.` : "",
+    liberados ? `Atenção: ${liberados} arquivo(s) em estado protegido (ex.: em produção) também serão excluídos.` : "",
     "A pasta some também da pasta do dispositivo, do pendrive e do Google Drive na sincronia.",
   ];
   if (!confirm(partes.filter(Boolean).join("\n\n"))) return;
@@ -959,7 +1085,7 @@ const casca: Casca = new Casca({
           { id: "ci", rotulo: "GO-IN", icone: "checkin", acao: exigeArquivo((a) => checkin(a)) },
           { id: "dco", rotulo: "Desfazer GO-OUT", icone: "desfazer", peq: true, acao: exigeArquivo((a) => void desfazerCheckout(a)) },
         ],
-        [{ id: "estado", rotulo: "Alterar estado", icone: "estado", dica: "Enviar para revisão, aprovar, nova revisão…", acao: exigeArquivo(alterarEstado) }],
+        [{ id: "estado", rotulo: "Alterar estado", icone: "estado", dica: "Mudar o estado no ciclo de vida (Fluxo de trabalho em Ferramentas)", acao: exigeArquivo(alterarEstado) }],
         [
           { id: "ren", rotulo: "Renomear", icone: "editar", peq: true, acao: exigeArquivo(renomearArquivo) },
           { id: "mov", rotulo: "Mover", icone: "pasta", peq: true, acao: exigeArquivo(moverArquivo) },
@@ -981,7 +1107,10 @@ const casca: Casca = new Casca({
     },
     {
       id: "ferramentas", rotulo: "Ferramentas", grupos: [
-        [{ id: "usu", rotulo: "Usuário e cofre", icone: "nome", acao: () => configurar() }],
+        [
+          { id: "usu", rotulo: "Usuário e cofre", icone: "nome", acao: () => configurar() },
+          { id: "fluxo", rotulo: "Fluxo de trabalho", icone: "estado", dica: "Estados, transições e revisões do ciclo de vida", acao: () => editarFluxo() },
+        ],
         [
           { id: "copias", rotulo: "Cópias do cofre", icone: "pasta", dica: "Pendrive, Google Drive e pasta do tablet: escolher e sincronizar", acao: () => void abrirCopias(() => void carregar()) },
           { id: "exp", rotulo: "Exportar cofre", icone: "exportar", dica: "Cópia de segurança completa (.wjpdm)", acao: () => void exportarCofre() },
@@ -1016,6 +1145,7 @@ async function sincronizarAgora() {
 
 async function carregar() {
   meta = { ...meta, ...((await db.ler<Meta>("meta", "meta")) ?? {}) };
+  usarFluxo(meta.fluxo);
   pastas = await db.todos<Pasta>("pastas");
   arquivos = await db.todos<Arquivo>("arquivos");
   itens = await db.todos<Item>("itens");
