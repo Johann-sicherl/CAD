@@ -61,7 +61,7 @@ Arquivos:
   cofre, vista do modelo, três vistas padrão (1º/3º diedro, escala automática), vista projetada,
   isométrica, estilos, escala por vista, notas com propriedades, marcas de centro, várias folhas,
   PDF/SVG, referência de desenho no WJPDM. ✅ D-B: seção com hachura, detalhe, planificada e explodida.
-  Próximos: D-C (cotas, balões, lista de materiais, DXF).
+  ✅ D-C: cota inteligente associativa, balões automáticos, lista de materiais e DXF.
   Ver [desenho.md](desenho.md).
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,

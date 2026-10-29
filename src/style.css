@@ -1038,3 +1038,17 @@ body.disp-computador .pc-tipo { min-height: 36px; }
 #folha .m-seta-ponta { fill: #111; stroke: none; }
 #folha .t-letra { font-weight: 600; }
 #folha .previa-corte { fill: none; stroke: #d6337a; stroke-width: var(--lv); stroke-dasharray: 4 2; pointer-events: none; }
+/* desenho D-C: cotas, balões, lista de materiais */
+#folha .c-linha, #folha .b-linha { fill: none; stroke: #1f3c66; stroke-width: var(--lf); }
+#folha .c-seta, #folha .b-ponto { fill: #1f3c66; }
+#folha .c-texto { fill: #1f3c66; }
+#folha .c-alvo { fill: transparent; stroke: none; pointer-events: all; cursor: move; }
+#folha .cota.sel .c-linha, #folha .balao.sel .b-linha, #folha .balao.sel .b-circulo { stroke: #d6337a; }
+#folha .cota.sel .c-texto, #folha .cota.sel .c-seta { fill: #d6337a; }
+#folha .cota.pendente .c-linha { stroke: #8a5a2b; }
+#folha .cota.pendente .c-texto, #folha .cota.pendente .c-seta { fill: #8a5a2b; }
+#folha .b-circulo { fill: #fff; stroke: #1f3c66; stroke-width: var(--lo); cursor: move; }
+#folha .balao text { fill: #1f3c66; pointer-events: none; }
+#folha .tabela-lista { cursor: pointer; }
+#folha .tabela-lista.sel rect { stroke: #d6337a; }
+#folha .previa-ent { fill: none; stroke: #d6337a; stroke-width: var(--lm); pointer-events: none; }

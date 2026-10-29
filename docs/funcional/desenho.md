@@ -85,7 +85,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 
 ## 3. Aba Anotação — comandos
 
-### 3.1 Cota inteligente (Smart Dimension) — D-C
+### 3.1 Cota inteligente (Smart Dimension) — ✅ (raio de arco, ajuste ISO e base/coordenada ⏸)
 - Tocar arestas/vértices/círculos da **vista**:
   - uma linha → comprimento;
   - dois pontos/linhas paralelas → distância (horizontal, vertical ou alinhada pelo lugar onde
@@ -106,7 +106,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - Texto livre com **ligação a propriedades** (`{codigo}`, `{descricao}`, `{material}`,
   `{revisao}`, `{massa}`), com ou sem **seta de chamada** (leader) presa a uma aresta.
 
-### 3.4 Balão e Balões automáticos (Balloon / Auto Balloon) — D-C
+### 3.4 Balão e Balões automáticos (Balloon / Auto Balloon) — ✅ automáticos (balão manual ⏸)
 - Balão com o **nº do item da lista de materiais** do componente tocado; automáticos: um por
   componente visível na vista, organizados em volta (quadrado/círculo).
 
@@ -120,7 +120,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 
 ### 3.7 Hachura de área (Area Hatch) — ⏸
 
-### 3.8 Tabela de lista de materiais (BOM Table) — D-C
+### 3.8 Tabela de lista de materiais (BOM Table) — ✅ nível superior, sobre a legenda (recuada e colunas editáveis ⏸)
 - Ancorada no canto da legenda (acima, à direita, NBR 10582) ou livre.
 - **Tipo**: somente nível superior · só peças · recuada (com submontagens).
 - **Colunas**: ITEM, CÓDIGO, DESCRIÇÃO, MATERIAL, QTD (editáveis: adicionar coluna de
@@ -154,10 +154,10 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - **Adicionar folha**, **renomear**, **excluir**, **reordenar**; abas das folhas embaixo do
   viewport.
 
-## 5. Exportar, imprimir — 🟡 (PDF/impressão e SVG ✅; DXF D-C)
+## 5. Exportar, imprimir — ✅ (PDF/impressão, SVG e DXF)
 
 - **PDF** vetorial (tamanho real da folha, espessuras de linha NBR 8403) — exportar e imprimir ✅ (Imprimir / PDF do navegador, todas as folhas); **SVG** da folha em mm ✅.
-- **DXF** (cada tipo de linha numa camada: VISIVEL, OCULTA, CENTRO, COTA, HACHURA, FORMATO) — D-C.
+- **DXF** R12 em mm (camadas FORMATO, VISIVEL, OCULTA, CENTRO, HACHURA — contorno das regiões cortadas —, COTA, TEXTO) — ✅.
 - **PNG** (imagem da folha) para anexar no WJWrite/WJApresentation ⏸.
 
 ## 6. Associatividade e atualização — 🟡 (vistas recalculadas do cofre ao abrir ✅; cotas D-C)
@@ -202,11 +202,24 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - **Explodida**: vista de montagem com os passos da vista explodida (propriedades da vista ou
   botão Vista explodida); a posição real da montagem não muda.
 
+## 8.3 Como ficou (D-C)
+
+- **Cotas** (`src/desenho/anotacoes.ts`): entidades guardadas no plano da vista em mm do modelo
+  (vértice, aresta reta, círculo); o valor é o real, a cota anda com a vista e, quando o modelo
+  muda, cada ponta é reencontrada na geometria nova (o que sumir fica marrom = pendente).
+  Uma aresta → comprimento; duas paralelas → distância; duas em ângulo → ângulo; círculo → Ø;
+  dois vértices → horizontal/vertical/alinhada conforme onde o número fica (como no esboço).
+  Editar: texto antes/depois, casas decimais, tolerância ±, direção. Atalho **D**.
+- **Balões automáticos**: um por peça da montagem (primeira instância), na borda da vista, com o
+  nº do item da lista; a lista de materiais entra sobre a legenda (ITEM, CÓDIGO, DESCRIÇÃO,
+  MATERIAL, QTD, com o cartão do cofre de cada peça).
+- **DXF** da folha atual com camadas por tipo de linha.
+
 ## 9. Roteiro do desenho
 
 | Etapa | Conteúdo | Status |
 |---|---|---|
 | D-A | arquivo `.wjdrw`, Novo → Desenho / Criar desenho do modelo, folha com formato ABNT e legenda do cofre, Vista do modelo, Três vistas padrão, Vista projetada, estilos (visíveis e ocultas), escala, mover vistas, propriedades da folha, várias folhas, notas, marcas de centro, PDF/SVG | ✅ |
 | D-B | vista de seção (hachura), vista de detalhe, vista planificada da chapa, vista explodida da montagem, atualização associativa | ✅ 29/10/2026 |
-| D-C | cota inteligente nas vistas, notas, marcas e linhas de centro, balões, tabela de lista de materiais, vista auxiliar e interrompida, PDF e DXF, impressão | — |
+| D-C | cota inteligente nas vistas (associativa), balões automáticos, tabela de lista de materiais, DXF | ✅ 29/10/2026 (vista auxiliar e interrompida, linha de centro e seta de nota passam para D-D) |
 | D-D | itens do modelo, cotas de base/coordenada, símbolos (acabamento, GD&T, datum), tabela de revisões, editar formato | — |
