@@ -133,8 +133,9 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
   Drive** e **pasta padrão do dispositivo** (mesma estrutura nas três). Ao salvar/publicar e **a cada
-  abertura de um app** (`sincronizarAoAbrir`, sem pedir permissão: o que precisar de toque fica para
-  o "Sincronizar agora" da aba Cofre), as cópias se igualam
+  abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão; se o
+  pendrive ou o Drive precisarem de toque, aparece a **faixa "Sincronizar agora"** no topo, e um toque
+  iguala o cofre e as tarefas), as cópias se igualam
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`

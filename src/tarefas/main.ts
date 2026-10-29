@@ -6,7 +6,7 @@
 import "../comum/comum.css";
 import "./tarefas.css";
 import { $, aplicarDispositivo, baixar, el, escapar, janela, menu, registrarOffline } from "../comum/casca";
-import { abrirCopias, sincronizarAoAbrir } from "../comum/cofre";
+import { abrirCopias, EVENTO_SINCRONIZADO, sincronizarAoAbrir } from "../comum/cofre";
 import { botaoDiagnostico } from "../comum/diagnostico";
 import { IC } from "../comum/icones";
 import { lerLocal, gravarLocal, sincronizarTarefas } from "./copias";
@@ -741,3 +741,5 @@ registrarOffline();
 // cópias das tarefas (WJTaskPlan/) e sincronia global do cofre a cada abertura, sem pedir permissão
 setTimeout(() => void sincronizar(false), 600);
 void sincronizarAoAbrir();
+// "Sincronizar agora" da faixa do topo liberou pendrive/Drive: iguala as tarefas também
+window.addEventListener(EVENTO_SINCRONIZADO, () => void sincronizar(false));

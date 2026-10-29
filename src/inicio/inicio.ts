@@ -140,6 +140,19 @@ void estadoOffline();
   if (b) topo.append(b);
 }
 
+// sincronia ao abrir/recarregar o início: cofre (WJPDM/) e tarefas (WJTaskPlan/) com a pasta do
+// dispositivo, o pendrive e o Google Drive. Carregada depois que as caixas aparecem.
+setTimeout(() => {
+  void Promise.all([import("../comum/cofre"), import("../tarefas/copias")]).then(([cofre, tarefas]) => {
+    void sincronizarTudo(cofre, tarefas);
+    window.addEventListener(cofre.EVENTO_SINCRONIZADO, () => void tarefas.sincronizarTarefas(false).catch(() => {}));
+  });
+}, 300);
+async function sincronizarTudo(cofre: typeof import("../comum/cofre"), tarefas: typeof import("../tarefas/copias")) {
+  await cofre.sincronizarAoAbrir()?.catch(() => "");
+  await tarefas.sincronizarTarefas(false).catch(() => {});
+}
+
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
 }
