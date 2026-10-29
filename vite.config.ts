@@ -55,6 +55,6 @@ export default defineConfig(({ command, isPreview }) => ({
   build: {
     target: "es2022",
     chunkSizeWarningLimit: 4000,
-    rollupOptions: { input: { inicio: resolve(raiz, "index.html"), cad: resolve(raiz, "cad/index.html"), montagem: resolve(raiz, "cad/montagem/index.html"), desenho: resolve(raiz, "cad/desenho/index.html"), planilha: resolve(raiz, "planilha/index.html"), documento: resolve(raiz, "documento/index.html"), apresentacao: resolve(raiz, "apresentacao/index.html"), cronograma: resolve(raiz, "cronograma/index.html"), pdm: resolve(raiz, "pdm/index.html"), erp: resolve(raiz, "erp/index.html"), flow: resolve(raiz, "flow/index.html"), flowAparelho: resolve(raiz, "flow/aparelho/index.html") } },
+    rollupOptions: { input: { inicio: resolve(raiz, "index.html"), cad: resolve(raiz, "cad/index.html"), montagem: resolve(raiz, "cad/montagem/index.html"), desenho: resolve(raiz, "cad/desenho/index.html"), planilha: resolve(raiz, "planilha/index.html"), documento: resolve(raiz, "documento/index.html"), apresentacao: resolve(raiz, "apresentacao/index.html"), cronograma: resolve(raiz, "cronograma/index.html"), pdm: resolve(raiz, "pdm/index.html"), erp: resolve(raiz, "erp/index.html"), flow: resolve(raiz, "flow/index.html"), flowAparelho: resolve(raiz, "flow/aparelho/index.html"), tarefas: resolve(raiz, "tarefas/index.html") } },
   },
 }));

@@ -57,7 +57,8 @@ export const abrirCofre = () => (cofreDb ??= Armazem.abrir());
 let locaisDb: Promise<Armazem> | null = null;
 const locais = () => (locaisDb ??= Armazem.abrir("wjlocais", ["pastas"]));
 type Copia = "pendrive" | "tablet";
-async function pastaDa(c: Copia): Promise<PastaDisco | undefined> {
+/** Raiz escolhida para uma cópia do cofre (o cofre fica em <raiz>/WJPDM; outras faces usam pastas irmãs). */
+export async function pastaDa(c: Copia): Promise<PastaDisco | undefined> {
   try {
     return (await (await locais()).ler<{ id: string; pasta: PastaDisco }>("pastas", `cofre:${c}`))?.pasta;
   } catch {

@@ -61,6 +61,11 @@ const FACES: Face[] = [
     descricao: "Túnel de vento virtual para as peças do WJCAD: Cd, sustentação, forças e cortes do escoamento.",
     icone: svg(`<path d="M3 8h9a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/><path d="M14 8.5c2 .8 2 2.2 0 3" stroke="${C}"/>`),
   },
+  {
+    id: "tarefas", nome: "WJTaskPlan", url: "tarefas/",
+    descricao: "Tarefas em pastas, escritas à mão com a caneta: estados, prazos com alerta e painel.",
+    icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M8 13l1.5 1.5L12 12" stroke="${C}"/><path d="M14 8h3M14 13h3M8 17.5h9"/>`),
+  },
 ];
 
 /** Nome do último documento do WJCAD guardado neste aparelho (autosave). */
