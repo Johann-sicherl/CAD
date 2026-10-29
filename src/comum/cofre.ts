@@ -9,7 +9,7 @@ import { Armazem } from "./armazem";
 import { permissao, RepositorioAparelho, RepositorioPasta, type PastaDisco } from "./repositorios";
 import { sincronizar, type MetaCofre, type Repositorio, type ResultadoSincronia } from "../pdm/sincronia";
 import { nuvemGoogle, type DestinoNuvem } from "./drive";
-import { bloqueioDoCheckout, ESTADOS, extensao, nomeLivre, type Arquivo, type Pasta } from "../pdm/regras";
+import { bloqueioDoCheckout, estadoDe, extensao, fluxoAtual, nomeLivre, usarFluxo, type Arquivo, type Pasta } from "../pdm/regras";
 
 export type ChaveApp = "cad" | "plan" | "word" | "cron" | "apn" | "pdm" | "erp" | "flow";
 export const NOME_APP: Record<ChaveApp, string> = {
@@ -70,7 +70,12 @@ async function guardarPasta(c: Copia, p: PastaDisco | null) {
 type Janela = typeof window & { showDirectoryPicker?(o?: { id?: string; mode?: "readwrite"; startIn?: string }): Promise<PastaDisco> };
 export const temPastas = () => typeof (window as Janela).showDirectoryPicker === "function";
 
-const usuarioDo = async (db: Armazem) => (await db.ler<MetaCofre>("meta", "meta"))?.usuario || "Usuário";
+/** Usuário do cofre; também passa a usar o fluxo de trabalho do cofre (estados e travas). */
+const usuarioDo = async (db: Armazem) => {
+  const meta = await db.ler<MetaCofre>("meta", "meta");
+  usarFluxo(meta?.fluxo);
+  return meta?.usuario || "Usuário";
+};
 
 // ---------- sincronia ----------
 
@@ -323,9 +328,9 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     const irmaos = (await db.todos<Arquivo>("arquivos")).filter((x) => x.pasta === local!.pasta && !x.lixeira).map((x) => x.nome);
     const nome = nomeLivre(local!.nome, irmaos);
     a = {
-      id: uid(), nome, pasta: local!.pasta, revisao: "", estado: "trabalho", cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario },
+      id: uid(), nome, pasta: local!.pasta, revisao: "", estado: fluxoAtual().inicial, cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario },
       checkout: { usuario, data: t }, soLocal: true, mod: t,
-      versoes: [{ n: 1, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Criado no ${NOME_APP[app]}`, revisao: "", estado: "trabalho" }],
+      versoes: [{ n: 1, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Criado no ${NOME_APP[app]}`, revisao: "", estado: fluxoAtual().inicial }],
       historico: [{ data: t, usuario, texto: `Criado no ${NOME_APP[app]} (em GO-OUT, só no dispositivo)` }],
     };
     await db.por("arquivos", a);
@@ -640,7 +645,7 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
       <section><h3>Documento aberto</h3>${atual ? `
         <dl><dt>Arquivo</dt><dd>${esc(atual.nome)}</dd>
           <dt>Pasta</dt><dd>${esc(onde(atual))}</dd>
-          <dt>Estado</dt><dd style="color:${ESTADOS[atual.estado].cor}">${ESTADOS[atual.estado].nome}</dd>
+          <dt>Estado</dt><dd style="color:${estadoDe(atual.estado).cor}">${esc(estadoDe(atual.estado).nome)}</dd>
           <dt>Revisão</dt><dd>${esc(atual.revisao || "—")}</dd>
           <dt>Versão</dt><dd>${atual.soLocal ? "nunca publicado" : `${ultimaV?.n ?? "—"}${ultimaV ? ` (${quando(ultimaV.data)})` : ""}`}</dd>
           <dt>GO-OUT</dt><dd>${atual.checkout ? (meu ? `com você desde ${quando(atual.checkout.data)}` : `com ${esc(atual.checkout.usuario)}`) : "livre (publicado)"}</dd>

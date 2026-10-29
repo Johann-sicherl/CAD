@@ -1,7 +1,7 @@
 // Teste das regras do cofre do WJPDM em Node.
 import {
-  aplicarTransicao, bloqueioDaTransicao, bloqueioDoCheckout, explodirBOM, nomeLivre, ondeEUsado, proximaRevisao, proximoCodigo, TRANSICOES,
-  type Arquivo, type Item,
+  aplicarTransicao, bloqueioDaTransicao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
+  proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, usarFluxo, validarFluxo, type Arquivo, type Item,
 } from "../src/pdm/regras";
 
 let falhas = 0;
@@ -21,11 +21,26 @@ igual("código pela máscara", proximoCodigo("12-####", ["12-0001", "12-0006", "
 igual("primeiro código", proximoCodigo("PR-###-A", []), "PR-001-A");
 igual("nome livre", nomeLivre("suporte.wjcad", ["Suporte.wjcad", "suporte (2).wjcad"]), "suporte (3).wjcad");
 
-const t = (id: string) => TRANSICOES.find((x) => x.id === id)!;
+// revisão por fase (esquema com prefixo)
+igual("protótipo começa em P1", proximaRevisaoNoEsquema("", "P1"), "P1");
+igual("P1 → P2", proximaRevisaoNoEsquema("P1", "P1"), "P2");
+igual("P9 → P10", proximaRevisaoNoEsquema("P9", "P1"), "P10");
+igual("pré-série recomeça em 01", proximaRevisaoNoEsquema("P3", "01"), "01");
+igual("01 → 02", proximaRevisaoNoEsquema("01", "01"), "02");
+igual("série recomeça em A", proximaRevisaoNoEsquema("07", "A"), "A");
+igual("A → B na série", proximaRevisaoNoEsquema("A", "A"), "B");
+igual("prefixo longo PS-01 → PS-02", proximaRevisaoNoEsquema("PS-01", "PS-01"), "PS-02");
+igual("sem esquema: A, B…", proximaRevisaoNoEsquema("B"), "C");
+
+// fluxo de fábrica: Protótipo → Pré-série → Série (desenvolvimento, produção, revisão)
+const t = (id: string) => fluxoAtual().transicoes.find((x) => x.id === id)!;
+igual("9 estados + obsoleto", FLUXO_PADRAO.estados.length, 10);
+igual("fluxo de fábrica válido", validarFluxo(FLUXO_PADRAO).join(" "), "");
 const a: Arquivo = {
   id: "1", nome: "suporte.wjcad", pasta: "r", revisao: "", estado: "trabalho", cartao: {}, historico: [],
   versoes: [{ n: 1, blob: "b1", tamanho: 10, autor: "Johann", data: "2026-10-25T10:00:00", comentario: "", revisao: "", estado: "trabalho" }],
 };
+igual("estado inicial", estadoDe(a.estado).nome, "Protótipo em desenvolvimento");
 igual("enviar exige código e descrição", /Código, Descrição/.test(bloqueioDaTransicao(a, t("enviar")) ?? ""), true);
 a.cartao = { codigo: "12-0001", descricao: "Suporte do motor" };
 a.checkout = { usuario: "Ana", data: "2026-10-25T09:00:00" };
@@ -34,18 +49,45 @@ igual("check-out de outro bloqueia check-out", /Ana/.test(bloqueioDoCheckout(a, 
 delete a.checkout;
 igual("pode enviar", bloqueioDaTransicao(a, t("enviar")), null);
 aplicarTransicao(a, t("enviar"), "Johann", "2026-10-25T11:00:00");
-igual("em revisão bloqueia check-out", bloqueioDoCheckout(a, "Johann") !== null, true);
+igual("em revisão trava o GO-OUT", bloqueioDoCheckout(a, "Johann") !== null, true);
 aplicarTransicao(a, t("aprovar"), "Ana", "2026-10-25T12:00:00");
-igual("liberado na revisão A", `${a.estado} ${a.revisao} ${a.versoes[0].revisao}`, "liberado A A");
-igual("liberado bloqueia check-out", /nova revisão/.test(bloqueioDoCheckout(a, "Johann") ?? ""), true);
+igual("protótipo em produção na P1", `${estadoDe(a.estado).nome} ${a.revisao} ${a.versoes[0].revisao}`, "Protótipo em produção P1 P1");
+igual("em produção trava o GO-OUT", bloqueioDoCheckout(a, "Johann") !== null, true);
 igual("não pode aprovar de novo", bloqueioDaTransicao(a, t("aprovar")) !== null, true);
-aplicarTransicao(a, t("alterar"), "Johann", "2026-10-26T08:00:00");
-igual("nova revisão volta a trabalho", `${a.estado} ${a.revisao}`, "trabalho A");
-igual("pode fazer check-out", bloqueioDoCheckout(a, "Johann"), null);
+igual("saídas da produção", transicoesDe(a).map((x) => x.t.id).join(","), "revisar,avancar,obsoleto");
+aplicarTransicao(a, t("revisar"), "Johann", "2026-10-26T08:00:00", "furo fora de posição");
+aplicarTransicao(a, t("rejeitar"), "Johann", "2026-10-26T08:10:00");
+igual("devolvido ao desenvolvimento, revisão mantida", `${a.estado} ${a.revisao}`, "trabalho P1");
+igual("pode fazer GO-OUT", bloqueioDoCheckout(a, "Johann"), null);
 aplicarTransicao(a, t("enviar"), "Johann", "2026-10-26T09:00:00");
 aplicarTransicao(a, t("aprovar"), "Ana", "2026-10-26T10:00:00");
-igual("segunda liberação: revisão B", a.revisao, "B");
-igual("histórico", a.historico.length, 5);
+igual("segunda aprovação: P2", a.revisao, "P2");
+aplicarTransicao(a, t("avancar"), "Johann", "2026-10-27T08:00:00");
+igual("avançou para pré-série em desenvolvimento", estadoDe(a.estado).nome, "Pré-série em desenvolvimento");
+aplicarTransicao(a, t("pre-enviar"), "Johann", "2026-10-27T09:00:00");
+aplicarTransicao(a, t("pre-aprovar"), "Ana", "2026-10-27T10:00:00");
+igual("pré-série recomeça a revisão em 01", a.revisao, "01");
+aplicarTransicao(a, t("pre-avancar"), "Johann", "2026-10-28T08:00:00");
+aplicarTransicao(a, t("serie-enviar"), "Johann", "2026-10-28T09:00:00");
+aplicarTransicao(a, t("serie-aprovar"), "Ana", "2026-10-28T10:00:00");
+igual("série em produção na revisão A", `${estadoDe(a.estado).nome} ${a.revisao}`, "Série em produção A");
+igual("histórico (12 transições)", a.historico.length, 12);
+
+// fluxo editado: estado novo, transição nova; validação
+const f = copiaDoFluxo(FLUXO_PADRAO);
+f.estados.push({ id: "homologacao", nome: "Em homologação", cor: "#884ea0", bloqueado: true });
+f.transicoes.push({ id: "homologar", nome: "Homologar no cliente", de: ["serie-prod"], para: "homologacao" });
+usarFluxo(f);
+igual("transição criada aparece", transicoesDe(a).some((x) => x.t.id === "homologar"), true);
+aplicarTransicao(a, t("homologar"), "Johann", "2026-10-29T08:00:00");
+igual("estado criado", estadoDe(a.estado).nome, "Em homologação");
+const sem = copiaDoFluxo(f);
+sem.estados = sem.estados.filter((e) => e.id !== "homologacao");
+igual("não remove estado em uso", /homologacao/.test(validarFluxo(sem, [a.estado]).join(" ")), true);
+igual("transição para estado inexistente é erro", validarFluxo(sem).length > 0, true);
+usarFluxo(sem);
+igual("fluxo inválido: volta ao de fábrica", fluxoAtual() === FLUXO_PADRAO, true);
+usarFluxo(null);
 
 // lista de materiais
 const it = (id: string, codigo: string, bom: Item["bom"] = []): Item => ({ id, codigo, descricao: codigo, tipo: "fabricado", unidade: "pç", bom });

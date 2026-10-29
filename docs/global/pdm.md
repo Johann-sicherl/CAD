@@ -38,6 +38,18 @@ pendrive desconectado recebe a exclusão quando for conectado.
 ✅ Teclado: **F2** renomeia a pasta selecionada (ou a aberta na árvore), **Delete** exclui; nas
 janelas de nome (nova pasta, renomear, salvar no cofre) a digitação funciona em teclado físico e
 virtual (29/10/2026: o campo cancelava as teclas).
+✅ **Fluxo de trabalho editável** (29/10/2026; Ferramentas → Fluxo de trabalho; um só para o cofre,
+guardado em `meta.fluxo` e sincronizado com as cópias). Fluxo de fábrica (Johann): **Protótipo →
+Pré-série → Série**, cada fase **em desenvolvimento** (editável), **em produção** (travado,
+protegido contra exclusão, a revisão sobe ao aprovar) e **em revisão** (fora da produção e fora do
+desenvolvimento: travado até ser aprovado ou devolvido), mais **Obsoleto**. Transições: enviar para
+revisão (exige código e descrição), aprovar para produção, devolver ao desenvolvimento, colocar em
+revisão (exige motivo), avançar para a próxima fase, tornar obsoleto, reativar. **Revisão por fase
+com prefixo** (P1, P2… → 01, 02… → A, B…; recomeça ao mudar de fase; `proximaRevisaoNoEsquema`).
+No editor: estados (nome, cor, trava edição, protegido, esquema de revisão, ordem), estado inicial
+e transições (de quais estados, para qual, sobe revisão, exige comentário, campos obrigatórios do
+cartão). Estado com arquivos não pode ser removido. A fase Protótipo usa os ids antigos
+(trabalho/revisao/liberado): os arquivos que já existiam entram nela sem migração.
 ✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
 dispositivo e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
 que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a

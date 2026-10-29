@@ -135,6 +135,9 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   Meu Drive/WJPDM (arquivos atualizados no lugar: o Drive guarda as revisões). Chave secreta não é usada.
   WJERP não é arquivo: banco local + cópia `ERP/WJERP.wjerp` no cofre; banco de verdade na G5.
 - **WJPDM:** check-out/check-in se chamam **GO-OUT / GO-IN** na interface (código mantém `checkout`).
+  **Fluxo de trabalho editável** (um só por cofre, `meta.fluxo`; de fábrica: Protótipo / Pré-série /
+  Série × em desenvolvimento / em produção / em revisão + Obsoleto; revisão por fase com prefixo
+  P1 → 01 → A). "Em revisão" = fora da produção e do desenvolvimento (travado).
 - **Sem gestos de mouse/caneta** (guia radial com botão direito + arrastar): o Johann não quer.
 - **Entrada:** caneta (S Pen) **e** dedo. Caneta desenha no esboço; dedo navega (1 dedo orbita,
   2 dedos zoom/pan). Sem caneta, o dedo também esboça, com snaps maiores e lupa de precisão.
