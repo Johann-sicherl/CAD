@@ -570,21 +570,41 @@ function janela(titulo: string): { caixa: HTMLElement; fechar: () => void } {
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const quando = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} ${s.slice(11, 16)}`;
 
-/** Tela "Cópias do cofre": pendrive, pasta do tablet, Google Drive e sincronizar agora. */
-export async function abrirCopias(aoSincronizar?: () => void) {
-  const { caixa, fechar } = janela("Cópias do cofre (WJPDM)");
+/** Pastas que cada app grava na raiz escolhida (o cofre e as pastas irmãs dele). */
+const PASTAS_DOS_APPS = ["WJPDM", "WJTaskPlan"];
+const DISPOSITIVOS: [string, string][] = [["celular", "Celular"], ["tablet", "Tablet"], ["computador", "Computador"]];
+
+/**
+ * Tela "Cópias do cofre": pendrive, pasta do tablet, Google Drive e sincronizar agora.
+ * `mestre`: configurações gerais do WJProMaster (página inicial, ⚙): também o perfil do
+ * dispositivo e as pastas de todos os apps dentro de cada cópia.
+ */
+export async function abrirCopias(aoSincronizar?: () => void, mestre = false) {
+  const { caixa, fechar } = janela(mestre ? "Configurações do WJProMaster" : "Cópias do cofre (WJPDM)");
+  const lerPrefs = (): Record<string, unknown> => {
+    try {
+      return JSON.parse(localStorage.getItem("jlscad:interface") ?? "{}");
+    } catch {
+      return {};
+    }
+  };
+  const pastas = (raiz: string) => PASTAS_DOS_APPS.map((p) => `<code>${esc(raiz)}/${p}</code>`).join(" e ");
   const desenhar = async (msg = "") => {
     const pen = await pastaDa("pendrive"), tab = await pastaDa("tablet");
     const sitPen = pen ? ((await permissao(pen, false).catch(() => false)) ? "conectado" : "toque Sincronizar para permitir o acesso") : "";
+    const disp = String(lerPrefs().dispositivo ?? (matchMedia("(pointer: coarse)").matches ? (Math.min(screen.width, screen.height) < 600 ? "celular" : "tablet") : "computador"));
     caixa.innerHTML = `
+      ${mestre ? `<section><h3>Dispositivo</h3><p>Adapta todos os apps ao aparelho: celular (ícones sem texto, painéis em gaveta), tablet (caneta e dedo, alvos grandes) ou computador (mouse e atalhos).</p>
+        <div class="wjc-botoes"><select data-disp aria-label="Perfil do dispositivo" style="min-height:40px;min-width:200px;font:inherit;padding:4px 8px;border:1px solid #c9d2dc;border-radius:8px">${DISPOSITIVOS.map(([v, r]) => `<option value="${v}"${v === disp ? " selected" : ""}>${r}</option>`).join("")}</select></div></section>
+      <section><h3>Onde ficam os dados</h3><p>Em cada cópia abaixo (pasta padrão do dispositivo, pendrive e Google Drive), os apps gravam na mesma estrutura: <b>WJPDM/</b> (cofre com os arquivos de todos os apps: peças, montagens, desenhos, planilhas, documentos…) e <b>WJTaskPlan/</b> (tarefas). O navegador informa só o nome da pasta escolhida, não o caminho completo.</p></section>` : ""}
       <section><p>Todos os arquivos dos apps ficam no cofre do WJPDM. <b>Salvar</b> grava no dispositivo (banco do app e pasta padrão do dispositivo), em GO-OUT. <b>GO-IN</b> publica no pendrive e no Google Drive, que recebem só o que passou por GO-IN. Entre as cópias, a alteração mais recente vence (a outra vai para a lixeira).</p></section>
       <section><h3>Pendrive</h3>
-        <p>${pen ? `Pasta: <b>${esc(pen.name)}</b>/WJPDM (${sitPen})` : "Nenhum pendrive escolhido."} Conecte o pendrive (USB-C no tablet) e escolha a pasta raiz dele: o cofre fica em WJPDM/.</p>
+        <p>${pen ? `Pasta: ${pastas(pen.name)} (${sitPen})` : "Nenhum pendrive escolhido."} Conecte o pendrive (USB-C no tablet) e escolha a pasta raiz dele: o cofre fica em WJPDM/.</p>
         <div class="wjc-botoes">${temPastas() ? `<button data-b="pen" class="destaque">Escolher pendrive…</button>${pen ? `<button data-b="tirarPen">Remover</button>` : ""}` : "<span class='wjc-nao'>Este navegador não permite escolher pastas: use o Chrome atualizado.</span>"}</div></section>
       <section><h3>Pasta padrão do dispositivo</h3>
-        <p>${tab ? `Pasta: <b>${esc(tab.name)}</b>/WJPDM` : "Nenhuma pasta escolhida: escolha uma pasta do aparelho (ex.: Documentos)."}</p>
+        <p>${tab ? `Pasta: ${pastas(tab.name)}` : "Nenhuma pasta escolhida: escolha uma pasta do aparelho (ex.: Documentos)."}</p>
         ${temPastas() ? `<div class="wjc-botoes"><button data-b="tab">${tab ? "Trocar pasta…" : "Escolher pasta…"}</button></div>` : ""}</section>
-      <section><h3>Google Drive</h3><p>${nuvem ? esc(nuvem.situacao()) : "Aguardando a configuração do acesso ao Google (cliente OAuth)."}</p>
+      <section><h3>Google Drive</h3><p>${nuvem ? esc(nuvem.situacao()) : "Aguardando a configuração do acesso ao Google (cliente OAuth)."}${mestre ? ` Pastas: ${pastas("Meu Drive")}.` : ""}</p>
         ${nuvem && !nuvem.conectado() ? `<div class="wjc-botoes"><button data-b="drive" class="destaque">${localStorage.getItem("wjgoogle:autorizado") === "1" ? "Reconectar" : "Conectar ao Google Drive"}</button></div>` : ""}</section>
       <section><div class="wjc-botoes"><button data-b="sinc" class="destaque">Sincronizar agora</button></div>
         <p data-r class="${/desconectado|não encontrado|sem permissão|vencido|recusou|não liberou/.test(msg) ? "wjc-nao" : msg ? "wjc-ok" : ""}">${esc(msg || (ultima ? `Última: ${quando(ultima.quando)} — ${ultima.texto}` : ""))}</p></section>
@@ -626,6 +646,13 @@ export async function abrirCopias(aoSincronizar?: () => void) {
       },
     };
     caixa.querySelectorAll<HTMLButtonElement>("[data-b]").forEach((b) => (b.onclick = () => void acoes[b.dataset.b!]?.()));
+    const sel = caixa.querySelector<HTMLSelectElement>("[data-disp]");
+    if (sel)
+      sel.onchange = () => {
+        const p = lerPrefs();
+        p.dispositivo = sel.value;
+        localStorage.setItem("jlscad:interface", JSON.stringify(p));
+      };
   };
   await desenhar();
 }

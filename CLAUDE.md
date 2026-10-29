@@ -67,7 +67,8 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   `src/ui/basico.ts`). Arquivos `.wjasm`/`.wjdrw` no cofre (apps `asm`/`drw`); ao salvar, montagem e desenho gravam a
   tabela `referencias` do WJPDM (tipos `componente` e `desenho`). Especificação em `docs/funcional/montagem.md` e `desenho.md`.
 - **Várias páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
-  `src/inicio/`, leve: sem Three.js nem kernel), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
+  `src/inicio/`, leve: sem Three.js nem kernel; **⚙ Configurações do WJProMaster** no topo = perfil do dispositivo e
+  cópias de todos os apps, `abrirCopias(…, mestre)` carregado só no toque), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
   por face (seção "Outras faces"). O logo de cada app volta ao início. Em desenvolvimento: `/` é o início,
   `/cad/` é o WJCAD. Página nova: entrada em `vite.config.ts` (`rollupOptions.input`), em `PAGINAS` do
   `public/sw.js` e caixa em `src/inicio/inicio.ts`.
