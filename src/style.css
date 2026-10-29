@@ -1019,3 +1019,12 @@ body.disp-computador .pc-tipo { min-height: 36px; }
 .pc-escolhido small { color: var(--texto-2); }
 .pc-escolhido button { grid-column: 1 / -1; }
 .arvore .com-erro strong { color: #b0392b; }
+/* montagem M-C: campos de referência (rosa), passos da explosão, linhas clicáveis */
+.campo-ref { display: grid; gap: 2px; width: 100%; min-height: 48px; padding: 6px 10px; margin: 4px 0; text-align: left; border: 1px solid #f0b7cf; border-radius: 8px; background: #fdf1f6; }
+.campo-ref small { color: var(--texto-2); font-size: 12px; }
+.campo-ref.ativo { outline: 2px solid #d6337a; outline-offset: 1px; }
+.pc-passo { display: flex; align-items: center; gap: 6px; min-height: 40px; border-bottom: 1px solid var(--linha); font-size: 13px; }
+.pc-passo span { flex: 1; min-width: 0; }
+.pc-passo button { min-width: 40px; min-height: 36px; }
+.tabela tr.clicavel { cursor: pointer; }
+.tabela tr.clicavel:hover td { background: var(--acento-suave); }

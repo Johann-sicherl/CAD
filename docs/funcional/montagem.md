@@ -22,6 +22,10 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
   erro no posicionamento. Testes: `scripts/teste-montagem.ts`.
 - **Toque**: no Posicionar, o dedo sobre uma face escolhe a face (aresta/vértice só bem perto).
 - **Lista de materiais** (Avaliar) com código/descrição do cartão do cofre e CSV.
+- **M-C** (29/10/2026): padrão linear (1 ou 2 direções) e circular, espelhar (cópia), com as
+  cópias seguindo a semente (no solver contam como fixas; `aplicarPadroes`); vista explodida
+  (passos manuais e explosão automática, só exibição); interferência, massa da montagem e medir
+  no kernel com os componentes posicionados (pedidos `interferencia`, `massaPecas`, `medirMontagem`).
 - **WJPDM**: ao salvar, a tabela `referencias` recebe o que a montagem contém (aba Referências do
   arquivo no WJPDM: Contém / Onde é usado).
 
@@ -140,16 +144,16 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 ### 2.4 Fixar / Flutuar — ✅
 - Menu do componente. Fixar grava a posição atual; flutuar libera os 6 graus de liberdade.
 
-### 2.5 Padrão linear de componentes (Linear Component Pattern) — M-C
+### 2.5 Padrão linear de componentes (Linear Component Pattern) — ✅ (pular instâncias ⏸)
 - Direção 1 (aresta/eixo/face) + espaçamento + instâncias; Direção 2 opcional; **Componentes
   a repetir**; **Instâncias a pular**. As cópias seguem o componente semente.
 
-### 2.6 Padrão circular de componentes — M-C
+### 2.6 Padrão circular de componentes — ✅ (pular instâncias ⏸)
 - Eixo + ângulo (espaçamento igual ou total) + instâncias; componentes a repetir; pular.
 
 ### 2.7 Padrão orientado pelo padrão da peça (Pattern Driven) — ⏸
 
-### 2.8 Espelhar componentes (Mirror Components) — M-C
+### 2.8 Espelhar componentes (Mirror Components) — ✅ cópia (versão oposta ⏸)
 - Plano de espelho + componentes. Cada um: **cópia** (mesma peça, reposicionada) ou **versão
   espelhada** (peça nova, oposta — ⏸).
 
@@ -157,7 +161,7 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 - Ocultar/mostrar componente; **Mostrar todos**; **Transparência** do componente; **Isolar**
   (mostra só os selecionados até sair).
 
-### 2.10 Vista explodida (Exploded View) — M-C
+### 2.10 Vista explodida (Exploded View) — ✅ (girar no passo, reordenar, animação e linhas de explosão ⏸)
 - **Passos de explosão** (lista, editável, reordenável):
   - componentes do passo;
   - direção (eixo X/Y/Z da montagem, aresta, eixo ou normal de face) + **distância**;
@@ -182,10 +186,10 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 
 ## 3. Aba Avaliar (na montagem)
 
-- **Medir** (entre entidades de componentes diferentes) — M-C.
+- **Medir** (entre entidades de componentes diferentes) — ✅ (exato no B-Rep, componentes posicionados).
 - **Propriedades de massa da montagem** — soma de cada componente com o seu material
-  (massa, volume, centro de massa, momentos) — M-C.
-- **Detecção de interferência** (Interference Detection) — M-C:
+  (massa, volume, centro de massa; momentos ⏸) — ✅.
+- **Detecção de interferência** (Interference Detection) — ✅ montagem inteira, lista com volumes, tocar destaca o par (opções ⏸):
   - **Componentes selecionados** (vazio = montagem inteira) → **Calcular**;
   - **Resultados**: lista de pares com o volume de cada interferência; tocar destaca em vermelho;
   - **Opções**: tratar coincidência como interferência · ignorar componentes ocultos;
@@ -229,6 +233,6 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
 |---|---|---|
 | M-A | arquivo `.wjasm`, Novo → Montagem, inserir componentes (cofre/aparelho/aberta), primeiro fixo, árvore, mover/girar (arraste, delta, posição), fixar/flutuar, ocultar/isolar, abrir peça (e voltar, a montagem se atualiza do cofre), referências no WJPDM | ✅ 29/10/2026 |
 | M-B | posicionamentos padrão (coincidente, paralelo, perpendicular, tangente, concêntrico, travar, distância, ângulo), alinhamento, solver, graus de liberdade, arrastar respeitando posicionamentos, barra rápida | ✅ 29/10/2026 (ao longo de entidade / em torno de entidade: M-C) |
-| M-C | padrões e espelhar componentes, vista explodida, interferência, massa da montagem, medir, vista de seção, lista de materiais (CSV/WJPlan/WJERP), avançados (simétrico, largura, limites) | — |
+| M-C | padrões e espelhar componentes, vista explodida, interferência, massa da montagem, medir | ✅ 29/10/2026 (vista de seção, BOM para WJPlan/WJERP e posicionamentos avançados ficam para M-D) |
 | M-D | submontagens, substituir componentes, GO-IN com componentes | — |
 | M-E | posicionamentos mecânicos (engrenagem, pinhão e cremalheira, parafuso, dobradiça, ranhura) | — |

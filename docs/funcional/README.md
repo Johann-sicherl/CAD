@@ -55,7 +55,8 @@ Arquivos:
 
 - **Montagem** ✅ M-A e M-B (29/10/2026): página `cad/montagem/`, inserir componentes do cofre, mover/girar,
   fixar/flutuar, isolar, posicionamentos padrão com solver e graus de liberdade, lista de materiais,
-  referências no WJPDM. Próximos: M-C (padrões, explodida, interferência, massa). Ver [montagem.md](montagem.md).
+  referências no WJPDM. ✅ M-C: padrões linear/circular, espelhar, vista explodida, interferência, massa
+  da montagem e medir. Ver [montagem.md](montagem.md).
 - **Desenho** ✅ D-A (29/10/2026): página `cad/desenho/`, folhas ABNT (A4–A0) com legenda do cartão do
   cofre, vista do modelo, três vistas padrão (1º/3º diedro, escala automática), vista projetada,
   isométrica, estilos, escala por vista, notas com propriedades, marcas de centro, várias folhas,
