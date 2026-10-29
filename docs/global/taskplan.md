@@ -42,7 +42,7 @@ O mesmo vale para a pasta padrão do dispositivo e para o Google Drive (Meu Driv
 e o acesso ao Google são os do cofre (📁 Cópias do cofre). No aparelho: IndexedDB `wjtaskplan`.
 
 Sincronia (`src/tarefas/copias.ts`): grava no aparelho a cada mudança e iguala as cópias 2,5 s depois,
-ao abrir o app e em **Sincronizar agora**. Mescla por registro (pasta, tarefa, estado, configuração):
+ao abrir ou recarregar o app ou a página inicial e em **Sincronizar agora**. Se o pendrive ou o Drive pedirem um toque (permissão da pasta, login do Google vencido), a faixa "Sincronizar agora" no topo libera e iguala o cofre e as tarefas. Mescla por registro (pasta, tarefa, estado, configuração):
 **a alteração mais recente vence**; exclusões viajam como lista de exclusões (30 dias) e vencem
 alterações anteriores a elas. Tarefas de uma pasta excluída em outro aparelho vão para a primeira pasta
 da raiz; movimentos cruzados de pastas que formariam ciclo sobem para a raiz.

@@ -114,10 +114,10 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
     }
     if (publicar) {
       if (nuvem && navigator.onLine && ((await renovacao) || nuvem.conectado())) repos.push(nuvem.repositorio());
-      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Cofre → Sincronizar agora)");
+      else if (nuvem && localStorage.getItem("wjgoogle:autorizado") === "1") ausentes.push("Google Drive com acesso vencido (toque em Sincronizar agora)");
     }
     if (repos.length === 1) {
-      const t = publicar ? "Nenhuma cópia conectada: conecte o pendrive ou o Google Drive (📁 Cópias do cofre)." : "Salvo só no banco do app: escolha a pasta padrão do dispositivo (📁 Cópias do cofre).";
+      const t = ausentes.length ? `Só no banco do app · ${ausentes.join(", ")}.` : publicar ? "Nenhuma cópia conectada: conecte o pendrive ou o Google Drive (📁 Cópias do cofre)." : "Salvo só no banco do app: escolha a pasta padrão do dispositivo (📁 Cópias do cofre).";
       return (ultima = { quando: agora(), texto: t }).texto;
     }
     const r = await sincronizar(repos, agora());
@@ -129,8 +129,9 @@ export function sincronizarCofre(o: OpcoesSincronia = {}): Promise<string> {
 
 let abriu = false;
 /**
- * Sincronia global ao abrir (cada recarregar do app): dispositivo, pendrive e Drive, sem pedir nada
- * (não há toque): cópias que precisam de permissão ou de novo login ficam para o próximo toque.
+ * Sincronia global ao abrir (cada abertura ou recarregar de qualquer página): dispositivo, pendrive
+ * e Drive, sem pedir nada (não há toque). Se alguma cópia precisar de permissão ou de novo login do
+ * Google, aparece a faixa "Sincronizar agora" no topo: um toque libera e iguala todas.
  * Roda depois de `espera` (o app termina de abrir antes) e só uma vez por página.
  */
 export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve()): Promise<string> | undefined {
@@ -140,7 +141,44 @@ export function sincronizarAoAbrir(espera: Promise<unknown> = Promise.resolve())
     .catch(() => {})
     .then(() => new Promise((r) => setTimeout(r, 800)))
     .then(() => sincronizarCofre({ pedir: false, publicar: true }))
-    .then((m) => (avisarMudanca(), m));
+    .then((m) => {
+      avisarMudanca();
+      if (precisaToque(m)) faixaToque(m);
+      return m;
+    });
+}
+
+/** Evento na janela depois de uma sincronia com toque (outras bases, como as tarefas, aproveitam a permissão). */
+export const EVENTO_SINCRONIZADO = "wj-sincronizado";
+
+/** Faixa no topo: a sincronia ao abrir deixou cópias de fora (precisam de um toque do usuário). */
+function faixaToque(m: string) {
+  if (document.querySelector(".wjc-faixa")) return;
+  if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));
+  const f = document.createElement("div");
+  f.className = "wjc-faixa";
+  f.setAttribute("role", "status");
+  f.innerHTML = `<span></span><button class="destaque" data-s>Sincronizar agora</button><button data-x title="Fechar">✕</button>`;
+  f.querySelector("span")!.textContent = `Sincronia ao abrir incompleta: ${m}`;
+  f.querySelector<HTMLElement>("[data-x]")!.onclick = () => f.remove();
+  f.querySelector<HTMLButtonElement>("[data-s]")!.onclick = async (e) => {
+    const b = e.currentTarget as HTMLButtonElement;
+    b.disabled = true;
+    f.querySelector("span")!.textContent = "Sincronizando…";
+    // a renovação do Google sai já, dentro do toque (senão o navegador bloqueia a janela)
+    const r = await sincronizarCofre({ pedir: true, publicar: true }).catch((x: Error) => x.message);
+    avisarMudanca();
+    window.dispatchEvent(new Event(EVENTO_SINCRONIZADO));
+    if (precisaToque(r)) {
+      f.querySelector("span")!.textContent = r;
+      b.disabled = false;
+    } else {
+      f.querySelector("span")!.textContent = r;
+      b.remove();
+      setTimeout(() => f.remove(), 5000);
+    }
+  };
+  document.body.append(f);
 }
 /** A sincronia ou outro salvar mudou o cofre (para recarregar listas). */
 export const aoMudarCofre = (f: () => void) => ouvintes.add(f);
@@ -552,7 +590,11 @@ body.disp-celular .wjc-aba{width:26px;min-height:72px;font-size:12px}
 .wjc-go{list-style:none;margin:6px 0;padding:0}
 .wjc-go li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eef1f5}
 .wjc-go li input{width:22px;height:22px}.wjc-go li span{flex:1;min-width:0;overflow-wrap:anywhere}.wjc-go small{color:#55606d}
-.wjc-msg{min-height:1em}`;
+.wjc-msg{min-height:1em}
+.wjc-faixa{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top));transform:translateX(-50%);z-index:980;display:flex;align-items:center;gap:8px;width:min(720px,calc(100% - 16px));padding:8px 8px 8px 14px;background:#fff8e6;color:#4a3500;border:1px solid #e0b44a;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:14px system-ui,sans-serif}
+.wjc-faixa span{flex:1;min-width:0}
+.wjc-faixa button{flex:none;min-height:40px;padding:0 12px;border:1px solid #c9d3de;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+.wjc-faixa button.destaque{background:#2f7fd0;border-color:#2f7fd0;color:#fff}`;
 
 function janela(titulo: string): { caixa: HTMLElement; fechar: () => void } {
   if (!document.getElementById("wjc-css")) document.head.append(Object.assign(document.createElement("style"), { id: "wjc-css", textContent: CSS }));

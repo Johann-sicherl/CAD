@@ -19,7 +19,7 @@ import {
   type Folha, type Formato, type ModeloDesenho, type Nota, type Orientacao, type Retangulo, type VistaDesenho,
 } from "./modelo";
 import {
-  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, precisaToque, salvarNoCofre,
+  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
   sincronizarAoAbrir, vinculo,
 } from "../comum/cofre";
 import {
@@ -2789,7 +2789,7 @@ montarMenu();
 renderizarAbas();
 renderizarBarraVistas();
 instalarPainelCofre("drw", salvar);
-void sincronizarAoAbrir(kernel.pronto)?.then((m) => precisaToque(m) && avisar(`Sincronia ao abrir: ${m}`), () => {});
+void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 {
   const inicial = lerJson<DocumentoDesenho>(CHAVE, validarDesenho);
   const hash = location.hash;
