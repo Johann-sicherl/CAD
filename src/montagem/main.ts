@@ -1440,6 +1440,7 @@ function abrirNovo() {
   abrirPopover($("btn-menu"), [
     { rotulo: "Peça", icone: "peca", acao: () => (location.href = new URL(`${RAIZ}cad/#novo`, location.href).href) },
     { rotulo: "Montagem", icone: "montagem", acao: () => novaMontagem() },
+    { rotulo: "Desenho", icone: "desenho", acao: () => (location.href = new URL(`${RAIZ}cad/desenho/#novo`, location.href).href) },
   ]);
 }
 
@@ -1462,6 +1463,10 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   abrir: { rotulo: "Abrir arquivo do aparelho (.wjasm)…", icone: "abrir", fazer: () => $<HTMLInputElement>("arquivo").click() },
   salvar: { rotulo: "Salvar (.wjasm)", icone: "salvar", fazer: () => void salvar(), doc: true },
   fechar: { rotulo: "Fechar montagem", icone: "fechar", fazer: fecharMontagem, doc: true },
+  desenho: { rotulo: "Criar desenho desta montagem", icone: "desenho", fazer: () => {
+    salvarAutosave();
+    location.href = new URL(`${RAIZ}cad/desenho/#de-montagem`, location.href).href;
+  }, doc: true },
   locais: { rotulo: "Cópias do cofre (pendrive, Drive, dispositivo)…", icone: "pasta", fazer: () => void abrirCopias() },
   atalhos: { rotulo: "Atalhos", icone: "menu", fazer: () => abrirJanela("Atalhos da montagem", `<table class="tabela"><tbody>${[
     ["I", "Inserir componentes"], ["M", "Posicionar"], ["Delete", "Excluir componente/posicionamento selecionado"], ["H", "Ocultar/mostrar o selecionado"],
@@ -1487,7 +1492,7 @@ function montarMenu() {
     menu.append(b);
   };
   titulo("Arquivo");
-  ["novo", "abrirCofre", "abrir", "salvar", "fechar"].forEach(item);
+  ["novo", "abrirCofre", "abrir", "salvar", "desenho", "fechar"].forEach(item);
   titulo("Ferramentas");
   item("locais");
   titulo("Ajuda");
@@ -1638,6 +1643,15 @@ document.addEventListener("keydown", (e) => {
 montarMenu();
 renderizarAbas();
 renderizarBarraVistas();
+// montagem aberta a partir de um desenho: botão para voltar a ele
+if (sessionStorage.getItem("wjcad:voltarDesenho")) {
+  const b = document.createElement("button");
+  b.className = "btn-ic btn-voltar";
+  b.title = "Voltar ao desenho (salve a montagem antes: as vistas se atualizam do cofre)";
+  b.innerHTML = `${ICONES.desenho}<span>Desenho</span>`;
+  b.onclick = () => (location.href = new URL(`${RAIZ}cad/desenho/#abrir-autosave`, location.href).href);
+  $("rapidas").prepend(b);
+}
 instalarPainelCofre("asm", salvar);
 void sincronizarAoAbrir(kernel.pronto)?.then((m) => precisaToque(m) && avisar(`Sincronia ao abrir: ${m}`), () => {});
 {

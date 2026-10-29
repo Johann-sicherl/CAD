@@ -36,7 +36,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 
 ## 2. Aba Vistas — comandos
 
-### 2.1 Vista do modelo (Model View) — D-A
+### 2.1 Vista do modelo (Model View) — ✅
 - **Caixa "Peça/Montagem"**: do cofre, aberta no WJCAD, procurar no aparelho.
 - **Caixa "Orientação"**: Frontal, Posterior, Superior, Inferior, Esquerda, Direita,
   Isométrica, Dimétrica ⏸, Trimétrica ⏸; **Vistas múltiplas** (marcar várias de uma vez).
@@ -49,12 +49,12 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - Toque na folha coloca a vista; ao colocar, segue o comando **Vista projetada** (como no CAD de
   referência).
 
-### 2.2 Três vistas padrão (Standard 3 View) — D-A
+### 2.2 Três vistas padrão (Standard 3 View) — ✅
 - Escolhe o modelo e coloca **Frontal, Superior e Lateral** já alinhadas no diedro da folha
   (1º diedro: superior abaixo da frontal, lateral esquerda à direita), com escala automática para
   caber na folha. Opcional: **isométrica** no canto livre.
 
-### 2.3 Vista projetada (Projected View) — D-A
+### 2.3 Vista projetada (Projected View) — ✅
 - A partir de uma vista: arrastar/tocar para cima, baixo, esquerda, direita ou diagonal coloca
   a vista projetada correspondente, alinhada com a mãe (diagonal = isométrica).
 
@@ -102,7 +102,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - Importa as cotas dos esboços e recursos da peça para as vistas onde aparecem de verdade
   (sem duplicar).
 
-### 3.3 Nota (Note) — D-C
+### 3.3 Nota (Note) — 🟡 (texto e propriedades ✅; seta de chamada D-C)
 - Texto livre com **ligação a propriedades** (`{codigo}`, `{descricao}`, `{material}`,
   `{revisao}`, `{massa}`), com ou sem **seta de chamada** (leader) presa a uma aresta.
 
@@ -110,7 +110,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - Balão com o **nº do item da lista de materiais** do componente tocado; automáticos: um por
   componente visível na vista, organizados em volta (quadrado/círculo).
 
-### 3.5 Marca de centro e Linha de centro (Center Mark / Centerline) — D-C
+### 3.5 Marca de centro e Linha de centro (Center Mark / Centerline) — 🟡 (marcas automáticas ✅; linha de centro D-C)
 - **Marca de centro** em círculos/arcos (automática ao criar a vista: opção); **linha de centro**
   entre duas arestas ou em faces cilíndricas vistas de lado (traço-ponto, NBR 8403).
 
@@ -136,11 +136,11 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 
 ## 4. Aba Folha — comandos e propriedades
 
-### 4.1 Propriedades da folha (Sheet Properties) — D-A
+### 4.1 Propriedades da folha (Sheet Properties) — ✅
 - **Nome** da folha · **escala** padrão · **tipo de projeção** (1º diedro ✅ padrão / 3º) ·
   **formato** (A4 retrato, A4/A3/A2/A1/A0 paisagem) · **próxima letra** de vista/seção.
 
-### 4.2 Formato e legenda (Sheet Format / Title Block) — D-A
+### 4.2 Formato e legenda (Sheet Format / Title Block) — ✅ (editar formato D-D)
 - Margem e moldura NBR 10068 (marcas de centro e de corte).
 - **Legenda** (canto inferior direito, 175 mm de largura em A3/A2/…; A4 ocupa a largura útil):
   - empresa/logo (texto) · título (descrição do modelo) · código/número do desenho · material ·
@@ -150,17 +150,17 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
     projetista, revisão) e da folha (escala, folha); editáveis por desenho.
 - **Editar formato**: campos e textos fixos da empresa — D-D.
 
-### 4.3 Folhas — D-A
+### 4.3 Folhas — ✅ (reordenar ⏸)
 - **Adicionar folha**, **renomear**, **excluir**, **reordenar**; abas das folhas embaixo do
   viewport.
 
-## 5. Exportar, imprimir — D-C
+## 5. Exportar, imprimir — 🟡 (PDF/impressão e SVG ✅; DXF D-C)
 
-- **PDF** vetorial (tamanho real da folha, espessuras de linha NBR 8403) — exportar e imprimir.
+- **PDF** vetorial (tamanho real da folha, espessuras de linha NBR 8403) — exportar e imprimir ✅ (Imprimir / PDF do navegador, todas as folhas); **SVG** da folha em mm ✅.
 - **DXF** (cada tipo de linha numa camada: VISIVEL, OCULTA, CENTRO, COTA, HACHURA, FORMATO) — D-C.
 - **PNG** (imagem da folha) para anexar no WJWrite/WJApresentation ⏸.
 
-## 6. Associatividade e atualização — D-B
+## 6. Associatividade e atualização — 🟡 (vistas recalculadas do cofre ao abrir ✅; cotas D-C)
 
 - Ao abrir o desenho, as vistas são recalculadas do modelo (cofre: última versão ou a versão
   fixada). Cotas presas por assinatura; o que não for reencontrado vira "pendente" e é listado.
@@ -178,11 +178,21 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - **F** enquadrar a folha · roda: zoom · botão do meio: pan · **D** cota inteligente ·
   **Delete** excluir · **Ctrl+P** imprimir/PDF · **Esc** sai do comando.
 
+## 8.1 Como ficou (D-A)
+
+- Página `cad/desenho/` (`src/desenho/main.ts`), modelo puro `src/desenho/modelo.ts` e projeção no
+  kernel `src/kernel/projecao.ts` (HLR do OpenCascade no worker, sem as emendas de cilindros/cones;
+  faces da mesma superfície unidas antes de projetar). Testes em `scripts/teste-desenho.ts`.
+- A posição de cada vista é o ponto da folha onde cai a origem do modelo: vistas projetadas
+  ficam alinhadas por construção e acompanham a mãe ao mover.
+- A peça e a montagem têm **Criar desenho** no menu; o desenho abre o modelo (barra de contexto
+  da vista) e o botão **Desenho** na peça/montagem volta a ele, com as vistas atualizadas.
+
 ## 9. Roteiro do desenho
 
 | Etapa | Conteúdo | Status |
 |---|---|---|
-| D-A | arquivo `.wjdrw`, Novo → Desenho / Criar desenho do modelo, folha com formato ABNT e legenda do cofre, Vista do modelo, Três vistas padrão, Vista projetada, estilos (visíveis e ocultas), escala, mover vistas, propriedades da folha, várias folhas | em andamento |
+| D-A | arquivo `.wjdrw`, Novo → Desenho / Criar desenho do modelo, folha com formato ABNT e legenda do cofre, Vista do modelo, Três vistas padrão, Vista projetada, estilos (visíveis e ocultas), escala, mover vistas, propriedades da folha, várias folhas, notas, marcas de centro, PDF/SVG | ✅ |
 | D-B | vista de seção (hachura), vista de detalhe, vista planificada da chapa, vista explodida da montagem, atualização associativa | — |
 | D-C | cota inteligente nas vistas, notas, marcas e linhas de centro, balões, tabela de lista de materiais, vista auxiliar e interrompida, PDF e DXF, impressão | — |
 | D-D | itens do modelo, cotas de base/coordenada, símbolos (acabamento, GD&T, datum), tabela de revisões, editar formato | — |

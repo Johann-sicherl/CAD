@@ -4,7 +4,9 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { setOC, type Shape3D } from "replicad";
-import type { Feature, Referencia } from "../model";
+import type { Feature, Referencia, Vec3 } from "../model";
+import { posicionar, projetar } from "./projecao";
+import type { Camera, Orientacao } from "../desenho/modelo";
 import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
 
@@ -16,7 +18,9 @@ export type PedidoKernel =
   | { tipo: "massa"; seq: number }
   | { tipo: "verificar"; seq: number }
   /** Peça de um componente de montagem/desenho: regenera e guarda o sólido pela chave do conteúdo. */
-  | { tipo: "componente"; seq: number; chave: string; features: Feature[] };
+  | { tipo: "componente"; seq: number; chave: string; features: Feature[] }
+  /** Vista de desenho: projeção (linhas visíveis e ocultas) dos sólidos já guardados, posicionados. */
+  | { tipo: "projetar"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; orientacao: Orientacao | Camera; tol: number };
 
 export type RespostaKernel =
   | { tipo: "pronto" }
@@ -79,6 +83,17 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
       case "verificar":
         enviar({ tipo: "resposta", seq: p.seq, dados: verificar(pecaAtual()) });
         break;
+      case "projetar": {
+        const solidos = p.itens.map((it) => {
+          const s = solidosComponentes.get(it.chave);
+          if (!s) throw new Error("Peça ainda não calculada no kernel.");
+          return posicionar(s, it.t);
+        });
+        const r = projetar(solidos, p.orientacao, p.tol);
+        for (const s of solidos) s.delete();
+        enviar({ tipo: "resposta", seq: p.seq, dados: r });
+        break;
+      }
       case "componente": {
         const r = await regenerarComRecuperacao(p.features, 0.05, {}, carregarKernel);
         const peca = pecaAtual();
