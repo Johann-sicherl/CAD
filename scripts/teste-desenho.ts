@@ -11,6 +11,7 @@ import {
   afastarDaMae, areaUtil, cameraProjetada, escalaQueCabe, CAMERAS, desenhoVazio, excluirVistas, ladoDoPonto, layoutTresVistas, lerEscala, moverVista, orientacaoDe,
   posicaoProjetada, preencherPropriedades, retanguloLegenda, rotuloEscala, validarDesenho, caixaNaFolha, type VistaDesenho,
 } from "../src/desenho/modelo";
+import { desenhoCota, entidadeSob, gerarDxf, medida, posicionarBaloes, reencontrar, textoCota, type Cota } from "../src/desenho/anotacoes";
 
 const require = createRequire(import.meta.url);
 const OC = await (opencascade as unknown as (o: object) => Promise<unknown>)({ locateFile: () => require.resolve("replicad-opencascadejs/wasm") });
@@ -137,6 +138,35 @@ igual("legenda A4 retrato: largura útil (178)", (() => { const r = retanguloLeg
   let erro = "";
   try { validarDesenho({ formato: "wjasm" }); } catch (e) { erro = (e as Error).message; }
   igual("arquivo que não é desenho é recusado", erro.includes("inválido"), true);
+}
+
+// ---------- cotas, balões, DXF ----------
+{
+  const cota = (o: Partial<Cota>): Cota => ({ id: "c", vista: "v", e1: { tipo: "ponto", p: [0, 0] }, pos: [0, 0], modo: "auto", ...o });
+  const linha = cota({ e1: { tipo: "linha", a: [0, 0], b: [80, 0] }, pos: [40, 10] });
+  igual("cota de uma linha: comprimento 80", medida(linha)?.valor, 80);
+  const inclinada = { tipo: "linha" as const, a: [0, 0] as [number, number], b: [30, 40] as [number, number] };
+  igual("linha inclinada: alinhada = 50, horizontal = 30, vertical = 40",
+    [medida(cota({ e1: inclinada, pos: [0, 40] }))?.valor, medida(cota({ e1: inclinada, pos: [15, 60] }))?.valor, medida(cota({ e1: inclinada, pos: [50, 20] }))?.valor], [50, 30, 40]);
+  igual("duas linhas paralelas: distância 12", Math.round(medida(cota({ e1: { tipo: "linha", a: [0, 0], b: [80, 0] }, e2: { tipo: "linha", a: [0, 12], b: [80, 12] }, pos: [90, 6] }))!.valor * 1000) / 1000, 12);
+  igual("duas linhas a 90°: ângulo 90", Math.round(medida(cota({ e1: { tipo: "linha", a: [0, 0], b: [10, 0] }, e2: { tipo: "linha", a: [0, 0], b: [0, 10] }, pos: [5, 5] }))!.valor), 90);
+  const diam = cota({ e1: { tipo: "circulo", c: [0, 0], r: 7 }, pos: [20, 20] });
+  igual("círculo: Ø14 (pt-BR, ± e prefixo)", [textoCota(diam, medida(diam)!.valor, "diametro"), textoCota({ ...linha, prefixo: "4× ", tol: 0.1 }, 12.5, "linear")], ["Ø14", "4× 12,5 ±0,1"]);
+  const dc = desenhoCota(linha, 2)!;
+  igual("desenho da cota: linha de cota 10 mm acima × escala, setas para fora das pontas", [dc.linhas[2].map((p) => p.map((v) => Math.round(v))), dc.setas.length, dc.texto.s], [[[0, 20], [160, 20]], 2, "80"]);
+  const vis: [number, number][][] = [[[0, 0], [80, 0]], [[80, 0], [80, 30]]];
+  igual("reencontrar: ponta que andou 0,05 mm", reencontrar({ tipo: "linha", a: [0.05, 0], b: [80, 0] }, vis, [], 0.5), { tipo: "linha", a: [0, 0], b: [80, 0] });
+  igual("reencontrar: aresta sumida fica pendente", reencontrar({ tipo: "ponto", p: [50, 50] }, vis, [], 0.5), null);
+  igual("entidade sob o toque: vértice, linha, círculo",
+    [entidadeSob([79.8, 0.1], vis, [], 1, 1)?.tipo, entidadeSob([40, 0.3], vis, [], 1, 1)?.tipo, entidadeSob([7.2, 0], [], [{ cx: 0, cy: 0, r: 7 }], 1, 1)?.tipo], ["ponto", "linha", "circulo"]);
+  const circ: [number, number][] = Array.from({ length: 33 }, (_, i) => [7 * Math.cos((i / 32) * 2 * Math.PI), 7 * Math.sin((i / 32) * 2 * Math.PI)]);
+  igual("a emenda do círculo não vira vértice: toque na borda pega o círculo", entidadeSob([7, 0], [circ], [{ cx: 0, cy: 0, r: 7 }], 1, 1)?.tipo, "circulo");
+  const bal = posicionarBaloes([[10, 10], [10, 10]], { x0: 0, y0: 0, x1: 20, y1: 20 });
+  const canto = posicionarBaloes([[1, 1]], { x0: 0, y0: 0, x1: 200, y1: 100 })[0];
+  igual("balão na diagonal fica fora da caixa (não dentro do canto)", canto[0] < 0 || canto[1] < 0, true);
+  igual("balões fora da caixa e sem sobrepor", [bal.every(([x, y]) => x < 0 || x > 20 || y < 0 || y > 20), Math.hypot(bal[0][0] - bal[1][0], bal[0][1] - bal[1][1]) >= 11], [true, true]);
+  const dxf = gerarDxf([{ tipo: "linha", camada: "VISIVEL", a: [0, 0], b: [10, 0] }, { tipo: "texto", camada: "COTA", p: [1, 1], h: 3.5, s: "Ø14" }], { VISIVEL: 7, COTA: 3 });
+  igual("DXF: camadas, linha e texto", [dxf.includes("LAYER\n2\nVISIVEL"), dxf.includes("LINE\n8\nVISIVEL"), dxf.includes("TEXT\n8\nCOTA"), dxf.trim().endsWith("EOF")], [true, true, true, true]);
 }
 
 console.log(falhas ? `\ndesenho: ${falhas} falha(s)` : "\ndesenho: tudo certo");

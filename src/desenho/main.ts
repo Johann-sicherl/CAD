@@ -8,7 +8,10 @@ import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import type { Corte, Projecao } from "../kernel/projecao";
 import { ehBaseChapa, MATERIAIS, validarDocumento, type Documento } from "../model";
-import { marcaDe, posesExplodidas, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
+import { aplicarPonto, marcaDe, posesExplodidas, quantidades, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
+import {
+  desenhoCota, entidadeSob, gerarDxf, medida, posicionarBaloes, reencontrar, segmentos, type Balao, type Cota, type EntCota, type EntDxf,
+} from "./anotacoes";
 import {
   afastarDaMae, areaUtil, cameraProjetada, escalaQueCabe, CAMERAS, CAMPOS_LEGENDA, caixaNaFolha, desenhoVazio, ESCALAS, escalaDaVista, excluirVistas, FORMATOS, ladoDoPonto,
   layoutTresVistas, lerEscala, naVista, pontoNaVista, proximaLetra, moldura, moverVista, NOME_ESTILO, NOME_ORIENTACAO, novaFolha, novoIdD, orientacaoDe, preencherPropriedades,
@@ -34,6 +37,8 @@ const historico: string[] = [];
 const refazer: string[] = [];
 let selVistas: string[] = [];
 let selNota: string | null = null;
+/** Cota, balão ou tabela selecionada. */
+let selAnot: { k: "cota" | "balao" | "tabela"; id: string } | null = null;
 let estadoKernel: "iniciando" | "pronto" | "erro" = "iniciando";
 /** Cartão do cofre de cada modelo (legenda e notas). */
 const cartoes = new Map<string, Record<string, string>>();
@@ -51,7 +56,10 @@ type Comando =
   | { tipo: "secao"; mae: string | null; orient: "horizontal" | "vertical"; ponto: [number, number] | null }
   /** detalhe: vista mãe, centro e raio do círculo (plano da mãe, mm do modelo) */
   | { tipo: "detalhe"; mae: string | null; centro: [number, number] | null; r: number | null; fator: number }
-  | { tipo: "planificada"; modelo: string | null };
+  | { tipo: "planificada"; modelo: string | null }
+  /** cota inteligente: vista, 1ª e 2ª entidade (o toque seguinte no vazio coloca a cota) */
+  | { tipo: "cota"; vista: string | null; e1: EntCota | null; e2: EntCota | null }
+  | { tipo: "editarCota"; id: string; snapshot: string };
 let comando: Comando | null = null;
 
 aplicarDispositivo();
@@ -112,6 +120,8 @@ function itensDoModelo(m: ModeloDesenho, o: OpcoesProj = {}): ItemKernel[] {
 }
 
 const solidos = new Map<string, Promise<ResultadoComponente>>();
+/** Resultado de cada sólido já calculado (topologia: centro das peças para os balões). */
+const resultados = new Map<string, ResultadoComponente>();
 /** Chapa planificada: linhas de dobra e plano, pela chave do sólido. */
 const planificados = new Map<string, Pick<ResultadoComponente, "dobras" | "plano">>();
 const projecoes = new Map<string, Projecao>();
@@ -131,6 +141,7 @@ function garantirSolidos(itens: ItemKernel[]) {
     let s = solidos.get(it.chave);
     if (!s) {
       s = kernel.componente(it.chave, it.features, it.planificar).then((r) => {
+        resultados.set(it.chave, r);
         if (it.planificar) planificados.set(it.chave, { dobras: r.dobras, plano: r.plano });
         return r;
       }, (e) => {
@@ -263,6 +274,7 @@ function atualizarStatus(texto?: string) {
   else if (!texto && comando?.tipo === "secao") estado = !comando.mae ? "Vista de seção: toque a vista a cortar" : !comando.ponto ? "Vista de seção: toque por onde passa o corte" : "Vista de seção: toque onde a seção fica (do lado para onde se olha)";
   else if (!texto && comando?.tipo === "detalhe") estado = !comando.mae ? "Vista de detalhe: toque a vista" : !comando.centro ? "Vista de detalhe: toque o centro da região" : comando.r === null ? "Vista de detalhe: toque a borda do círculo" : "Vista de detalhe: toque onde o detalhe fica";
   else if (!texto && comando?.tipo === "planificada") estado = comando.modelo ? "Vista planificada: toque onde ela fica" : "Vista planificada: escolha a peça de chapa";
+  else if (!texto && comando?.tipo === "cota") estado = !comando.e1 ? "Cota: toque uma aresta, vértice ou círculo de uma vista" : "Cota: toque outra entidade (distância/ângulo) ou onde o número fica";
   else if (!texto && comando?.tipo === "nota") estado = comando.editando ? "Nota: edite o texto no painel" : "Nota: escreva o texto e toque na folha";
   else if (!texto && selVistas.length) estado = `Selecionada: ${selVistas.map((id) => vistaDe(id)?.nome ?? "?").join(", ")}`;
   st.textContent = estado;
@@ -500,7 +512,128 @@ function notaSvg(f: Folha, n: Nota, A: number): string {
 /** Conteúdo SVG da folha inteira (tela e PDF). */
 function conteudoFolha(f: Folha): string {
   const A = FORMATOS[f.formato].a;
-  return formatoSvg(f) + f.vistas.map((v) => vistaSvg(f, v, A)).join("") + f.notas.map((n) => notaSvg(f, n, A)).join("");
+  return formatoSvg(f) + f.vistas.map((v) => vistaSvg(f, v, A)).join("") + f.notas.map((n) => notaSvg(f, n, A)).join("")
+    + f.cotas.map((c) => cotaSvg(f, c, A)).join("") + f.baloes.map((b) => balaoSvg(f, b, A)).join("") + f.tabelas.map((t) => tabelaSvg(f, t, A)).join("");
+}
+
+// ---------- cotas, balões e lista de materiais na folha ----------
+
+/** Cota com as entidades reencontradas na vista atual (null nas que sumiram: pendente). */
+function cotaAtual(f: Folha, c: Cota): { c: Cota; pendente: boolean } {
+  const v = vistaDe(c.vista);
+  const p = v && projDaVista(f, v);
+  if (!v || !p) return { c, pendente: false };
+  const tol = Math.max(0.05, 0.6 / escalaDaVista(f, v));
+  const e1 = reencontrar(c.e1, p.visiveis, p.circulos, tol);
+  const e2 = c.e2 ? reencontrar(c.e2, p.visiveis, p.circulos, tol) : undefined;
+  if (!e1 || (c.e2 && !e2)) return { c, pendente: true };
+  return { c: { ...c, e1, ...(e2 ? { e2 } : {}) }, pendente: false };
+}
+
+/** Seta cheia na folha (SVG, y para baixo) a partir de ponta e direção em y para cima. */
+const setaSvg = (x: number, y: number, dx: number, dy: number) => seta(x, y, dx, -dy, 3);
+
+function cotaSvg(f: Folha, cota: Cota, A: number): string {
+  const v = vistaDe(cota.vista);
+  if (!v) return "";
+  const s = escalaDaVista(f, v);
+  const { c, pendente } = cotaAtual(f, cota);
+  const d = desenhoCota(c, s);
+  if (!d) return "";
+  const X = (p: [number, number]) => n3(v.x + p[0]), Y = (p: [number, number]) => n3(A - (v.y + p[1]));
+  const sel = selAnot?.k === "cota" && selAnot.id === cota.id;
+  const linhas = d.linhas.map(([a, b]) => `M${X(a)} ${Y(a)}L${X(b)} ${Y(b)}`).join("")
+    + d.arcos.map((a) => {
+      const p0: [number, number] = [a.c[0] + a.r * Math.cos(a.a0), a.c[1] + a.r * Math.sin(a.a0)], p1: [number, number] = [a.c[0] + a.r * Math.cos(a.a1), a.c[1] + a.r * Math.sin(a.a1)];
+      return `M${X(p0)} ${Y(p0)}A${n3(a.r)} ${n3(a.r)} 0 ${a.a1 - a.a0 > Math.PI ? 1 : 0} 0 ${X(p1)} ${Y(p1)}`;
+    }).join("");
+  const setas = d.setas.map((q) => setaSvg(Number(X(q.p)), Number(Y(q.p)), q.d[0], q.d[1])).join("");
+  const t = d.texto;
+  return `<g class="cota${sel ? " sel" : ""}${pendente ? " pendente" : ""}" data-anot="cota:${cota.id}">
+    <path class="c-linha" d="${linhas}" /><path class="c-seta" d="${setas}" />
+    <text class="c-texto" x="${X(t.p)}" y="${Y(t.p)}" font-size="3.5" text-anchor="middle" transform="rotate(${n3(-t.ang)} ${X(t.p)} ${Y(t.p)})">${escapar(t.s)}</text>
+    <rect class="c-alvo" x="${n3(Number(X(t.p)) - 8)}" y="${n3(Number(Y(t.p)) - 5)}" width="16" height="7" /></g>`;
+}
+
+/** Itens da lista de materiais do modelo (mesma numeração dos balões). */
+function linhasDaLista(m: ModeloDesenho): { item: number; peca: string; codigo: string; descricao: string; material: string; qtd: number }[] {
+  if (m.tipo === "peca") {
+    const d = m.doc as Documento;
+    const cart = cartoes.get(m.id) ?? {};
+    return [{ item: 1, peca: "peca", codigo: cart.codigo ?? "", descricao: cart.descricao || m.nome, material: MATERIAIS[d.material ?? ""]?.nome ?? cart.material ?? "", qtd: 1 }];
+  }
+  return quantidades(m.doc as DocumentoMontagem).map(({ peca, qtd }, i) => {
+    const cart = (peca.arquivo && cartoesPecas.get(peca.arquivo)) || {};
+    if (peca.arquivo && !cartoesPecas.has(peca.arquivo)) void lerCartaoPeca(peca.arquivo);
+    return { item: i + 1, peca: peca.id, codigo: cart.codigo ?? "", descricao: cart.descricao || peca.nome, material: MATERIAIS[peca.doc.material ?? ""]?.nome ?? cart.material ?? "", qtd };
+  });
+}
+
+/** Cartões das peças das montagens (lista de materiais), lidos do cofre sob demanda. */
+const cartoesPecas = new Map<string, Record<string, string>>();
+async function lerCartaoPeca(id: string) {
+  cartoesPecas.set(id, {});
+  const r = await lerDoCofre(id).catch(() => null);
+  if (r) {
+    cartoesPecas.set(id, r.arquivo.cartao);
+    desenharFolha();
+  }
+}
+
+function itemDoBalao(b: Balao, v: VistaDesenho): number | null {
+  const m = modeloDe(v.modelo);
+  if (!m) return null;
+  if (m.tipo === "peca") return 1;
+  const a = m.doc as DocumentoMontagem;
+  const c = a.componentes.find((x) => x.id === b.comp);
+  if (!c) return null;
+  return quantidades(a).findIndex((q) => q.peca.id === c.peca) + 1 || null;
+}
+
+function balaoSvg(f: Folha, b: Balao, A: number): string {
+  const v = vistaDe(b.vista);
+  if (!v) return "";
+  const s = escalaDaVista(f, v);
+  const item = itemDoBalao(b, v);
+  const ax = v.x + b.ancora[0] * s, ay = A - (v.y + b.ancora[1] * s);
+  const bx = v.x + b.pos[0], by = A - (v.y + b.pos[1]);
+  const r = 5;
+  const k = Math.hypot(ax - bx, ay - by) || 1;
+  const sel = selAnot?.k === "balao" && selAnot.id === b.id;
+  return `<g class="balao${sel ? " sel" : ""}${item === null ? " pendente" : ""}" data-anot="balao:${b.id}">
+    <path class="b-linha" d="M${n3(ax)} ${n3(ay)}L${n3(bx + ((ax - bx) / k) * r)} ${n3(by + ((ay - by) / k) * r)}" /><circle class="b-ponto" cx="${n3(ax)}" cy="${n3(ay)}" r="0.7" />
+    <circle class="b-circulo" cx="${n3(bx)}" cy="${n3(by)}" r="${r}" />
+    <text x="${n3(bx)}" y="${n3(by + 1.8)}" font-size="5" text-anchor="middle">${item ?? "?"}</text></g>`;
+}
+
+/** Lista de materiais (NBR 10582/13142): sobre a legenda, cabeçalho embaixo, itens subindo. */
+function tabelaSvg(f: Folha, t: { id: string; modelo: string }, A: number): string {
+  const m = modeloDe(t.modelo);
+  if (!m) return "";
+  const r = retanguloLegenda(f.formato);
+  const W = r.x1 - r.x0, k = W / 175;
+  const cols: [string, number, "start" | "middle"][] = [["ITEM", 15, "middle"], ["CÓDIGO", 35, "start"], ["DESCRIÇÃO", 70, "start"], ["MATERIAL", 35, "start"], ["QTD", 20, "middle"]];
+  const linhas = linhasDaLista(m);
+  const h = 7;
+  const sel = selAnot?.k === "tabela" && selAnot.id === t.id;
+  let out = `<g class="tabela-lista${sel ? " sel" : ""}" data-anot="tabela:${t.id}">`;
+  const linha = (i: number, valores: string[], cab: boolean) => {
+    const y0 = r.y1 + i * h;
+    let x = r.x0;
+    let g = `<rect class="l-fina" x="${n3(r.x0)}" y="${n3(A - y0 - h)}" width="${n3(W)}" height="${h}" fill="#fff" />`;
+    cols.forEach(([, w], j) => {
+      const ww = w * k;
+      if (j) g += `<path class="l-fina" d="M${n3(x)} ${n3(A - y0)}V${n3(A - y0 - h)}" />`;
+      const tx = cols[j][2] === "middle" ? x + ww / 2 : x + 1.5;
+      const val = valores[j] ?? "";
+      g += txt(tx, A - y0 - 2.2, val, cab ? 2.5 : 3, `text-anchor="${cols[j][2]}"${cab ? ' class="t-rot"' : ""}${val.length * 1.7 > ww - 3 ? ` textLength="${n3(ww - 3)}" lengthAdjust="spacingAndGlyphs"` : ""}`);
+      x += ww;
+    });
+    return g;
+  };
+  out += linha(0, cols.map((c) => c[0]), true);
+  linhas.forEach((l, i) => (out += linha(i + 1, [String(l.item), l.codigo, l.descricao, l.material, String(l.qtd)], false)));
+  return out + "</g>";
 }
 
 function desenharFolha() {
@@ -548,6 +681,7 @@ const ponteiros = new Map<number, { x: number; y: number }>();
 let gesto: null | { tipo: "pan"; x: number; y: number; vb0: typeof vb; moveu: boolean; alvo: Element | null; xy0: { x: number; y: number } }
   | { tipo: "vista"; id: string; ini: { x: number; y: number }; v0: { x: number; y: number }; moveu: boolean; snap: string }
   | { tipo: "nota"; id: string; ini: { x: number; y: number }; n0: { x: number; y: number }; moveu: boolean; snap: string }
+  | { tipo: "anot"; k: "cota" | "balao" | "tabela"; id: string; ini: { x: number; y: number }; o0: [number, number]; moveu: boolean }
   | { tipo: "pinca"; d0: number; m0: { x: number; y: number }; vb0: typeof vb } = null;
 
 function zoomEm(cx: number, cy: number, fator: number) {
@@ -577,12 +711,20 @@ svg.addEventListener("pointerdown", (e) => {
   const alvo = e.target as Element;
   const naVista = alvo.closest("[data-vista]")?.getAttribute("data-vista");
   const naNota = alvo.closest("[data-nota]")?.getAttribute("data-nota");
+  const naAnot = alvo.closest("[data-anot]")?.getAttribute("data-anot");
   const p = paraFolha(e.clientX, e.clientY);
   // botão do meio: sempre pan; comando que espera toque na folha: o toque é do comando
   const comandoToca = comando && (comando.tipo === "modelo" && !comando.tres && comando.modelo || comando.tipo === "projetada" || (comando.tipo === "nota" && !comando.editando)
-    || comando.tipo === "secao" || comando.tipo === "detalhe" || comando.tipo === "planificada");
-  if (e.button === 1 || e.button === 2 || comandoToca || (!naVista && !naNota)) {
+    || comando.tipo === "secao" || comando.tipo === "detalhe" || comando.tipo === "planificada" || comando.tipo === "cota");
+  if (e.button === 1 || e.button === 2 || comandoToca || (!naVista && !naNota && !naAnot)) {
     gesto = { tipo: "pan", x: e.clientX, y: e.clientY, vb0: { ...vb }, moveu: false, alvo: e.button === 0 ? alvo : null, xy0: p };
+    return;
+  }
+  if (naAnot) {
+    const [k, id] = naAnot.split(":") as ["cota" | "balao" | "tabela", string];
+    const f = folha()!;
+    const o = k === "cota" ? f.cotas.find((x) => x.id === id)?.pos : k === "balao" ? f.baloes.find((x) => x.id === id)?.pos : [0, 0];
+    gesto = { tipo: "anot", k, id, ini: p, o0: [...(o ?? [0, 0])] as [number, number], moveu: false };
     return;
   }
   if (naNota) {
@@ -626,6 +768,21 @@ svg.addEventListener("pointermove", (e) => {
   gesto.moveu = true;
   esconderBarra();
   const f = folha()!;
+  if (gesto.tipo === "anot") {
+    const g = gesto;
+    if (g.k === "cota") {
+      const c = f.cotas.find((x) => x.id === g.id), v = c && vistaDe(c.vista);
+      if (c && v) c.pos = [g.o0[0] + dx / escalaDaVista(f, v), g.o0[1] + dy / escalaDaVista(f, v)];
+    } else if (g.k === "balao") {
+      const b = f.baloes.find((x) => x.id === g.id);
+      if (b) b.pos = [g.o0[0] + dx, g.o0[1] + dy];
+    }
+    if (!quadroAnot) quadroAnot = requestAnimationFrame(() => {
+      quadroAnot = 0;
+      desenharFolha();
+    });
+    return;
+  }
   if (gesto.tipo === "vista") {
     if (!selVistas.includes(gesto.id)) selVistas = [gesto.id];
     moverVista(f, gesto.id, gesto.v0.x + dx, gesto.v0.y + dy);
@@ -644,6 +801,8 @@ svg.addEventListener("pointermove", (e) => {
   }
 });
 
+let quadroAnot = 0;
+
 function soltar(e: PointerEvent) {
   if (!ponteiros.has(e.pointerId)) return;
   ponteiros.delete(e.pointerId);
@@ -661,6 +820,18 @@ function soltar(e: PointerEvent) {
   if (g.tipo === "vista") {
     if (g.moveu) return alterou();
     return tocarVista(g.id, e);
+  }
+  if (g.tipo === "anot") {
+    if (g.moveu) return alterou();
+    if (comando) return;
+    selAnot = { k: g.k, id: g.id };
+    selVistas = [];
+    selNota = null;
+    desenharFolha();
+    return mostrarBarra([
+      ...(g.k === "cota" ? [{ rotulo: "Editar cota", icone: "cota" as NomeIcone, acao: () => abrirEditarCota(g.id) }] : []),
+      { rotulo: "Excluir", icone: "fechar", acao: () => excluirSelecao() },
+    ], e.clientX, e.clientY);
   }
   if (g.moveu) return alterou();
   selNota = g.id;
@@ -702,6 +873,7 @@ function tocarFolha(alvo: Element, p: { x: number; y: number }, e: PointerEvent)
   if (comando?.tipo === "nota" && !comando.editando) return colocarNota(p);
   if (comando?.tipo === "secao" || comando?.tipo === "detalhe") return void tocarSecaoDetalhe(alvo, p);
   if (comando?.tipo === "planificada") return void colocarPlanificada(p);
+  if (comando?.tipo === "cota") return tocarCota(alvo, p);
   if (comando) return;
   if (alvo.closest("[data-legenda]")) {
     selVistas = [];
@@ -709,9 +881,10 @@ function tocarFolha(alvo: Element, p: { x: number; y: number }, e: PointerEvent)
     desenharFolha();
     return mostrarBarra([{ rotulo: "Editar legenda", icone: "folha", acao: abrirLegenda }, { rotulo: "Propriedades da folha", icone: "folha", acao: () => abrirPropsFolha(false) }], e.clientX, e.clientY);
   }
-  if (selVistas.length || selNota) {
+  if (selVistas.length || selNota || selAnot) {
     selVistas = [];
     selNota = null;
+    selAnot = null;
     esconderBarra();
     tudo();
   }
@@ -748,6 +921,14 @@ function acoesDaVista(): AcaoContexto[] {
 function excluirSelecao() {
   const f = folha();
   if (!f || comando) return;
+  if (selAnot) {
+    const { k, id } = selAnot;
+    if (k === "cota") f.cotas = f.cotas.filter((x) => x.id !== id);
+    else if (k === "balao") f.baloes = f.baloes.filter((x) => x.id !== id);
+    else f.tabelas = f.tabelas.filter((x) => x.id !== id);
+    selAnot = null;
+    return alterou();
+  }
   if (selNota) {
     f.notas = f.notas.filter((n) => n.id !== selNota);
     selNota = null;
@@ -942,9 +1123,9 @@ const ABAS_D: { id: string; rotulo: string; comandos: Cmd[] }[] = [
     id: "anotacao", rotulo: "Anotação", comandos: [
       { id: "nota", rotulo: "Nota", icone: "nota", dica: "Texto na folha, com propriedades ligadas ({codigo}, {material}…)", grupo: 0 },
       { id: "marcas", rotulo: "Marcas de centro", icone: "marcaCentro", dica: "Liga/desliga as marcas de centro dos furos nas vistas selecionadas (ou em todas)", grupo: 0 },
-      { id: "cota", rotulo: "Cota inteligente", icone: "cota", dica: "Cotas nas arestas das vistas (valor real do modelo)", grupo: 1, emBreve: true },
-      { id: "balao", rotulo: "Balão", icone: "balao", dica: "Número do item da lista de materiais", grupo: 1, emBreve: true },
-      { id: "lista", rotulo: "Lista de materiais", icone: "listaMateriais", dica: "Tabela ITEM, CÓDIGO, DESCRIÇÃO, MATERIAL, QTD", grupo: 1, emBreve: true },
+      { id: "cota", rotulo: "Cota inteligente", icone: "cota", dica: "Toque arestas, vértices ou círculos de uma vista e depois onde fica o número (D)", grupo: 1 },
+      { id: "balao", rotulo: "Balões automáticos", icone: "balao", dica: "Um balão por peça da montagem na vista selecionada, com o nº do item da lista", grupo: 1 },
+      { id: "lista", rotulo: "Lista de materiais", icone: "listaMateriais", dica: "Tabela ITEM, CÓDIGO, DESCRIÇÃO, MATERIAL, QTD sobre a legenda", grupo: 1 },
     ],
   },
   {
@@ -954,7 +1135,7 @@ const ABAS_D: { id: string; rotulo: string; comandos: Cmd[] }[] = [
       { id: "nova-folha", rotulo: "Adicionar folha", icone: "nova", dica: "Nova folha no desenho", grupo: 0 },
       { id: "pdf", rotulo: "Imprimir / PDF", icone: "pdf", dica: "Folha em tamanho real para imprimir ou salvar em PDF (Ctrl+P)", grupo: 1 },
       { id: "svg", rotulo: "Exportar SVG", icone: "exportar", dica: "Folha atual em SVG (mm)", grupo: 1 },
-      { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Camadas por tipo de linha", grupo: 1, emBreve: true },
+      { id: "dxf", rotulo: "Exportar DXF", icone: "dxf", dica: "Folha em DXF (mm), camadas por tipo de linha", grupo: 1 },
     ],
   },
 ];
@@ -994,6 +1175,7 @@ function renderizarAbas() {
     }
     const ativo = (c.id === "modelo" && comando?.tipo === "modelo" && !comando.tres) || (c.id === "tres" && comando?.tipo === "modelo" && comando.tres)
       || (c.id === "projetada" && comando?.tipo === "projetada") || (c.id === "nota" && comando?.tipo === "nota")
+      || (c.id === "cota" && comando?.tipo === "cota")
       || (c.id === "secao" && comando?.tipo === "secao") || (c.id === "detalhe" && comando?.tipo === "detalhe") || (c.id === "planificada" && comando?.tipo === "planificada")
       || (c.id === "props-folha" && comando?.tipo === "folha") || (c.id === "legenda" && comando?.tipo === "legenda");
     b.setAttribute("aria-pressed", String(ativo));
@@ -1021,6 +1203,10 @@ function executar(c: Cmd) {
     case "nova-folha": return adicionarFolha();
     case "pdf": return imprimir();
     case "svg": return exportarSvg();
+    case "dxf": return void exportarDxfFolha();
+    case "cota": return abrirCota();
+    case "balao": return void baloesAutomaticos();
+    case "lista": return inserirLista();
   }
 }
 
@@ -1061,13 +1247,13 @@ function confirmarComando() {
     return alterou();
   }
   fecharComando();
-  if (c.tipo === "vista" || c.tipo === "folha" || c.tipo === "legenda") alterou();
+  if (c.tipo === "vista" || c.tipo === "folha" || c.tipo === "legenda" || c.tipo === "editarCota") alterou();
 }
 
 function cancelarComando() {
   if (!comando) return;
   const c = comando;
-  if (c.tipo === "vista" || c.tipo === "folha" || c.tipo === "legenda" || c.tipo === "nota") {
+  if (c.tipo === "vista" || c.tipo === "folha" || c.tipo === "legenda" || c.tipo === "nota" || c.tipo === "editarCota") {
     doc = validarDesenho(JSON.parse(c.snapshot));
     if (!doc.folhas.some((f) => f.id === folhaId)) folhaId = doc.folhas[0].id;
   }
@@ -1107,6 +1293,8 @@ function renderizarComando() {
     case "legenda": return renderizarLegenda();
     case "secao": case "detalhe": return renderizarSecaoDetalhe();
     case "planificada": return renderizarPlanificada();
+    case "cota": return renderizarCota();
+    case "editarCota": return renderizarEditarCota();
   }
 }
 
@@ -1744,6 +1932,235 @@ function alternarExplodida() {
   avisar(`${alvo.length} vista(s) ${ligar ? "explodida(s)" : "recolhida(s)"}.`);
 }
 
+// ---------- Cota inteligente ----------
+
+function abrirCota() {
+  if (comando) cancelarComando();
+  if (!folha()?.vistas.length) return avisar("Coloque primeiro uma vista.");
+  comando = { tipo: "cota", vista: null, e1: null, e2: null };
+  mostrarPainel(true);
+  renderizarComando();
+  renderizarAbas();
+  atualizarStatus();
+}
+
+function tocarCota(alvo: Element, p: { x: number; y: number }) {
+  if (comando?.tipo !== "cota") return;
+  const c = comando;
+  const f = folha()!;
+  const id = alvo.closest("[data-vista]")?.getAttribute("data-vista") ?? c.vista;
+  const v = vistaDe(id);
+  const pr = v && projDaVista(f, v);
+  if (v && pr && (!c.vista || c.vista === v.id)) {
+    const s = escalaDaVista(f, v);
+    const q: [number, number] = [(p.x - v.x) / s, (p.y - v.y) / s];
+    // tolerâncias em mm da folha (o dedo é largo): vértice 2,5 mm, linha/círculo 2 mm
+    // tolerâncias na folha: o maior entre alguns mm e alguns pixels (o dedo é largo; zoom afastado)
+    const px = pxPorMm();
+    const dedo = matchMedia("(pointer: coarse)").matches;
+    const tolV = Math.max(dedo ? 3 : 2, (dedo ? 14 : 8) / px) / s, tolL = Math.max(dedo ? 2.5 : 1.5, (dedo ? 12 : 6) / px) / s;
+    const ent = entidadeSob(q, pr.visiveis, pr.circulos, tolV, tolL);
+    if (ent && !(c.e1 && c.e1.tipo === "circulo")) {
+      if (!c.e1) {
+        c.vista = v.id;
+        c.e1 = ent;
+      } else if (!c.e2) c.e2 = ent;
+      else c.e2 = ent;
+      renderizarCota();
+      atualizarStatus();
+      return desenharFolha(), desenharPreviaCota();
+    }
+  }
+  if (!c.e1 || !c.vista) return avisar("Toque uma aresta, vértice ou círculo de uma vista.");
+  // toque no vazio (ou com círculo escolhido): coloca a cota com o número ali
+  const vv = vistaDe(c.vista)!;
+  const s = escalaDaVista(f, vv);
+  const nova: Cota = { id: novoIdD(), vista: vv.id, e1: c.e1, ...(c.e2 ? { e2: c.e2 } : {}), pos: [(p.x - vv.x) / s, (p.y - vv.y) / s], modo: "auto" };
+  if (!medida(nova)) {
+    c.e1 = c.e2 = null;
+    renderizarCota();
+    return avisar("Essa combinação não dá cota: toque de novo.");
+  }
+  f.cotas.push(nova);
+  c.e1 = c.e2 = null;
+  c.vista = null;
+  registrarPasso();
+  salvarAutosave();
+  renderizarCota();
+  atualizarStatus();
+  desenharFolha();
+}
+
+/** Entidades escolhidas destacadas na vista enquanto a cota não é colocada. */
+function desenharPreviaCota() {
+  if (comando?.tipo !== "cota" || !comando.vista) return;
+  const f = folha()!;
+  const v = vistaDe(comando.vista)!;
+  const s = escalaDaVista(f, v), A = FORMATOS[f.formato].a;
+  const X = (q: [number, number]) => n3(v.x + q[0] * s), Y = (q: [number, number]) => n3(A - (v.y + q[1] * s));
+  const d = [comando.e1, comando.e2].filter((e): e is EntCota => !!e).map((e) => e.tipo === "ponto" ? `<circle class="previa-ent" cx="${X(e.p)}" cy="${Y(e.p)}" r="1.2" />`
+    : e.tipo === "linha" ? `<path class="previa-ent" d="M${X(e.a)} ${Y(e.a)}L${X(e.b)} ${Y(e.b)}" />`
+    : `<circle class="previa-ent" cx="${X(e.c)}" cy="${Y(e.c)}" r="${n3(e.r * s)}" />`).join("");
+  svg.insertAdjacentHTML("beforeend", d);
+}
+
+function renderizarCota() {
+  if (comando?.tipo !== "cota") return;
+  const c = comando;
+  const p = painelBase("Cota inteligente");
+  const nome = (e: EntCota | null) => (!e ? "—" : e.tipo === "ponto" ? "Vértice" : e.tipo === "linha" ? "Aresta" : `Círculo Ø${fmt(2 * e.r)}`);
+  const b = caixa(p, "Entidades");
+  b.innerHTML = `<p>1ª: <strong>${nome(c.e1)}</strong></p><p>2ª: <strong>${nome(c.e2)}</strong></p>
+    <p class="dica">Uma aresta: comprimento · duas paralelas: distância · duas em ângulo: ângulo · círculo: diâmetro · dois vértices: distância (horizontal, vertical ou alinhada conforme onde o número fica). O valor é o real do modelo, seja qual for a escala.</p>
+    <button class="largo" data-b="limpar">Recomeçar</button>`;
+  b.querySelector<HTMLButtonElement>('[data-b="limpar"]')!.onclick = () => {
+    c.e1 = c.e2 = null;
+    c.vista = null;
+    renderizarCota();
+    desenharFolha();
+  };
+}
+
+function abrirEditarCota(id: string) {
+  if (comando) cancelarComando();
+  comando = { tipo: "editarCota", id, snapshot: JSON.stringify(doc) };
+  mostrarPainel(true);
+  renderizarComando();
+}
+
+function renderizarEditarCota() {
+  if (comando?.tipo !== "editarCota") return;
+  const c = folha()!.cotas.find((x) => x.id === (comando as { id: string }).id);
+  if (!c) return fecharComando();
+  const p = painelBase("Cota");
+  const m = medida(c);
+  const b = caixa(p, "Valor e texto");
+  b.innerHTML = `<p>Valor medido: <strong>${m ? fmt(m.valor) : "—"}${m?.tipo === "angulo" ? "°" : " mm"}</strong></p>
+    <label class="campo"><span>Texto antes (ex.: 4×)</span><input data-k="prefixo" /></label>
+    <label class="campo"><span>Texto depois</span><input data-k="sufixo" /></label>
+    <label class="campo"><span>Casas decimais</span><select data-k="casas">${[0, 1, 2, 3].map((n) => `<option value="${n}"${(c.casas ?? 2) === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+    <label class="campo"><span>Tolerância ± (mm)</span><input data-k="tol" type="number" step="0.01" min="0" /></label>
+    ${m?.tipo === "linear" ? `<label class="campo"><span>Direção</span><select data-k="modo">${[["auto", "Automática"], ["h", "Horizontal"], ["v", "Vertical"], ["alinhada", "Alinhada"]].map(([k, n]) => `<option value="${k}"${c.modo === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>` : ""}`;
+  b.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-k]").forEach((i) => {
+    const k = i.dataset.k as "prefixo" | "sufixo" | "casas" | "tol" | "modo";
+    if (i instanceof HTMLInputElement) i.value = String(c[k] ?? "");
+    i.oninput = () => {
+      const val = i.value;
+      if (k === "casas") c.casas = Number(val);
+      else if (k === "tol") c.tol = Number(val.replace(",", ".")) || undefined;
+      else if (k === "modo") c.modo = val as Cota["modo"];
+      else c[k] = val || undefined;
+      desenharFolha();
+    };
+  });
+}
+
+// ---------- Balões e lista de materiais ----------
+
+async function baloesAutomaticos() {
+  const f = folha();
+  if (!f) return;
+  const v = vistaDe(selVistas[0] ?? null) ?? f.vistas.find((x) => modeloDe(x.modelo)?.tipo === "montagem");
+  const m = v && modeloDe(v.modelo);
+  if (!v || !m) return avisar("Selecione a vista da montagem.");
+  if (m.tipo !== "montagem") return avisar("Balões automáticos: a vista precisa ser de uma montagem (peça única: item 1 na lista).");
+  const a = m.doc as DocumentoMontagem;
+  const itens = itensDoModelo(m, opcoesDa(v));
+  await garantirSolidos(itens);
+  const poses = v.explodida ? posesExplodidas(a) : null;
+  // um balão por peça (primeira instância visível)
+  const vistos = new Set<string>();
+  const comps = a.componentes.filter((c) => !c.suprimido && !vistos.has(c.peca) && (vistos.add(c.peca), true));
+  const s = escalaDaVista(f, v);
+  const ancoras = comps.map((c) => {
+    const p = a.pecas.find((x) => x.id === c.peca)!;
+    const r = resultados.get(`${p.id}:${p.marca ?? marcaDe(JSON.stringify(p.doc.features.slice(0, p.doc.retrocesso ?? p.doc.features.length)))}`);
+    const vs = r?.topologia?.vertices ?? [];
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const q of vs) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], q[i]); mx[i] = Math.max(mx[i], q[i]); }
+    const centro: [number, number, number] = vs.length ? [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2] : [0, 0, 0];
+    return naVista(v.camera, aplicarPonto(poses?.get(c.id) ?? c.t, centro));
+  });
+  const pr = projDaVista(f, v) ?? await projecaoDaVista(f, v, m);
+  const b = pr.caixa;
+  const pos = posicionarBaloes(ancoras.map(([x, y]) => [x * s, y * s] as [number, number]), { x0: b.x0 * s, y0: b.y0 * s, x1: b.x1 * s, y1: b.y1 * s });
+  f.baloes = f.baloes.filter((x) => x.vista !== v.id);
+  comps.forEach((c, i) => f.baloes.push({ id: novoIdD(), vista: v.id, comp: c.id, ancora: ancoras[i], pos: pos[i] }));
+  if (!f.tabelas.length) f.tabelas.push({ id: novoIdD(), modelo: m.id });
+  alterou();
+  avisar(`${comps.length} balão(ões); a lista de materiais está sobre a legenda.`);
+}
+
+function inserirLista() {
+  const f = folha();
+  if (!f) return;
+  const v = vistaDe(selVistas[0] ?? null) ?? f.vistas.find((x) => modeloDe(x.modelo)?.tipo === "montagem") ?? f.vistas[0];
+  if (!v) return avisar("Coloque primeiro uma vista do modelo.");
+  f.tabelas = [{ id: novoIdD(), modelo: v.modelo }];
+  alterou();
+}
+
+// ---------- DXF da folha ----------
+
+const CAMADAS_DXF = { FORMATO: 7, VISIVEL: 7, OCULTA: 8, CENTRO: 1, HACHURA: 9, COTA: 3, TEXTO: 2 };
+
+async function exportarDxfFolha() {
+  if (!doc) return;
+  await esperarVistas();
+  const f = folha()!;
+  const F = FORMATOS[f.formato];
+  const ents: EntDxf[] = [];
+  const m = moldura(f.formato), r = retanguloLegenda(f.formato);
+  const ret = (x0: number, y0: number, x1: number, y1: number, cam: string) => ents.push(...segmentos([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]], cam));
+  ret(0, 0, F.l, F.a, "FORMATO");
+  ret(m.x0, m.y0, m.x1, m.y1, "FORMATO");
+  ret(r.x0, r.y0, r.x1, r.y1, "FORMATO");
+  const props = propriedades(f);
+  ents.push({ tipo: "texto", camada: "TEXTO", p: [r.x0 + 2, r.y1 - 10], h: 5, s: props.titulo }, { tipo: "texto", camada: "TEXTO", p: [r.x0 + 2, r.y0 + 20], h: 3.5, s: `${props.codigo}  ESCALA ${props.escala}  FOLHA ${props.folha}` });
+  for (const v of f.vistas) {
+    const pr = projDaVista(f, v);
+    if (!pr) continue;
+    const s = escalaDaVista(f, v);
+    const T = (q: [number, number]): [number, number] => [v.x + q[0] * s, v.y + q[1] * s];
+    // detalhe: só o que cai dentro do círculo
+    const dentro = (q: [number, number]) => !v.detalhe || Math.hypot(q[0] - v.detalhe.cx, q[1] - v.detalhe.cy) <= v.detalhe.r;
+    const add = (ls: [number, number][][], cam: string) => {
+      for (const l of ls) for (let i = 1; i < l.length; i++) if (dentro(l[i - 1]) && dentro(l[i])) ents.push({ tipo: "linha", camada: cam, a: T(l[i - 1]), b: T(l[i]) });
+    };
+    add(pr.visiveis, "VISIVEL");
+    if (v.estilo !== "sem-ocultas") add(pr.ocultas, v.estilo === "arame" ? "VISIVEL" : "OCULTA");
+    for (const rg of pr.cortes ?? []) for (const l of rg.lacos) add([[...l, l[0]]], "HACHURA");
+    if (v.detalhe) ents.push({ tipo: "circulo", camada: "VISIVEL", c: T([v.detalhe.cx, v.detalhe.cy]), r: v.detalhe.r * s });
+    if (v.marcasCentro !== false) for (const c of pr.circulos) if (dentro([c.cx, c.cy])) {
+      const e = 2 / s;
+      ents.push({ tipo: "linha", camada: "CENTRO", a: T([c.cx - c.r - e, c.cy]), b: T([c.cx + c.r + e, c.cy]) }, { tipo: "linha", camada: "CENTRO", a: T([c.cx, c.cy - c.r - e]), b: T([c.cx, c.cy + c.r + e]) });
+    }
+  }
+  for (const c0 of f.cotas) {
+    const v = vistaDe(c0.vista);
+    const d = v && desenhoCota(cotaAtual(f, c0).c, escalaDaVista(f, v));
+    if (!v || !d) continue;
+    const T = (q: [number, number]): [number, number] => [v.x + q[0], v.y + q[1]];
+    for (const [a, b] of d.linhas) ents.push({ tipo: "linha", camada: "COTA", a: T(a), b: T(b) });
+    for (const a of d.arcos) ents.push({ tipo: "arco", camada: "COTA", c: T(a.c), r: a.r, a0: a.a0, a1: a.a1 });
+    for (const st of d.setas) {
+      const L = 3, w = 1;
+      const base: [number, number] = [st.p[0] - st.d[0] * L, st.p[1] - st.d[1] * L];
+      ents.push({ tipo: "linha", camada: "COTA", a: T(st.p), b: T([base[0] - st.d[1] * w, base[1] + st.d[0] * w]) }, { tipo: "linha", camada: "COTA", a: T(st.p), b: T([base[0] + st.d[1] * w, base[1] - st.d[0] * w]) });
+    }
+    ents.push({ tipo: "texto", camada: "COTA", p: T(d.texto.p), h: 3.5, s: d.texto.s, ang: d.texto.ang });
+  }
+  for (const n of f.notas) preencherPropriedades(n.texto, props).split("\n").forEach((l, i) => ents.push({ tipo: "texto", camada: "TEXTO", p: [n.x, n.y - i * n.altura * 1.5], h: n.altura, s: l }));
+  for (const b of f.baloes) {
+    const v = vistaDe(b.vista);
+    if (!v) continue;
+    const s = escalaDaVista(f, v);
+    const c: [number, number] = [v.x + b.pos[0], v.y + b.pos[1]];
+    ents.push({ tipo: "circulo", camada: "COTA", c, r: 5 }, { tipo: "linha", camada: "COTA", a: [v.x + b.ancora[0] * s, v.y + b.ancora[1] * s], b: c }, { tipo: "texto", camada: "COTA", p: [c[0] - 1.5, c[1] - 1.8], h: 5, s: String(itemDoBalao(b, v) ?? "?") });
+  }
+  baixar(new Blob([gerarDxf(ents, CAMADAS_DXF)], { type: "application/dxf" }), `${doc.nome} - ${f.nome}.dxf`);
+}
+
 // ---------- Propriedades da vista ----------
 
 function abrirPropsVista(id: string) {
@@ -1981,7 +2398,7 @@ function renderizarLegenda() {
 
 const CSS_FOLHA = `.papel{fill:#fff}.l-moldura{stroke:#000;stroke-width:.7;fill:none}.l-media{stroke:#000;stroke-width:.5}.l-fina{stroke:#000;stroke-width:.25}
 .v-vis{fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round}.v-oc{fill:none;stroke:#000}.v-centro{fill:none;stroke:#000}
-.v-alvo{fill:none;stroke:none}.v-hachura{stroke:#000}.v-regiao{stroke:none}.v-dobra{fill:none;stroke:#000}.m-detalhe{fill:none;stroke:#000;stroke-width:.25}.m-corte{fill:none;stroke:#000;stroke-width:.25;stroke-dasharray:8 1.5 1 1.5}.m-corte-ponta,.m-seta{fill:none;stroke:#000;stroke-width:.5}.m-seta-ponta{fill:#000}.t-letra{font-weight:600}text{font-family:"Helvetica","Arial",sans-serif;fill:#000}.t-rot{fill:#444}.t-aviso{fill:#a33}.sombra{display:none}`;
+.v-alvo{fill:none;stroke:none}.c-linha,.b-linha{fill:none;stroke:#000;stroke-width:.25}.c-seta,.b-ponto{fill:#000}.c-alvo{fill:none;stroke:none}.b-circulo{fill:#fff;stroke:#000;stroke-width:.35}.cota.pendente .c-texto{fill:#000}.v-hachura{stroke:#000}.v-regiao{stroke:none}.v-dobra{fill:none;stroke:#000}.m-detalhe{fill:none;stroke:#000;stroke-width:.25}.m-corte{fill:none;stroke:#000;stroke-width:.25;stroke-dasharray:8 1.5 1 1.5}.m-corte-ponta,.m-seta{fill:none;stroke:#000;stroke-width:.5}.m-seta-ponta{fill:#000}.t-letra{font-weight:600}text{font-family:"Helvetica","Arial",sans-serif;fill:#000}.t-rot{fill:#444}.t-aviso{fill:#a33}.sombra{display:none}`;
 
 /** SVG autônomo da folha em tamanho real (mm), com as espessuras da norma. */
 function svgDaFolha(f: Folha): string {
@@ -2341,6 +2758,7 @@ document.addEventListener("keydown", (e) => {
     }
   } else if (ctrl) return;
   else if (k === "f") enquadrarFolha();
+  else if (k === "d" && !comando) abrirCota();
   else if (e.key === "Delete" && !comando) excluirSelecao();
   else return;
   e.preventDefault();

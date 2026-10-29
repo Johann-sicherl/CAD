@@ -9,6 +9,7 @@
 
 import type { Documento, Vec3 } from "../model";
 import type { DocumentoMontagem } from "../montagem/modelo";
+import type { Balao, Cota, TabelaLista } from "./anotacoes";
 
 // ---------- formatos e escalas ----------
 
@@ -236,6 +237,9 @@ export interface Folha {
   diedro: 1 | 3;
   vistas: VistaDesenho[];
   notas: Nota[];
+  cotas: Cota[];
+  baloes: Balao[];
+  tabelas: TabelaLista[];
 }
 
 /** Campos da legenda (NBR 10582); vazios vêm do cartão do modelo no cofre e da folha. */
@@ -258,7 +262,7 @@ export const novoIdD = () => Math.random().toString(36).slice(2, 10);
 
 export function novaFolha(d: DocumentoDesenho | null, formato: Formato = "A3"): Folha {
   const n = (d?.folhas.length ?? 0) + 1;
-  return { id: novoIdD(), nome: `Folha${n}`, formato, escala: 1, diedro: 1, vistas: [], notas: [] };
+  return { id: novoIdD(), nome: `Folha${n}`, formato, escala: 1, diedro: 1, vistas: [], notas: [], cotas: [], baloes: [], tabelas: [] };
 }
 
 export function desenhoVazio(nome = "Desenho1", formato: Formato = "A3"): DocumentoDesenho {
@@ -288,11 +292,16 @@ export function validarDesenho(dados: unknown): DocumentoDesenho {
       ...(v.escala !== undefined && num(v.escala, 0) > 0 ? { escala: v.escala } : { escala: undefined }),
     })),
     notas: (Array.isArray(f.notas) ? f.notas : []).filter((n) => n && typeof n.texto === "string").map((n) => ({ ...n, x: num(n.x, 50), y: num(n.y, 50), altura: num(n.altura, 3.5) })),
+    cotas: Array.isArray(f.cotas) ? f.cotas.filter((c) => c && c.e1 && Array.isArray(c.pos)) : [],
+    baloes: Array.isArray(f.baloes) ? f.baloes.filter((b) => b && Array.isArray(b.pos) && Array.isArray(b.ancora)) : [],
+    tabelas: Array.isArray(f.tabelas) ? f.tabelas.filter((t) => t && typeof t.modelo === "string" && ids.has(t.modelo)) : [],
   }));
   if (!folhas.length) folhas.push(novaFolha(null));
-  // mãe que sumiu: a vista fica independente
+  // mãe que sumiu: a vista fica independente; cotas e balões de vista que sumiu saem
   for (const f of folhas) {
     const vs = new Set(f.vistas.map((v) => v.id));
+    f.cotas = f.cotas.filter((c) => vs.has(c.vista));
+    f.baloes = f.baloes.filter((b) => vs.has(b.vista));
     for (const v of f.vistas) if (v.mae && !vs.has(v.mae)) delete v.mae, delete v.lado;
   }
   return { formato: "wjdrw", versao: 1, nome: typeof d.nome === "string" && d.nome ? d.nome : "Desenho", modelos, folhas, legenda: d.legenda && typeof d.legenda === "object" ? d.legenda : {} };
@@ -330,6 +339,8 @@ export function moverVista(f: Folha, id: string, x: number, y: number, livre = f
 export function excluirVistas(f: Folha, ids: string[]) {
   const s = new Set(ids);
   f.vistas = f.vistas.filter((v) => !s.has(v.id));
+  f.cotas = f.cotas.filter((c) => !s.has(c.vista));
+  f.baloes = f.baloes.filter((b) => !s.has(b.vista));
   for (const v of f.vistas) if (v.mae && s.has(v.mae)) delete v.mae, delete v.lado;
 }
 
