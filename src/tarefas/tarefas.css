@@ -49,7 +49,9 @@ body.tp-app { grid-template-rows: auto minmax(0, 1fr) auto; }
 
 /* janela de escrita */
 .tp-escrita { display: grid; gap: 8px; }
-.tp-transcrito { font-size: 20px !important; min-height: 48px !important; padding: 6px 12px !important; }
+.tp-transcrito { font-size: 20px !important; min-height: 48px !important; padding: 8px 12px !important; width: 100%; resize: none; overflow: hidden; line-height: 1.35; }
+.tp-modo-tablet .tp-tela, .tp-modo-tablet .tp-alts, .tp-modo-tablet .tp-so-tinta { display: none; }
+.tp-modo-tablet .tp-transcrito { min-height: min(220px, 32vh) !important; background: #fffef8; border-color: var(--linha-forte) !important; }
 .tp-alts { display: flex; gap: 6px; flex-wrap: wrap; min-height: 0; }
 .tp-alts:empty { display: none; }
 .tp-alts button { min-height: 32px; border-radius: 999px; font-size: 14px; }

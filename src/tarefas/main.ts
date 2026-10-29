@@ -485,12 +485,13 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
   const amanha = diaLocal(new Date(Date.now() + 86400000));
   const { corpo, fechar } = janela(t ? "Editar tarefa" : "Nova tarefa", `
     <div class="tp-escrita">
-      <input class="tp-transcrito" data-titulo value="${escapar(t?.titulo ?? "")}" placeholder="Escreva abaixo com a caneta (ou digite aqui)" autocomplete="off" />
+      <textarea class="tp-transcrito" data-titulo rows="1" placeholder="Escreva abaixo com a caneta (ou digite aqui)" autocomplete="off" spellcheck="true">${escapar(t?.titulo ?? "")}</textarea>
       <div class="tp-alts" data-alts></div>
       <canvas class="tp-tela" data-tela></canvas>
       <div class="tp-barra-escrita">
-        <button data-desf title="Apaga o último traço">Desfazer traço</button>
-        <button data-limpa title="Guarda o texto e limpa a área para continuar escrevendo">Continuar escrevendo</button>
+        <button data-desf class="tp-so-tinta" title="Apaga o último traço">Desfazer traço</button>
+        <button data-limpa class="tp-so-tinta" title="Guarda o texto e limpa a área para continuar escrevendo">Continuar escrevendo</button>
+        <button data-modo title="Alterna entre a área de escrita do app (transcrição online) e a escrita do próprio tablet no campo (sem internet)">Escrita do tablet</button>
         <span class="tp-sit" data-sit></span>
       </div>
       <div class="tp-linha">
@@ -502,9 +503,28 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
     { rotulo: "Cancelar" },
     { rotulo: "OK", destaque: true, acao: () => (void ok(), false) },
   ], true);
-  // o foco automático no campo abriria o teclado por cima da área de escrita
-  (document.activeElement as HTMLElement | null)?.blur();
-  const campo = $<HTMLInputElement>("[data-titulo]", corpo);
+  const campo = $<HTMLTextAreaElement>("[data-titulo]", corpo);
+  // com teclado físico (ou no computador), o campo já abre pronto para digitar; só com o teclado
+  // da tela o foco fica fora, para ele não cobrir a área de escrita
+  if (temTecladoFisico()) campo.focus();
+  else (document.activeElement as HTMLElement | null)?.blur();
+  // tecla digitada com o foco fora do campo (teclado físico): vai para o campo
+  const tecla = (e: KeyboardEvent) => {
+    if (!corpo.isConnected) return document.removeEventListener("keydown", tecla);
+    if (e.target === campo || (e.target as HTMLElement).closest("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+    e.preventDefault();
+    campo.focus();
+    campo.setRangeText(e.key, campo.selectionStart, campo.selectionEnd, "end");
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  document.addEventListener("keydown", tecla);
+  // altura do campo acompanha o texto (várias linhas quando a frase é longa)
+  const crescer = () => {
+    campo.style.height = "auto";
+    campo.style.height = `${campo.scrollHeight + 2}px`;
+  };
+  campo.addEventListener("input", crescer);
+  requestAnimationFrame(crescer);
   const altsEl = $("[data-alts]", corpo);
   const sit = $("[data-sit]", corpo);
   const area = areaEscrita($<HTMLCanvasElement>("[data-tela]", corpo), campo, (alts) => {
@@ -519,8 +539,32 @@ function editarTarefa(t: Tarefa | null, pasta?: string) {
   const temPrazo = $<HTMLInputElement>("[data-tem-prazo]", corpo);
   const prazo = $<HTMLInputElement>("[data-prazo]", corpo);
   temPrazo.onchange = () => (prazo.disabled = !temPrazo.checked);
-  campo.onkeydown = (e) => e.key === "Enter" && void ok();
-  void reconhecedor().then((r) => (sit.textContent = r ? `Escrita: ${r.nome}.` : "Sem reconhecimento de escrita: digite no campo."));
+  campo.onkeydown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    void ok();
+  };
+  // modo "escrita do tablet": sem a área do app, o campo fica grande para escrever nele com a
+  // S Pen (o próprio tablet transcreve, sem internet) ou digitar
+  const janelaEl = corpo.closest<HTMLElement>(".wj-janela")!;
+  const modoTablet = (ligar: boolean, lembrar = true) => {
+    janelaEl.classList.toggle("tp-modo-tablet", ligar);
+    $("[data-modo]", corpo).textContent = ligar ? "Área de escrita do app" : "Escrita do tablet";
+    if (lembrar) guardarPref("modo-escrita", ligar ? "tablet" : "app");
+    campo.placeholder = ligar ? "Escreva aqui com a S Pen ou digite" : "Escreva abaixo com a caneta (ou digite aqui)";
+    if (ligar) {
+      sit.textContent = "Escreva com a S Pen direto no campo (o tablet transcreve, sem internet) ou digite.";
+      campo.focus();
+    }
+    crescer();
+  };
+  $("[data-modo]", corpo).onclick = () => modoTablet(!janelaEl.classList.contains("tp-modo-tablet"));
+  void reconhecedor().then((r) => {
+    // sem internet e sem reconhecedor próprio do navegador: vai direto para a escrita do tablet
+    const semRec = !r || (r.online && !navigator.onLine);
+    if (semRec || pref("modo-escrita", "app") === "tablet") return modoTablet(true, false);
+    sit.textContent = `Escrita: ${r.nome}.`;
+  });
 
   async function ok() {
     await area.concluir();
@@ -727,6 +771,12 @@ function renderizar() {
   document.title = "WJTaskPlan — WJProMaster";
 }
 
+/** Teclado físico (capa com teclado, Bluetooth, computador): lembrado quando aparece uma tecla real. */
+const temTecladoFisico = () => pref("teclado", "") === "1" || !matchMedia("(pointer: coarse)").matches;
+document.addEventListener("keydown", (e) => {
+  // o teclado da tela do Android manda "Unidentified"/229; tecla real = teclado físico
+  if (e.key !== "Unidentified" && e.keyCode !== 229 && pref("teclado", "") !== "1") guardarPref("teclado", "1");
+}, true);
 document.addEventListener("keydown", (e) => {
   if (document.querySelector(".wj-fundo") || (e.target as HTMLElement).closest("input, textarea, select")) return;
   if (e.key === "n" || e.key === "N") {

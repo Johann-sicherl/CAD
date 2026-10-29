@@ -9,6 +9,8 @@ export type Traco = [number[], number[], number[]]; // xs, ys, tempos (ms)
 
 export interface Reconhecedor {
   nome: string;
+  /** precisa de internet */
+  online?: boolean;
   reconhecer(tracos: Traco[], largura: number, altura: number): Promise<string[]>;
 }
 
@@ -65,6 +67,7 @@ const URL_GOOGLE = "https://inputtools.google.com/request?ime=handwriting&app=wj
 
 const reconhecedorGoogle: Reconhecedor = {
   nome: "reconhecimento online do Google",
+  online: true,
   async reconhecer(tracos, largura, altura) {
     const r = await fetch(URL_GOOGLE, {
       method: "POST",
@@ -107,7 +110,7 @@ export interface AreaEscrita {
  * reconhecida e o campo mostra `texto já confirmado + reconhecido`; as alternativas vão para
  * `aoAlternativas`. Quando a caneta está em uso, o toque do dedo/palma na área é ignorado.
  */
-export function areaEscrita(tela: HTMLCanvasElement, campo: HTMLInputElement, aoAlternativas: (a: string[]) => void, aoSituacao: (s: string) => void): AreaEscrita {
+export function areaEscrita(tela: HTMLCanvasElement, campo: HTMLInputElement | HTMLTextAreaElement, aoAlternativas: (a: string[]) => void, aoSituacao: (s: string) => void): AreaEscrita {
   const ctx = tela.getContext("2d")!;
   const tracos: Traco[] = [];
   let atual: Traco | null = null;
