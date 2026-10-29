@@ -184,6 +184,39 @@ export interface VistaDesenho {
   marcasCentro?: boolean;
   /** rótulo embaixo da vista (nome e escala); padrão: só quando a escala difere da folha */
   rotulo?: boolean;
+  /** vista de seção: plano de corte por `p` com normal = olho da vista (o lado de quem olha sai) */
+  secao?: { p: Vec3; letra: string; mae: string };
+  /** vista de detalhe: círculo (centro e raio no plano da vista, mm do modelo) da vista mãe */
+  detalhe?: { mae: string; cx: number; cy: number; r: number; letra: string };
+  /** montagem na posição explodida (passos da vista explodida) */
+  explodida?: boolean;
+  /** peça de chapa planificada (com as linhas de dobra) */
+  planificada?: boolean;
+}
+
+/** Letras de seção e detalhe (ABNT: sem I, O e Q, que se confundem com números). */
+const LETRAS = "ABCDEFGHJKLMNPRSTUVWXYZ";
+export function proximaLetra(d: DocumentoDesenho): string {
+  const usadas = new Set(d.folhas.flatMap((f) => f.vistas.flatMap((v) => [v.secao?.letra, v.detalhe?.letra])).filter(Boolean));
+  for (const l of LETRAS) if (!usadas.has(l)) return l;
+  for (const a of LETRAS) for (const b of LETRAS) if (!usadas.has(a + b)) return a + b;
+  return "?";
+}
+
+/** Plano de corte da seção a partir da linha tocada na vista mãe (coordenadas do plano da mãe). */
+export function pontoNaVista(mae: Camera, x: number, y: number): Vec3 {
+  const r = norm(mae.direita), u = acima(mae);
+  return [r[0] * x + u[0] * y, r[1] * x + u[1] * y, r[2] * x + u[2] * y];
+}
+
+/** Ponto 3D → plano da vista (x para a direita, y para cima). */
+export function naVista(c: Camera, p: Vec3): [number, number] {
+  const o = norm(c.olho);
+  let r = norm(c.direita);
+  const k = r[0] * o[0] + r[1] * o[1] + r[2] * o[2];
+  r = norm([r[0] - o[0] * k, r[1] - o[1] * k, r[2] - o[2] * k]);
+  const u = norm(vet(o, r));
+  return [p[0] * r[0] + p[1] * r[1] + p[2] * r[2], p[0] * u[0] + p[1] * u[1] + p[2] * u[2]];
 }
 
 export interface Nota {

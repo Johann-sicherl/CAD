@@ -62,14 +62,14 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - Projeção normal a uma aresta da vista (vista de face inclinada em verdadeira grandeza);
   seta e letra (VISTA A).
 
-### 2.5 Vista de seção (Section View) — D-B
+### 2.5 Vista de seção (Section View) — ✅ horizontal/vertical (alinhada, escalonada, parcial ⏸)
 - **Linha de corte**: horizontal, vertical, alinhada (dois segmentos) ⏸ e escalonada ⏸, tocada
   sobre uma vista; letra (A-A) e sentido (inverter).
 - **Hachura** (ABNT: 45°, espaçamento pela escala) nas faces cortadas; componentes da montagem
   com hachuras alternadas; **excluir da seção** (eixos, parafusos) ⏸.
 - **Seção parcial/profundidade** ⏸.
 
-### 2.6 Vista de detalhe (Detail View) — D-B
+### 2.6 Vista de detalhe (Detail View) — ✅ círculo (perfil livre ⏸)
 - Círculo (ou perfil) desenhado na vista mãe; letra (DETALHE B); escala (padrão 2× a da mãe);
   borda (círculo, contorno, sem); rótulo com escala.
 
@@ -79,7 +79,7 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 
 ### 2.8 Vista de recorte (Crop View) e quebra parcial (Broken-out Section) — ⏸
 
-### 2.9 Vista planificada (chapa metálica) — D-B
+### 2.9 Vista planificada (chapa metálica) — ✅ linhas de dobra (nota de dobra D-C)
 - Vista do **padrão planificado** com linhas de dobra (para cima/para baixo) e a **nota de
   dobra** (ângulo, raio, sentido); usa o mesmo planificado do DXF.
 
@@ -188,11 +188,25 @@ Normas brasileiras como padrão: formatos ABNT NBR 10068 (A4–A0), legenda NBR 
 - A peça e a montagem têm **Criar desenho** no menu; o desenho abre o modelo (barra de contexto
   da vista) e o botão **Desenho** na peça/montagem volta a ele, com as vistas atualizadas.
 
+## 8.2 Como ficou (D-B)
+
+- **Seção**: o kernel corta cada sólido pelo plano (sai o lado de quem olha) e devolve as faces
+  cortadas como laços no plano da vista; a hachura é um padrão SVG a 45° com 2,5 mm de passo na
+  folha, sentidos alternados entre componentes. Na mãe: linha de corte traço-ponto com pontas
+  grossas, setas para onde se olha e as letras (sem I, O, Q). A seção fica alinhada como uma
+  projetada, do lado tocado.
+- **Detalhe**: mesma câmera da mãe em escala 1,5×–5× (padrão 2×), recortada pelo círculo;
+  círculo e letra na mãe; rótulo DETALHE B ESCALA 4:1.
+- **Planificada**: o kernel regenera a peça com o planificado (mesmo do DXF) e devolve as linhas
+  de dobra; a vista olha de cima da maior face plana.
+- **Explodida**: vista de montagem com os passos da vista explodida (propriedades da vista ou
+  botão Vista explodida); a posição real da montagem não muda.
+
 ## 9. Roteiro do desenho
 
 | Etapa | Conteúdo | Status |
 |---|---|---|
 | D-A | arquivo `.wjdrw`, Novo → Desenho / Criar desenho do modelo, folha com formato ABNT e legenda do cofre, Vista do modelo, Três vistas padrão, Vista projetada, estilos (visíveis e ocultas), escala, mover vistas, propriedades da folha, várias folhas, notas, marcas de centro, PDF/SVG | ✅ |
-| D-B | vista de seção (hachura), vista de detalhe, vista planificada da chapa, vista explodida da montagem, atualização associativa | — |
+| D-B | vista de seção (hachura), vista de detalhe, vista planificada da chapa, vista explodida da montagem, atualização associativa | ✅ 29/10/2026 |
 | D-C | cota inteligente nas vistas, notas, marcas e linhas de centro, balões, tabela de lista de materiais, vista auxiliar e interrompida, PDF e DXF, impressão | — |
 | D-D | itens do modelo, cotas de base/coordenada, símbolos (acabamento, GD&T, datum), tabela de revisões, editar formato | — |

@@ -5,13 +5,13 @@
 
 import "../style.css";
 import { ICONES, type NomeIcone } from "../icones";
-import { ClienteKernel } from "../kernel/cliente";
-import type { Projecao } from "../kernel/projecao";
-import { MATERIAIS, validarDocumento, type Documento } from "../model";
-import { marcaDe, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
+import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
+import type { Corte, Projecao } from "../kernel/projecao";
+import { ehBaseChapa, MATERIAIS, validarDocumento, type Documento } from "../model";
+import { marcaDe, posesExplodidas, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
 import {
   afastarDaMae, areaUtil, cameraProjetada, escalaQueCabe, CAMERAS, CAMPOS_LEGENDA, caixaNaFolha, desenhoVazio, ESCALAS, escalaDaVista, excluirVistas, FORMATOS, ladoDoPonto,
-  layoutTresVistas, lerEscala, moldura, moverVista, NOME_ESTILO, NOME_ORIENTACAO, novaFolha, novoIdD, orientacaoDe, preencherPropriedades,
+  layoutTresVistas, lerEscala, naVista, pontoNaVista, proximaLetra, moldura, moverVista, NOME_ESTILO, NOME_ORIENTACAO, novaFolha, novoIdD, orientacaoDe, preencherPropriedades,
   proximoNomeVista, retanguloLegenda, rotuloEscala, validarDesenho, type Camera, type CampoLegenda, type DocumentoDesenho, type EstiloVista,
   type Folha, type Formato, type ModeloDesenho, type Nota, type Orientacao, type Retangulo, type VistaDesenho,
 } from "./modelo";
@@ -46,7 +46,12 @@ type Comando =
   | { tipo: "nota"; texto: string; altura: number; editando: string | null; snapshot: string }
   | { tipo: "vista"; id: string; snapshot: string }
   | { tipo: "folha"; snapshot: string; nova: boolean }
-  | { tipo: "legenda"; snapshot: string };
+  | { tipo: "legenda"; snapshot: string }
+  /** seção: vista mãe, orientação da linha e o ponto do corte (plano da mãe, mm do modelo) */
+  | { tipo: "secao"; mae: string | null; orient: "horizontal" | "vertical"; ponto: [number, number] | null }
+  /** detalhe: vista mãe, centro e raio do círculo (plano da mãe, mm do modelo) */
+  | { tipo: "detalhe"; mae: string | null; centro: [number, number] | null; r: number | null; fator: number }
+  | { tipo: "planificada"; modelo: string | null };
 let comando: Comando | null = null;
 
 aplicarDispositivo();
@@ -75,53 +80,90 @@ const nomeCamera = (c: Camera) => {
 
 // ---------- sólidos e projeções no kernel ----------
 
+/** Opções da projeção de uma vista: corte (seção), montagem explodida, chapa planificada. */
+interface OpcoesProj {
+  corte?: Corte;
+  explodida?: boolean;
+  planificada?: boolean;
+}
+const opcoesDa = (v: VistaDesenho): OpcoesProj => ({
+  ...(v.secao ? { corte: { p: v.secao.p, n: v.camera.olho } } : {}),
+  ...(v.explodida ? { explodida: true } : {}),
+  ...(v.planificada ? { planificada: true } : {}),
+});
+
+type ItemKernel = { chave: string; features: Documento["features"]; planificar: boolean; t: { pos: [number, number, number]; rot: [number, number, number, number] } };
+
 /** Peças que formam o modelo, com a chave do sólido no kernel e a posição. */
-function itensDoModelo(m: ModeloDesenho): { chave: string; features: Documento["features"]; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[] {
+function itensDoModelo(m: ModeloDesenho, o: OpcoesProj = {}): ItemKernel[] {
   const feats = (d: Documento) => d.features.slice(0, d.retrocesso ?? d.features.length);
   if (m.tipo === "peca") {
     const d = m.doc as Documento;
-    return [{ chave: `peca:${marcaDe(JSON.stringify(feats(d)))}`, features: feats(d), t: { pos: [0, 0, 0], rot: [0, 0, 0, 1] } }];
+    return [{ chave: `peca:${marcaDe(JSON.stringify(feats(d)))}${o.planificada ? ":plan" : ""}`, features: feats(d), planificar: !!o.planificada, t: { pos: [0, 0, 0], rot: [0, 0, 0, 1] } }];
   }
   const a = m.doc as DocumentoMontagem;
+  const poses = o.explodida ? posesExplodidas(a) : null;
   return a.componentes.filter((c) => !c.suprimido).flatMap((c) => {
     const p = a.pecas.find((x) => x.id === c.peca);
     if (!p) return [];
     const f = feats(p.doc);
-    return [{ chave: `${p.id}:${p.marca ?? marcaDe(JSON.stringify(f))}`, features: f, t: c.t }];
+    return [{ chave: `${p.id}:${p.marca ?? marcaDe(JSON.stringify(f))}`, features: f, planificar: false, t: poses?.get(c.id) ?? c.t }];
   });
 }
 
-const solidos = new Map<string, Promise<unknown>>();
+const solidos = new Map<string, Promise<ResultadoComponente>>();
+/** Chapa planificada: linhas de dobra e plano, pela chave do sólido. */
+const planificados = new Map<string, Pick<ResultadoComponente, "dobras" | "plano">>();
 const projecoes = new Map<string, Projecao>();
 const pedidosProj = new Map<string, Promise<Projecao>>();
 const errosProj = new Map<string, string>();
 
 /** Tolerância das curvas: ~0,15 mm na folha. */
 const tolDe = (escala: number) => Number(Math.min(5, Math.max(0.01, 0.15 / escala)).toPrecision(2));
-const chaveProj = (m: ModeloDesenho, c: Camera, escala: number) => `${m.id}:${m.marca ?? ""}|${c.olho.map((x) => x.toFixed(4))}|${c.direita.map((x) => x.toFixed(4))}|${tolDe(escala)}`;
+const v3 = (v: number[]) => v.map((x) => x.toFixed(4)).join(",");
+const chaveProj = (m: ModeloDesenho, c: Camera, escala: number, o: OpcoesProj = {}) =>
+  `${m.id}:${m.marca ?? ""}|${v3(c.olho)}|${v3(c.direita)}|${tolDe(escala)}${o.corte ? `|c${v3(o.corte.p)}` : ""}${o.explodida ? `|x${marcaDe(JSON.stringify((m.doc as DocumentoMontagem).explosao ?? []))}` : ""}${o.planificada ? "|p" : ""}`;
+const chaveDaVista = (f: Folha, v: VistaDesenho, m: ModeloDesenho) => chaveProj(m, v.camera, escalaDaVista(f, v), opcoesDa(v));
 
-function projecaoDe(m: ModeloDesenho, c: Camera, escala: number): Promise<Projecao> {
-  const k = chaveProj(m, c, escala);
+/** Sólidos das peças no kernel (uma vez por chave). */
+function garantirSolidos(itens: ItemKernel[]) {
+  return Promise.all(itens.map((it) => {
+    let s = solidos.get(it.chave);
+    if (!s) {
+      s = kernel.componente(it.chave, it.features, it.planificar).then((r) => {
+        if (it.planificar) planificados.set(it.chave, { dobras: r.dobras, plano: r.plano });
+        return r;
+      }, (e) => {
+        solidos.delete(it.chave);
+        throw e;
+      });
+      solidos.set(it.chave, s);
+    }
+    return s;
+  }));
+}
+
+function projecaoDe(m: ModeloDesenho, c: Camera, escala: number, o: OpcoesProj = {}): Promise<Projecao> {
+  const k = chaveProj(m, c, escala, o);
   const pronta = projecoes.get(k);
   if (pronta) return Promise.resolve(pronta);
   let p = pedidosProj.get(k);
   if (!p) {
     p = (async () => {
       await kernel.pronto;
-      const itens = itensDoModelo(m);
+      const itens = itensDoModelo(m, o);
       if (!itens.length) throw new Error("O modelo não tem peças.");
-      await Promise.all(itens.map((it) => {
-        let s = solidos.get(it.chave);
-        if (!s) {
-          s = kernel.componente(it.chave, it.features).catch((e) => {
-            solidos.delete(it.chave);
-            throw e;
-          });
-          solidos.set(it.chave, s);
-        }
-        return s;
-      }));
-      return kernel.projetar(itens.map((it) => ({ chave: it.chave, t: it.t })), c, tolDe(escala));
+      await garantirSolidos(itens);
+      const pedir = () => kernel.projetar(itens.map((it) => ({ chave: it.chave, t: it.t })), c, tolDe(escala), o.corte);
+      try {
+        return await pedir();
+      } catch (e) {
+        // kernel recarregado (sólidos perdidos): calcula de novo e tenta mais uma vez
+        if (!/não calculada/.test((e as Error).message)) throw e;
+        for (const it of itens) solidos.delete(it.chave);
+        await garantirSolidos(itens);
+        return pedir();
+      }
     })().then((r) => {
       projecoes.set(k, r);
       pedidosProj.delete(k);
@@ -136,14 +178,21 @@ function projecaoDe(m: ModeloDesenho, c: Camera, escala: number): Promise<Projec
   }
   return p;
 }
+const projecaoDaVista = (f: Folha, v: VistaDesenho, m: ModeloDesenho) => projecaoDe(m, v.camera, escalaDaVista(f, v), opcoesDa(v));
 
 const projDaVista = (f: Folha, v: VistaDesenho) => {
   const m = modeloDe(v.modelo);
-  return m ? projecoes.get(chaveProj(m, v.camera, escalaDaVista(f, v))) : undefined;
+  return m ? projecoes.get(chaveDaVista(f, v, m)) : undefined;
 };
+/** Caixa da vista na folha (detalhe: o círculo). */
 function caixaDaVista(f: Folha, v: VistaDesenho): Retangulo | null {
+  const s = escalaDaVista(f, v);
+  if (v.detalhe) {
+    const d = v.detalhe;
+    return caixaNaFolha(v, s, { x0: d.cx - d.r, y0: d.cy - d.r, x1: d.cx + d.r, y1: d.cy + d.r });
+  }
   const p = projDaVista(f, v);
-  return p ? caixaNaFolha(v, escalaDaVista(f, v), p.caixa) : null;
+  return p ? caixaNaFolha(v, s, p.caixa) : null;
 }
 
 // ---------- histórico, salvamento automático ----------
@@ -211,12 +260,15 @@ function atualizarStatus(texto?: string) {
   let estado = texto ?? "Editando desenho";
   if (!texto && comando?.tipo === "modelo") estado = comando.modelo ? (comando.tres ? "Três vistas padrão: ✓ para colocar" : "Vista do modelo: toque na folha onde a vista deve ficar") : "Escolha a peça ou montagem no painel";
   else if (!texto && comando?.tipo === "projetada") estado = comando.mae ? "Vista projetada: toque ao lado da vista (direita, esquerda, acima, abaixo ou na diagonal)" : "Vista projetada: toque a vista mãe";
+  else if (!texto && comando?.tipo === "secao") estado = !comando.mae ? "Vista de seção: toque a vista a cortar" : !comando.ponto ? "Vista de seção: toque por onde passa o corte" : "Vista de seção: toque onde a seção fica (do lado para onde se olha)";
+  else if (!texto && comando?.tipo === "detalhe") estado = !comando.mae ? "Vista de detalhe: toque a vista" : !comando.centro ? "Vista de detalhe: toque o centro da região" : comando.r === null ? "Vista de detalhe: toque a borda do círculo" : "Vista de detalhe: toque onde o detalhe fica";
+  else if (!texto && comando?.tipo === "planificada") estado = comando.modelo ? "Vista planificada: toque onde ela fica" : "Vista planificada: escolha a peça de chapa";
   else if (!texto && comando?.tipo === "nota") estado = comando.editando ? "Nota: edite o texto no painel" : "Nota: escreva o texto e toque na folha";
   else if (!texto && selVistas.length) estado = `Selecionada: ${selVistas.map((id) => vistaDe(id)?.nome ?? "?").join(", ")}`;
   st.textContent = estado;
   const nErros = f.vistas.filter((v) => {
     const m = modeloDe(v.modelo);
-    return m && errosProj.has(chaveProj(m, v.camera, escalaDaVista(f, v)));
+    return m && errosProj.has(chaveDaVista(f, v, m));
   }).length;
   st.classList.toggle("com-erro", nErros > 0);
   $("st-info").textContent = `${f.nome} · ${FORMATOS[f.formato].nome} · escala ${rotuloEscala(f.escala)} · ${f.diedro}º diedro · ${f.vistas.length} vista(s)${nErros ? ` · ${nErros} com erro` : ""}`;
@@ -342,23 +394,75 @@ function formatoSvg(f: Folha): string {
     ${legendaSvg(f, A)}`;
 }
 
+/** Seta cheia (triângulo) com a ponta em (x, y) apontando para (dx, dy). */
+const seta = (x: number, y: number, dx: number, dy: number, t = 3) => {
+  const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+  const bx = x - ux * t, by = y - uy * t;
+  return `M${n3(x)} ${n3(y)}L${n3(bx - uy * t / 3)} ${n3(by + ux * t / 3)}L${n3(bx + uy * t / 3)} ${n3(by - ux * t / 3)}Z`;
+};
+
+/** Marcas que as vistas filhas deixam na mãe: linha de corte (seção) e círculo (detalhe). */
+function marcasNaMae(f: Folha, mae: VistaDesenho, p: Projecao): string {
+  const s = escalaDaVista(f, mae);
+  let out = "";
+  for (const v of f.vistas) {
+    if (v.detalhe?.mae === mae.id) {
+      const d = v.detalhe;
+      out += `<circle class="m-detalhe" cx="${n3(d.cx * s)}" cy="${n3(-d.cy * s)}" r="${n3(d.r * s)}" />`
+        + txt(n3((d.cx + d.r * 0.75) * s + 2), n3(-(d.cy + d.r * 0.75) * s - 2), d.letra, 5, 'class="t-letra"');
+    }
+    if (v.secao?.mae === mae.id) {
+      // linha de corte: passa pelo ponto, perpendicular à direção de visão da seção (vista na mãe)
+      const [px, py] = naVista(mae.camera, v.secao.p);
+      const [nx, ny] = naVista(mae.camera, v.camera.olho);
+      const dx = -ny, dy = nx;
+      const b = p.caixa, m = 6 / s;
+      // extremos: a reta cruza a caixa da mãe com folga
+      const ts = [(b.x0 - m - px) / (dx || 1e-12), (b.x1 + m - px) / (dx || 1e-12), (b.y0 - m - py) / (dy || 1e-12), (b.y1 + m - py) / (dy || 1e-12)];
+      const t0 = Math.abs(dx) > Math.abs(dy) ? Math.min(ts[0], ts[1]) : Math.min(ts[2], ts[3]);
+      const t1 = Math.abs(dx) > Math.abs(dy) ? Math.max(ts[0], ts[1]) : Math.max(ts[2], ts[3]);
+      const a = [(px + dx * t0) * s, -(py + dy * t0) * s], c = [(px + dx * t1) * s, -(py + dy * t1) * s];
+      const ux = (c[0] - a[0]) / Math.hypot(c[0] - a[0], c[1] - a[1]), uy = (c[1] - a[1]) / Math.hypot(c[0] - a[0], c[1] - a[1]);
+      // a seta aponta para onde se olha (−olho da seção), no sistema da folha (y para baixo)
+      const vx = -nx, vy = ny;
+      const k = Math.hypot(vx, vy) || 1;
+      const sx = vx / k, sy = vy / k;
+      out += `<path class="m-corte" d="M${n3(a[0])} ${n3(a[1])}L${n3(c[0])} ${n3(c[1])}" />`
+        + `<path class="m-corte-ponta" d="M${n3(a[0])} ${n3(a[1])}l${n3(ux * 6)} ${n3(uy * 6)}M${n3(c[0])} ${n3(c[1])}l${n3(-ux * 6)} ${n3(-uy * 6)}" />`;
+      for (const q of [a, c]) {
+        const qx = q[0] + (q === a ? ux : -ux) * 3, qy = q[1] + (q === a ? uy : -uy) * 3;
+        out += `<path class="m-seta" d="M${n3(qx)} ${n3(qy)}L${n3(qx + sx * 8)} ${n3(qy + sy * 8)}" /><path class="m-seta-ponta" d="${seta(qx + sx * 9, qy + sy * 9, sx, sy)}" />`
+          + txt(n3(qx + sx * 12 - 1.8), n3(qy + sy * 12 + 1.8), v.secao.letra, 5, 'class="t-letra"');
+      }
+    }
+  }
+  return out;
+}
+
 function vistaSvg(f: Folha, v: VistaDesenho, A: number): string {
   const m = modeloDe(v.modelo);
   const s = escalaDaVista(f, v);
   const sel = selVistas.includes(v.id);
   const cab = `<g class="vista${sel ? " sel" : ""}" data-vista="${v.id}" transform="translate(${n3(v.x)} ${n3(A - v.y)})">`;
   if (!m) return "";
-  const k = chaveProj(m, v.camera, s);
+  const k = chaveDaVista(f, v, m);
   const p = projecoes.get(k);
   if (!p) {
     const erro = errosProj.get(k);
-    if (!erro && !pedidosProj.has(k)) void projecaoDe(m, v.camera, s).then(desenharFolha, desenharFolha);
+    if (!erro && !pedidosProj.has(k)) void projecaoDaVista(f, v, m).then(desenharFolha, desenharFolha);
     return `${cab}<rect class="v-alvo" x="-20" y="-8" width="40" height="12" /><text class="t-aviso" x="0" y="0" font-size="3.5" text-anchor="middle">${erro ? `erro: ${escapar(erro)}` : "calculando vista…"}</text></g>`;
   }
   const c = caminhoDe(k, p);
   const lv = `calc(var(--lv) / ${s})`, lo = `calc(var(--lo) / ${s})`, lf = `calc(var(--lf) / ${s})`;
-  // ocultas por baixo das visíveis (onde coincidem, vale a contínua)
   let geo = "";
+  let defs = "";
+  // hachura das regiões cortadas (NBR 12298: 45°, componentes vizinhos em sentidos alternados)
+  if (p.cortes?.length) {
+    const passo = 2.5 / s;
+    for (const ang of [45, 135]) defs += `<pattern id="h${ang}-${v.id}" patternUnits="userSpaceOnUse" width="${n3(passo)}" height="${n3(passo)}" patternTransform="rotate(${ang})"><line class="v-hachura" x1="0" y1="0" x2="0" y2="${n3(passo)}" style="stroke-width:${lf}" /></pattern>`;
+    geo += p.cortes.map((r) => `<path class="v-regiao" fill="url(#h${r.i % 2 ? 135 : 45}-${v.id})" fill-rule="evenodd" d="${r.lacos.map((l) => "M" + l.map(([x, y]) => `${n3(x)} ${n3(y)}`).join("L") + "Z").join("")}" />`).join("");
+  }
+  // ocultas por baixo das visíveis (onde coincidem, vale a contínua)
   if (v.estilo !== "sem-ocultas" && c.oc) geo += `<path class="v-oc" style="stroke-width:${v.estilo === "arame" ? lv : lo}" ${v.estilo === "ocultas" ? `stroke-dasharray="${n3(3 / s)} ${n3(1.5 / s)}"` : ""} d="${c.oc}" />`;
   geo += `<path class="v-vis" style="stroke-width:${lv}" d="${c.vis}" />`;
   if (v.marcasCentro !== false && p.circulos.length) {
@@ -366,12 +470,26 @@ function vistaSvg(f: Folha, v: VistaDesenho, A: number): string {
     const e = 2 / s;
     geo += `<path class="v-centro" style="stroke-width:${lf}" stroke-dasharray="${n3(8 / s)} ${n3(1.5 / s)} ${n3(1 / s)} ${n3(1.5 / s)}" d="${p.circulos.map((q) => `M${n3(q.cx - q.r - e)} ${n3(q.cy)}H${n3(q.cx + q.r + e)}M${n3(q.cx)} ${n3(q.cy - q.r - e)}V${n3(q.cy + q.r + e)}`).join("")}" />`;
   }
-  const b = p.caixa;
+  // chapa planificada: linhas de dobra (traço-ponto estreito)
+  if (v.planificada) {
+    const pl = itensDoModelo(m, opcoesDa(v)).map((it) => planificados.get(it.chave)).find(Boolean);
+    if (pl?.dobras?.length) geo += `<path class="v-dobra" style="stroke-width:${lf}" stroke-dasharray="${n3(8 / s)} ${n3(1.5 / s)} ${n3(1 / s)} ${n3(1.5 / s)}" d="${pl.dobras.map((l) => "M" + l.map((q) => naVista(v.camera, q).map(n3).join(" ")).join("L")).join("")}" />`;
+  }
+  let b: Retangulo = p.caixa;
+  let corpo = `<g transform="scale(${s} ${-s})">${geo}</g>`;
+  if (v.detalhe) {
+    const d = v.detalhe;
+    b = { x0: d.cx - d.r, y0: d.cy - d.r, x1: d.cx + d.r, y1: d.cy + d.r };
+    defs += `<clipPath id="c-${v.id}"><circle cx="${n3(d.cx)}" cy="${n3(d.cy)}" r="${n3(d.r)}" /></clipPath>`;
+    corpo = `<g transform="scale(${s} ${-s})"><g clip-path="url(#c-${v.id})">${geo}</g><circle class="m-detalhe" style="stroke-width:${lf}" cx="${n3(d.cx)}" cy="${n3(d.cy)}" r="${n3(d.r)}" /></g>`;
+  }
   const x0 = b.x0 * s - 3, y0 = -b.y1 * s - 3, w = (b.x1 - b.x0) * s + 6, h = (b.y1 - b.y0) * s + 6;
-  const mostrarRotulo = v.rotulo ?? (v.escala !== undefined && v.escala !== f.escala);
-  const rot = mostrarRotulo ? txt(n3((b.x0 + b.x1) * s / 2), n3(-b.y0 * s + 8), `${v.nome.toUpperCase()}  ESCALA ${rotuloEscala(s)}`, 3.5, 'text-anchor="middle" class="t-rotulo"') : "";
-  return `${cab}<rect class="v-alvo" x="${n3(x0)}" y="${n3(y0)}" width="${n3(w)}" height="${n3(h)}" />
-    <g transform="scale(${s} ${-s})">${geo}</g>${rot}</g>`;
+  const titulo = v.secao ? `SEÇÃO ${v.secao.letra}-${v.secao.letra}` : v.detalhe ? `DETALHE ${v.detalhe.letra}` : v.nome.toUpperCase();
+  const mostrarRotulo = v.secao || v.detalhe || (v.rotulo ?? (v.escala !== undefined && v.escala !== f.escala));
+  const comEscala = v.detalhe || (v.escala !== undefined && v.escala !== f.escala);
+  const rot = mostrarRotulo ? txt(n3((b.x0 + b.x1) * s / 2), n3(-b.y0 * s + 8), `${titulo}${comEscala ? `  ESCALA ${rotuloEscala(s)}` : ""}`, 3.5, 'text-anchor="middle" class="t-rotulo"') : "";
+  return `${cab}${defs ? `<defs>${defs}</defs>` : ""}<rect class="v-alvo" x="${n3(x0)}" y="${n3(y0)}" width="${n3(w)}" height="${n3(h)}" />
+    ${corpo}${marcasNaMae(f, v, p)}${rot}</g>`;
 }
 
 function notaSvg(f: Folha, n: Nota, A: number): string {
@@ -461,7 +579,8 @@ svg.addEventListener("pointerdown", (e) => {
   const naNota = alvo.closest("[data-nota]")?.getAttribute("data-nota");
   const p = paraFolha(e.clientX, e.clientY);
   // botão do meio: sempre pan; comando que espera toque na folha: o toque é do comando
-  const comandoToca = comando && (comando.tipo === "modelo" && !comando.tres && comando.modelo || comando.tipo === "projetada" || (comando.tipo === "nota" && !comando.editando));
+  const comandoToca = comando && (comando.tipo === "modelo" && !comando.tres && comando.modelo || comando.tipo === "projetada" || (comando.tipo === "nota" && !comando.editando)
+    || comando.tipo === "secao" || comando.tipo === "detalhe" || comando.tipo === "planificada");
   if (e.button === 1 || e.button === 2 || comandoToca || (!naVista && !naNota)) {
     gesto = { tipo: "pan", x: e.clientX, y: e.clientY, vb0: { ...vb }, moveu: false, alvo: e.button === 0 ? alvo : null, xy0: p };
     return;
@@ -581,6 +700,8 @@ function tocarFolha(alvo: Element, p: { x: number; y: number }, e: PointerEvent)
     return void colocarProjetada(p);
   }
   if (comando?.tipo === "nota" && !comando.editando) return colocarNota(p);
+  if (comando?.tipo === "secao" || comando?.tipo === "detalhe") return void tocarSecaoDetalhe(alvo, p);
+  if (comando?.tipo === "planificada") return void colocarPlanificada(p);
   if (comando) return;
   if (alvo.closest("[data-legenda]")) {
     selVistas = [];
@@ -703,8 +824,8 @@ function renderizarArvore() {
     for (const v of f.vistas) {
       const m = modeloDe(v.modelo);
       const ev = li(`item${selVistas.includes(v.id) ? " selecionado" : ""}`, v.mae ? "vistaProjetada" : "vistaModelo", v.nome,
-        `${nomeCamera(v.camera)} · ${rotuloEscala(escalaDaVista(f, v))}${v.escala === undefined ? " (folha)" : ""} · ${m?.nome ?? "?"}`, 1);
-      const k = m ? chaveProj(m, v.camera, escalaDaVista(f, v)) : "";
+        `${v.planificada ? "Planificado" : v.secao && !v.detalhe ? `Seção ${v.secao.letra}-${v.secao.letra}` : v.detalhe ? `Detalhe ${v.detalhe.letra}` : nomeCamera(v.camera)}${v.explodida ? " explodida" : ""} · ${rotuloEscala(escalaDaVista(f, v))}${v.escala === undefined ? " (folha)" : ""} · ${m?.nome ?? "?"}`, 1);
+      const k = m ? chaveDaVista(f, v, m) : "";
       if (errosProj.has(k)) ev.classList.add("com-erro");
       ev.onclick = (x) => {
         if (comando) return;
@@ -811,10 +932,10 @@ const ABAS_D: { id: string; rotulo: string; comandos: Cmd[] }[] = [
       { id: "modelo", rotulo: "Vista do modelo", icone: "vistaModelo", dica: "Vista de uma peça ou montagem numa orientação (frontal, superior, lateral, isométrica…)", grupo: 0 },
       { id: "tres", rotulo: "Três vistas padrão", icone: "tresVistas", dica: "Frontal, superior e lateral alinhadas no diedro da folha, com escala automática", grupo: 0 },
       { id: "projetada", rotulo: "Vista projetada", icone: "vistaProjetada", dica: "Vista alinhada ao lado de outra (ou isométrica na diagonal)", grupo: 0 },
-      { id: "secao", rotulo: "Vista de seção", icone: "vistaCorte", dica: "Corte A-A com hachura", grupo: 1, emBreve: true },
-      { id: "detalhe", rotulo: "Vista de detalhe", icone: "vistaDetalhe", dica: "Ampliação de uma região (DETALHE B)", grupo: 1, emBreve: true },
-      { id: "planificada", rotulo: "Vista planificada", icone: "planificar", dica: "Padrão planificado da chapa com linhas de dobra", grupo: 1, emBreve: true },
-      { id: "explodida", rotulo: "Vista explodida", icone: "explodida", dica: "Montagem explodida", grupo: 1, emBreve: true },
+      { id: "secao", rotulo: "Vista de seção", icone: "vistaCorte", dica: "Corte A-A com hachura: toque a vista, o lugar do corte e onde a seção fica", grupo: 1 },
+      { id: "detalhe", rotulo: "Vista de detalhe", icone: "vistaDetalhe", dica: "Ampliação de uma região (DETALHE B): toque o centro, a borda do círculo e onde fica", grupo: 1 },
+      { id: "planificada", rotulo: "Vista planificada", icone: "planificar", dica: "Padrão planificado da chapa com linhas de dobra", grupo: 1 },
+      { id: "explodida", rotulo: "Vista explodida", icone: "explodida", dica: "Liga/desliga a posição explodida da montagem na vista selecionada", grupo: 1 },
     ],
   },
   {
@@ -873,6 +994,7 @@ function renderizarAbas() {
     }
     const ativo = (c.id === "modelo" && comando?.tipo === "modelo" && !comando.tres) || (c.id === "tres" && comando?.tipo === "modelo" && comando.tres)
       || (c.id === "projetada" && comando?.tipo === "projetada") || (c.id === "nota" && comando?.tipo === "nota")
+      || (c.id === "secao" && comando?.tipo === "secao") || (c.id === "detalhe" && comando?.tipo === "detalhe") || (c.id === "planificada" && comando?.tipo === "planificada")
       || (c.id === "props-folha" && comando?.tipo === "folha") || (c.id === "legenda" && comando?.tipo === "legenda");
     b.setAttribute("aria-pressed", String(ativo));
     b.onclick = () => executar(c);
@@ -888,6 +1010,10 @@ function executar(c: Cmd) {
     case "modelo": return abrirVistaModelo(false);
     case "tres": return abrirVistaModelo(true);
     case "projetada": return abrirProjetada(selVistas.length === 1 ? selVistas[0] : null);
+    case "secao": return abrirSecaoDetalhe("secao");
+    case "detalhe": return abrirSecaoDetalhe("detalhe");
+    case "planificada": return abrirPlanificada();
+    case "explodida": return alternarExplodida();
     case "nota": return abrirNota(null);
     case "marcas": return alternarMarcas();
     case "props-folha": return abrirPropsFolha(false);
@@ -979,6 +1105,8 @@ function renderizarComando() {
     case "vista": return renderizarPropsVista();
     case "folha": return renderizarPropsFolha();
     case "legenda": return renderizarLegenda();
+    case "secao": case "detalhe": return renderizarSecaoDetalhe();
+    case "planificada": return renderizarPlanificada();
   }
 }
 
@@ -1350,6 +1478,272 @@ async function colocarProjetada(p: { x: number; y: number }) {
   avisar(`${v.nome}: ${nomeCamera(cam)}${iso ? "" : ` (${lado} da ${mae.nome})`}.`);
 }
 
+// ---------- Vista de seção e de detalhe ----------
+
+function abrirSecaoDetalhe(tipo: "secao" | "detalhe") {
+  if (comando) cancelarComando();
+  const f = folha();
+  if (!f?.vistas.length) return avisar("Coloque primeiro uma vista do modelo.");
+  const mae = selVistas.length === 1 && !vistaDe(selVistas[0])?.detalhe ? selVistas[0] : null;
+  comando = tipo === "secao" ? { tipo, mae, orient: "horizontal", ponto: null } : { tipo, mae, centro: null, r: null, fator: 2 };
+  mostrarPainel(true);
+  renderizarComando();
+  renderizarAbas();
+  tudo();
+}
+
+/** Plano da vista mãe (mm do modelo) do ponto tocado na folha. */
+function noPlanoDa(f: Folha, v: VistaDesenho, p: { x: number; y: number }): [number, number] {
+  const s = escalaDaVista(f, v);
+  return [(p.x - v.x) / s, (p.y - v.y) / s];
+}
+
+async function tocarSecaoDetalhe(alvo: Element, p: { x: number; y: number }) {
+  const c = comando;
+  if (c?.tipo !== "secao" && c?.tipo !== "detalhe") return;
+  const f = folha()!;
+  const id = alvo.closest("[data-vista]")?.getAttribute("data-vista");
+  if (!c.mae) {
+    if (!id) return avisar("Toque uma vista.");
+    const v = vistaDe(id)!;
+    if (v.detalhe) return avisar("Escolha a vista original (não um detalhe).");
+    if (orientacaoDe(v.camera) === "iso" && c.tipo === "secao") return avisar("A seção parte de uma vista ortogonal (frontal, superior, lateral…).");
+    c.mae = id;
+    selVistas = [id];
+    // o primeiro toque só escolhe a vista; os próximos marcam o corte/círculo
+    renderizarComando();
+    atualizarStatus();
+    return tudo();
+  }
+  const mae = vistaDe(c.mae)!;
+  const q = noPlanoDa(f, mae, p);
+  if (c.tipo === "secao") {
+    if (!c.ponto) {
+      if (id !== c.mae) {
+        if (!id) return avisar("Toque por onde o corte passa, em cima da vista.");
+        c.mae = id;
+        selVistas = [id];
+        return tudo(), renderizarComando();
+      }
+      c.ponto = q;
+    } else return void colocarSecao(p);
+  } else {
+    if (!c.centro) {
+      if (id !== c.mae) {
+        // tocou outra vista: ela vira a mãe (o próximo toque marca o centro)
+        if (!id || vistaDe(id)?.detalhe) return avisar("Toque o centro da região em cima da vista.");
+        c.mae = id;
+        selVistas = [id];
+        renderizarComando();
+        return tudo();
+      }
+      c.centro = q;
+    } else if (c.r === null) {
+      c.r = Math.max(1 / escalaDaVista(f, mae), Math.hypot(q[0] - c.centro[0], q[1] - c.centro[1]));
+    } else return void colocarDetalhe(p);
+  }
+  renderizarComando();
+  atualizarStatus();
+  desenharFolha();
+  desenharPreviaSecaoDetalhe();
+}
+
+/** Linha de corte ou círculo provisório na vista mãe enquanto o comando está aberto. */
+function desenharPreviaSecaoDetalhe() {
+  const c = comando;
+  if (c?.tipo !== "secao" && c?.tipo !== "detalhe") return;
+  const f = folha()!;
+  const mae = vistaDe(c.mae);
+  if (!mae) return;
+  const s = escalaDaVista(f, mae);
+  const A = FORMATOS[f.formato].a;
+  const X = (x: number) => n3(mae.x + x * s), Y = (y: number) => n3(A - (mae.y + y * s));
+  let d = "";
+  if (c.tipo === "secao" && c.ponto) {
+    const cx = caixaDaVista(f, mae);
+    if (!cx) return;
+    d = c.orient === "horizontal" ? `<path class="previa-corte" d="M${n3(cx.x0 - 6)} ${Y(c.ponto[1])}H${n3(cx.x1 + 6)}" />` : `<path class="previa-corte" d="M${X(c.ponto[0])} ${n3(A - cx.y1 - 6)}V${n3(A - cx.y0 + 6)}" />`;
+  } else if (c.tipo === "detalhe" && c.centro) {
+    d = `<circle class="previa-corte" cx="${X(c.centro[0])}" cy="${Y(c.centro[1])}" r="${n3((c.r ?? 0.5 / s) * s)}" />`;
+  }
+  svg.insertAdjacentHTML("beforeend", d);
+}
+
+async function colocarSecao(p: { x: number; y: number }) {
+  if (comando?.tipo !== "secao" || !comando.mae || !comando.ponto) return;
+  const c = comando;
+  const f = folha()!;
+  const mae = vistaDe(c.mae)!;
+  const m = modeloDe(mae.modelo)!;
+  const cm = caixaDaVista(f, mae);
+  if (!cm) return avisar("A vista mãe ainda está sendo calculada.");
+  // a seção fica do lado tocado, na direção perpendicular à linha de corte
+  const cy = (cm.y0 + cm.y1) / 2, cx = (cm.x0 + cm.x1) / 2;
+  const lado = c.orient === "horizontal" ? (p.y >= cy ? "acima" : "abaixo") : (p.x >= cx ? "direita" : "esquerda");
+  const cam = cameraProjetada(mae.camera, lado, f.diedro);
+  const s = escalaDaVista(f, mae);
+  const pt = c.ponto!;
+  const ponto3 = pontoNaVista(mae.camera, pt[0], pt[1]);
+  const letra = proximaLetra(doc!);
+  atualizarStatus("Calculando a seção…");
+  let proj: Projecao;
+  try {
+    proj = await projecaoDe(m, cam, s, { corte: { p: ponto3, n: cam.olho } });
+  } catch (e) {
+    atualizarStatus();
+    return avisar(`Não foi possível cortar: ${(e as Error).message}`);
+  }
+  if (comando !== c) return;
+  const b = proj.caixa;
+  const v: VistaDesenho = {
+    id: novoIdD(), nome: `Seção ${letra}-${letra}`, modelo: m.id, camera: cam, estilo: "sem-ocultas",
+    x: lado === "acima" || lado === "abaixo" ? mae.x : p.x - ((b.x0 + b.x1) / 2) * s,
+    y: lado === "direita" || lado === "esquerda" ? mae.y : p.y - ((b.y0 + b.y1) / 2) * s,
+    ...(mae.escala !== undefined ? { escala: mae.escala } : {}),
+    ...(mae.explodida ? { explodida: true } : {}),
+    mae: mae.id, lado, secao: { p: ponto3, letra, mae: mae.id },
+  };
+  const [ax, ay] = afastarDaMae(cm, caixaNaFolha(v, s, b), lado);
+  v.x += ax;
+  v.y += ay;
+  f.vistas.push(v);
+  selVistas = [v.id];
+  fecharComando();
+  alterou();
+  avisar(`Seção ${letra}-${letra} criada.`);
+}
+
+async function colocarDetalhe(p: { x: number; y: number }) {
+  if (comando?.tipo !== "detalhe" || !comando.mae || !comando.centro || comando.r === null) return;
+  const c = comando;
+  const f = folha()!;
+  const mae = vistaDe(c.mae)!;
+  const m = modeloDe(mae.modelo)!;
+  const s = escalaDaVista(f, mae) * c.fator;
+  const letra = proximaLetra(doc!);
+  const ce = c.centro!;
+  const v: VistaDesenho = {
+    id: novoIdD(), nome: `Detalhe ${letra}`, modelo: m.id, camera: mae.camera, estilo: mae.estilo === "ocultas" ? "sem-ocultas" : mae.estilo,
+    x: p.x - ce[0] * s, y: p.y - ce[1] * s, escala: s,
+    ...(mae.secao ? { secao: { ...mae.secao, letra: mae.secao.letra } } : {}),
+    ...(mae.explodida ? { explodida: true } : {}),
+    detalhe: { mae: mae.id, cx: ce[0], cy: ce[1], r: c.r!, letra },
+  };
+  // detalhe de uma seção mostra o corte, mas a linha de corte é só da seção original
+  if (v.secao) v.secao = { ...v.secao, mae: "" };
+  f.vistas.push(v);
+  selVistas = [v.id];
+  fecharComando();
+  alterou();
+  avisar(`Detalhe ${letra} (escala ${rotuloEscala(s)}).`);
+}
+
+function renderizarSecaoDetalhe() {
+  const c = comando;
+  if (c?.tipo !== "secao" && c?.tipo !== "detalhe") return;
+  const p = painelBase(c.tipo === "secao" ? "Vista de seção" : "Vista de detalhe");
+  const mae = vistaDe(c.mae);
+  const b = caixa(p, "Vista mãe");
+  b.innerHTML = mae ? `<p><strong></strong></p>` : `<p class="dica">Toque a vista de onde sai ${c.tipo === "secao" ? "a seção" : "o detalhe"}.</p>`;
+  if (mae) b.querySelector("strong")!.textContent = mae.nome;
+  if (c.tipo === "secao") {
+    const o = caixa(p, "Linha de corte");
+    o.innerHTML = `<div class="pc-botoes"><button data-o="horizontal" aria-pressed="${c.orient === "horizontal"}">Horizontal</button><button data-o="vertical" aria-pressed="${c.orient === "vertical"}">Vertical</button></div>
+      <p class="dica">${!c.ponto ? "Toque na vista por onde o corte passa." : "Toque onde a seção fica: do lado para onde se olha (setas)."} A hachura é a 45°; peças vizinhas da montagem com sentidos alternados.</p>`;
+    o.querySelectorAll<HTMLButtonElement>("[data-o]").forEach((x) => (x.onclick = () => {
+      c.orient = x.dataset.o as "horizontal" | "vertical";
+      renderizarSecaoDetalhe();
+      desenharFolha();
+      desenharPreviaSecaoDetalhe();
+    }));
+  } else {
+    const o = caixa(p, "Escala do detalhe");
+    o.innerHTML = `<div class="pc-botoes">${[1.5, 2, 2.5, 4, 5].map((k) => `<button data-k="${k}" aria-pressed="${c.fator === k}">${fmt(k)}×</button>`).join("")}</div>
+      <p class="dica">${!c.centro ? "Toque o centro da região na vista." : c.r === null ? "Toque a borda do círculo." : "Toque onde o detalhe fica."}</p>`;
+    o.querySelectorAll<HTMLButtonElement>("[data-k]").forEach((x) => (x.onclick = () => {
+      c.fator = Number(x.dataset.k);
+      renderizarSecaoDetalhe();
+    }));
+  }
+}
+
+// ---------- Vista planificada (chapa) e explodida ----------
+
+function modelosDeChapa(): ModeloDesenho[] {
+  return (doc?.modelos ?? []).filter((m) => m.tipo === "peca" && (m.doc as Documento).features.some(ehBaseChapa));
+}
+
+function abrirPlanificada() {
+  if (comando) cancelarComando();
+  const chapas = modelosDeChapa();
+  const daSel = vistaDe(selVistas[0] ?? null);
+  const pre = daSel && chapas.some((m) => m.id === daSel.modelo) ? daSel.modelo : chapas.length === 1 ? chapas[0].id : null;
+  comando = { tipo: "planificada", modelo: pre };
+  mostrarPainel(true);
+  renderizarComando();
+  renderizarAbas();
+  atualizarStatus();
+}
+
+function renderizarPlanificada() {
+  if (comando?.tipo !== "planificada") return;
+  const c = comando;
+  const p = painelBase("Vista planificada");
+  const b = caixa(p, "Peça de chapa metálica");
+  const chapas = modelosDeChapa();
+  b.innerHTML = chapas.length
+    ? `<div class="pc-botoes">${chapas.map((m) => `<button data-m="${m.id}" aria-pressed="${c.modelo === m.id}"></button>`).join("")}</div><p class="dica">Toque na folha onde a vista fica. As linhas de dobra saem em traço-ponto.</p>`
+    : `<p class="dica">Nenhuma peça de chapa metálica no desenho. Coloque antes uma vista da peça de chapa (Vista do modelo).</p>`;
+  b.querySelectorAll<HTMLButtonElement>("[data-m]").forEach((x) => {
+    x.textContent = modeloDe(x.dataset.m!)!.nome;
+    x.onclick = () => {
+      c.modelo = x.dataset.m!;
+      renderizarPlanificada();
+      atualizarStatus();
+    };
+  });
+}
+
+async function colocarPlanificada(p: { x: number; y: number }) {
+  if (comando?.tipo !== "planificada") return;
+  const c = comando;
+  if (!c.modelo) return avisar("Escolha a peça de chapa no painel.");
+  const f = folha()!;
+  const m = modeloDe(c.modelo)!;
+  atualizarStatus("Planificando…");
+  try {
+    const itens = itensDoModelo(m, { planificada: true });
+    await garantirSolidos(itens);
+    const pl = planificados.get(itens[0].chave);
+    if (!pl?.plano) throw new Error("A peça não tem chapa metálica para planificar.");
+    const cam = { olho: pl.plano.olho, direita: pl.plano.direita };
+    const s = f.escala;
+    const proj = await projecaoDe(m, cam, s, { planificada: true });
+    if (comando !== c) return;
+    const b = proj.caixa;
+    const v: VistaDesenho = { id: novoIdD(), nome: proximoNomeVista(f, "Planificado "), modelo: m.id, camera: cam, estilo: "sem-ocultas", planificada: true, rotulo: true, x: p.x - ((b.x0 + b.x1) / 2) * s, y: p.y - ((b.y0 + b.y1) / 2) * s };
+    f.vistas.push(v);
+    selVistas = [v.id];
+    fecharComando();
+    alterou();
+  } catch (e) {
+    atualizarStatus();
+    avisar(`Não foi possível planificar: ${(e as Error).message}`);
+  }
+}
+
+function alternarExplodida() {
+  const f = folha();
+  const alvo = (f?.vistas ?? []).filter((v) => (selVistas.length ? selVistas.includes(v.id) : true) && modeloDe(v.modelo)?.tipo === "montagem");
+  if (!alvo.length) return avisar("Selecione uma vista de montagem (a montagem precisa de passos de vista explodida).");
+  const semPassos = alvo.filter((v) => !((modeloDe(v.modelo)!.doc as DocumentoMontagem).explosao?.length));
+  if (semPassos.length === alvo.length) return avisar("A montagem não tem vista explodida: crie os passos na Montagem (Vista explodida) e salve.");
+  const ligar = alvo.some((v) => !v.explodida);
+  for (const v of alvo) v.explodida = ligar || undefined;
+  alterou();
+  avisar(`${alvo.length} vista(s) ${ligar ? "explodida(s)" : "recolhida(s)"}.`);
+}
+
 // ---------- Propriedades da vista ----------
 
 function abrirPropsVista(id: string) {
@@ -1404,6 +1798,16 @@ function renderizarPropsVista() {
     v.marcasCentro = (e.target as HTMLInputElement).checked;
     desenharFolha();
   };
+  if (modeloDe(v.modelo)?.tipo === "montagem") {
+    const l = document.createElement("label");
+    l.className = "interruptor";
+    l.innerHTML = `<input type="checkbox" ${v.explodida ? "checked" : ""}/><span>Explodida (passos da montagem)</span>`;
+    l.querySelector("input")!.onchange = (e) => {
+      v.explodida = (e.target as HTMLInputElement).checked || undefined;
+      desenharFolha();
+    };
+    est.append(l);
+  }
   const esc = caixa(p, "Escala");
   esc.innerHTML = `<select data-esc>${opcoesEscala(v.escala, true)}</select>
     <label class="interruptor"><input type="checkbox" data-rot ${(v.rotulo ?? (v.escala !== undefined && v.escala !== f.escala)) ? "checked" : ""}/><span>Rótulo com nome e escala</span></label>`;
@@ -1577,7 +1981,7 @@ function renderizarLegenda() {
 
 const CSS_FOLHA = `.papel{fill:#fff}.l-moldura{stroke:#000;stroke-width:.7;fill:none}.l-media{stroke:#000;stroke-width:.5}.l-fina{stroke:#000;stroke-width:.25}
 .v-vis{fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round}.v-oc{fill:none;stroke:#000}.v-centro{fill:none;stroke:#000}
-.v-alvo{fill:none;stroke:none}text{font-family:"Helvetica","Arial",sans-serif;fill:#000}.t-rot{fill:#444}.t-aviso{fill:#a33}.sombra{display:none}`;
+.v-alvo{fill:none;stroke:none}.v-hachura{stroke:#000}.v-regiao{stroke:none}.v-dobra{fill:none;stroke:#000}.m-detalhe{fill:none;stroke:#000;stroke-width:.25}.m-corte{fill:none;stroke:#000;stroke-width:.25;stroke-dasharray:8 1.5 1 1.5}.m-corte-ponta,.m-seta{fill:none;stroke:#000;stroke-width:.5}.m-seta-ponta{fill:#000}.t-letra{font-weight:600}text{font-family:"Helvetica","Arial",sans-serif;fill:#000}.t-rot{fill:#444}.t-aviso{fill:#a33}.sombra{display:none}`;
 
 /** SVG autônomo da folha em tamanho real (mm), com as espessuras da norma. */
 function svgDaFolha(f: Folha): string {
@@ -1590,7 +1994,7 @@ async function esperarVistas(): Promise<boolean> {
   const f = folha()!;
   const pend = f.vistas.flatMap((v) => {
     const m = modeloDe(v.modelo);
-    return m ? [projecaoDe(m, v.camera, escalaDaVista(f, v)).catch(() => null)] : [];
+    return m ? [projecaoDaVista(f, v, m).catch(() => null)] : [];
   });
   if (pend.length) {
     atualizarStatus("Calculando as vistas…");

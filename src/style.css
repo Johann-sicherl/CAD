@@ -1028,3 +1028,13 @@ body.disp-computador .pc-tipo { min-height: 36px; }
 .pc-passo button { min-width: 40px; min-height: 36px; }
 .tabela tr.clicavel { cursor: pointer; }
 .tabela tr.clicavel:hover td { background: var(--acento-suave); }
+/* desenho D-B: seção (linha de corte, setas, hachura), detalhe, dobras */
+#folha .v-hachura { stroke: #222; }
+#folha .v-regiao { stroke: none; }
+#folha .v-dobra { fill: none; stroke: #444; }
+#folha .m-detalhe { fill: none; stroke: #222; stroke-width: var(--lf); }
+#folha .m-corte { fill: none; stroke: #222; stroke-width: var(--lf); stroke-dasharray: 8 1.5 1 1.5; }
+#folha .m-corte-ponta, #folha .m-seta { fill: none; stroke: #111; stroke-width: var(--lv); }
+#folha .m-seta-ponta { fill: #111; stroke: none; }
+#folha .t-letra { font-weight: 600; }
+#folha .previa-corte { fill: none; stroke: #d6337a; stroke-width: var(--lv); stroke-dasharray: 4 2; pointer-events: none; }

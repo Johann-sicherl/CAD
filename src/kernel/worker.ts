@@ -3,9 +3,9 @@
 
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
-import { makeCompound, measureShapeVolumeProperties, setOC, type Shape3D } from "replicad";
+import { makeCompound, measureArea, measureShapeVolumeProperties, setOC, type Shape3D } from "replicad";
 import type { Feature, Referencia, Vec3 } from "../model";
-import { posicionar, projetar } from "./projecao";
+import { posicionar, projetar, type Corte } from "./projecao";
 import type { Camera, Orientacao } from "../desenho/modelo";
 import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
@@ -18,7 +18,7 @@ export type PedidoKernel =
   | { tipo: "massa"; seq: number }
   | { tipo: "verificar"; seq: number }
   /** Peça de um componente de montagem/desenho: regenera e guarda o sólido pela chave do conteúdo. */
-  | { tipo: "componente"; seq: number; chave: string; features: Feature[] }
+  | { tipo: "componente"; seq: number; chave: string; features: Feature[]; planificar?: boolean }
   /** Vista de desenho: projeção (linhas visíveis e ocultas) dos sólidos já guardados, posicionados. */
   /** Montagem: volumes de interferência entre componentes (pares com caixas que se cruzam). */
   | { tipo: "interferencia"; seq: number; itens: { comp: string; chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[] }
@@ -26,7 +26,7 @@ export type PedidoKernel =
   | { tipo: "massaPecas"; seq: number; chaves: string[] }
   /** Medir na montagem: entidades em coordenadas da montagem nos componentes posicionados. */
   | { tipo: "medirMontagem"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; refs: Referencia[] }
-  | { tipo: "projetar"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; orientacao: Orientacao | Camera; tol: number };
+  | { tipo: "projetar"; seq: number; itens: { chave: string; t: { pos: Vec3; rot: [number, number, number, number] } }[]; orientacao: Orientacao | Camera; tol: number; corte?: Corte };
 
 export type RespostaKernel =
   | { tipo: "pronto" }
@@ -49,6 +49,33 @@ async function carregarKernel() {
 }
 
 const inicializado = carregarKernel();
+
+/** Plano da chapa planificada: normal da maior face plana e a direção da aresta reta mais longa dela. */
+function planoDaChapa(s: Shape3D): { olho: Vec3; direita: Vec3 } {
+  let melhor: { area: number; olho: Vec3; direita: Vec3 } | null = null;
+  for (const f of s.faces) {
+    if (f.geomType === "PLANE") {
+      const area = measureArea(f);
+      if (!melhor || area > melhor.area + 1e-6) {
+        const c = f.center, n = f.normalAt(c);
+        let dir: Vec3 = [1, 0, 0], comp = -1;
+        for (const e of f.edges) {
+          if (e.geomType === "LINE" && e.length > comp) {
+            const a = e.startPoint, b = e.endPoint;
+            comp = e.length;
+            dir = [b.x - a.x, b.y - a.y, b.z - a.z];
+          }
+          e.delete();
+        }
+        melhor = { area, olho: [n.x, n.y, n.z], direita: dir };
+        c.delete();
+        n.delete();
+      }
+    }
+    f.delete();
+  }
+  return melhor ?? { olho: [0, 1, 0], direita: [1, 0, 0] };
+}
 
 /** Sólidos das peças de montagens e desenhos, pela chave do conteúdo (interferência, vistas). */
 export const solidosComponentes = new Map<string, Shape3D>();
@@ -97,8 +124,12 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
           if (!s) throw new Error("Peça ainda não calculada no kernel.");
           return posicionar(s, it.t);
         });
-        const r = projetar(solidos, p.orientacao, p.tol);
-        for (const s of solidos) s.delete();
+        let r;
+        try {
+          r = projetar(solidos, p.orientacao, p.tol, p.corte);
+        } finally {
+          for (const s of solidos) s.delete();
+        }
         enviar({ tipo: "resposta", seq: p.seq, dados: r });
         break;
       }
@@ -156,12 +187,14 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
         break;
       }
       case "componente": {
-        const r = await regenerarComRecuperacao(p.features, 0.05, {}, carregarKernel);
+        const r = await regenerarComRecuperacao(p.features, 0.05, { planificar: p.planificar }, carregarKernel);
         const peca = pecaAtual();
         if (peca) solidosComponentes.set(p.chave, peca);
         const m = r.malha;
+        // planificado: linhas de dobra e o plano da chapa (a vista olha de cima da maior face plana)
+        const extra = p.planificar && peca ? { dobras: (r.referencias.find((x) => x.id === "__dobras") as { linhas?: Vec3[][] } | undefined)?.linhas ?? [], plano: planoDaChapa(peca) } : {};
         enviar(
-          { tipo: "resposta", seq: p.seq, dados: { malha: m, topologia: r.topologia, volume: r.volume, erros: r.erros } },
+          { tipo: "resposta", seq: p.seq, dados: { malha: m, topologia: r.topologia, volume: r.volume, erros: r.erros, ...extra } },
           m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : [],
         );
         break;

@@ -3,7 +3,7 @@
 // 2D (mm, no plano da vista: x para a direita, y para cima) separadas em visíveis e ocultas.
 // Roda no Web Worker do kernel e nos testes (scripts/teste-desenho.ts).
 
-import { cast, getOC, makeCompound, ProjectionCamera, type Edge, type Shape3D } from "replicad";
+import { cast, getOC, makeCompound, Plane, ProjectionCamera, type Edge, type Shape3D } from "replicad";
 import type { Vec3 } from "../model";
 import { CAMERAS, type Orientacao } from "../desenho/modelo";
 
@@ -17,6 +17,69 @@ export interface Projecao {
   caixa: { x0: number; y0: number; x1: number; y1: number };
   /** círculos e arcos visíveis inteiros vistos de frente (centro, raio): marcas de centro e cotas */
   circulos: { cx: number; cy: number; r: number }[];
+  /** vista de seção: regiões cortadas (laços: contorno e furos; preencher com par-ímpar) por sólido */
+  cortes?: { i: number; lacos: [number, number][][] }[];
+}
+
+/** Plano de corte da vista de seção: o material entre quem olha (lado de `n`) e o plano sai. */
+export interface Corte {
+  p: Vec3;
+  n: Vec3;
+}
+
+/** Liga as arestas (pontos amostrados) em laços fechados pelas pontas. */
+function lacos(arestas: Vec3[][], eps: number): Vec3[][] {
+  const resto = arestas.filter((a) => a.length > 1).map((a) => a.slice());
+  const out: Vec3[][] = [];
+  const perto = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= eps;
+  while (resto.length) {
+    const laco = resto.shift()!;
+    for (let achou = true; achou && !perto(laco[0], laco[laco.length - 1]);) {
+      achou = false;
+      const fim = laco[laco.length - 1];
+      for (let k = 0; k < resto.length; k++) {
+        const a = resto[k];
+        if (perto(a[0], fim)) laco.push(...a.slice(1));
+        else if (perto(a[a.length - 1], fim)) laco.push(...a.slice(0, -1).reverse());
+        else continue;
+        resto.splice(k, 1);
+        achou = true;
+        break;
+      }
+    }
+    out.push(laco);
+  }
+  return out;
+}
+
+/** Corta o sólido pelo plano (fica o lado oposto a `n`) e acha as faces no plano (hachura). */
+function cortar(s: Shape3D, c: Corte, tol: number): { forma: Shape3D | null; faces: Vec3[][][] } {
+  const n = norm(c.n);
+  let forma: Shape3D | null = null;
+  try {
+    forma = s.clone().cutPlane(new Plane(c.p, null, [-n[0], -n[1], -n[2]]), 0, "positive") as Shape3D | null;
+  } catch {
+    forma = null;
+  }
+  if (!forma) return { forma: null, faces: [] };
+  const faces: Vec3[][][] = [];
+  for (const f of forma.faces) {
+    if (f.geomType === "PLANE") {
+      const ct = f.center;
+      const nf = f.normalAt(ct);
+      const noPlano = Math.abs(Math.abs(nf.x * n[0] + nf.y * n[1] + nf.z * n[2]) - 1) < 1e-6
+        && Math.abs((ct.x - c.p[0]) * n[0] + (ct.y - c.p[1]) * n[1] + (ct.z - c.p[2]) * n[2]) < 1e-4;
+      nf.delete();
+      ct.delete();
+      if (noPlano) {
+        const es = f.edges;
+        faces.push(lacos(es.map((e) => pontosDaAresta(e, tol)), Math.max(1e-4, tol * 0.01)));
+        for (const e of es) e.delete();
+      }
+    }
+    f.delete();
+  }
+  return { forma, faces };
 }
 
 const norm = (v: Vec3): Vec3 => {
@@ -107,12 +170,29 @@ function linhasDaVista(forma: Shape3D, camera: ProjectionCamera, olho: Vec3, dir
  * Projeta o(s) sólido(s) na direção da vista. `tol` (mm) controla quantos pontos as curvas
  * ganham: use ~ 0,2 mm / escala da vista.
  */
-export function projetar(solidos: Shape3D[], o: Orientacao | { olho: Vec3; direita: Vec3 }, tol = 0.2): Projecao {
+export function projetar(solidosEntrada: Shape3D[], o: Orientacao | { olho: Vec3; direita: Vec3 }, tol = 0.2, corte?: Corte): Projecao {
   const cam = typeof o === "string" ? CAMERAS[o] : o;
   const olho = norm(cam.olho);
   // "para a direita" perpendicular à direção de visão
   let dir = norm(cam.direita);
   dir = norm([dir[0] - olho[0] * esc(dir, olho), dir[1] - olho[1] * esc(dir, olho), dir[2] - olho[2] * esc(dir, olho)]);
+  const up: Vec3 = [olho[1] * dir[2] - olho[2] * dir[1], olho[2] * dir[0] - olho[0] * dir[2], olho[0] * dir[1] - olho[1] * dir[0]];
+  // vista de seção: cada sólido cortado (cópias, apagadas no fim) e as regiões cortadas no plano da vista
+  let cortes: Projecao["cortes"];
+  const cortados: Shape3D[] = [];
+  let solidos = solidosEntrada;
+  if (corte) {
+    cortes = [];
+    solidos = [];
+    solidosEntrada.forEach((s, i) => {
+      const r = cortar(s, corte, tol);
+      if (!r.forma) return;
+      cortados.push(r.forma);
+      solidos.push(r.forma);
+      for (const f of r.faces) cortes!.push({ i, lacos: f.map((l) => l.map((p) => [esc(p, dir), esc(p, up)] as [number, number])) });
+    });
+    if (!solidos.length) throw new Error("O plano de corte não passa pelo modelo.");
+  }
   // makeCompound apaga as formas que recebe: junta cópias e apaga o composto no fim
   const composto = solidos.length > 1 ? (makeCompound(solidos.map((s) => s.clone())) as unknown as Shape3D) : null;
   // faces da mesma superfície (cilindro em duas metades, planos divididos) viram uma só: sem as
@@ -160,8 +240,9 @@ export function projetar(solidos: Shape3D[], o: Orientacao | { olho: Vec3; direi
   for (const e of hidden) e.delete();
   unida?.delete();
   composto?.delete();
+  for (const s of cortados) s.delete();
   if (!Number.isFinite(caixa.x0)) Object.assign(caixa, { x0: 0, y0: 0, x1: 0, y1: 0 });
-  return { visiveis, ocultas, caixa, circulos };
+  return { visiveis, ocultas, caixa, circulos, ...(cortes ? { cortes } : {}) };
 }
 
 /** Posição + rotação (quatérnio [x, y, z, w]) aplicadas a uma cópia do sólido. */
