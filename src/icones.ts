@@ -101,6 +101,9 @@ export const ICONES = {
   relacao: svg(`<path d="M5 19 19 5"/><path d="M5 9h6M5 13h6" stroke="${C}"/><rect x="13" y="13" width="7" height="7" rx="1" stroke="${C}"/>`),
 
   selecionar: svg(`<path d="M6 3l12 9-5.5 1.2L15.5 20l-2.6 1.2-3-6.6L6 18z" stroke="${C}"/>`),
+  selecaoTraco: svg(`<path d="M3 18c3-6 6 2 9-4s5-6 9-3" stroke="${C}"/><path d="M5 6h6M14 4l4 4M8 10v4"/>`),
+  selecaoLaco: svg(`<path d="M12 4c5 0 8 2.5 8 6s-4 6-8 6c-5 0-8-2.5-8-6 0-2 1.5-3.8 4-4.8" stroke="${C}" stroke-dasharray="2.5 2"/><path d="M8 11h7M10 9v4"/><path d="M12 16c-1 2-3 3-5 3"/>`),
+  selecionarTudo: svg(`<rect x="3" y="3" width="18" height="18" rx="1" stroke="${C}" stroke-dasharray="2.5 2"/><path d="M7 15l4-6 5 7M8 8h3"/>`),
   construcao: svg(`<path d="M4 20 20 4" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="6" stroke="${C}" stroke-dasharray="2 2.5"/>`),
   concluir: svg(`<path d="M3 17l7 4 11-6-7-4z"/><path d="m9 9 3 3 7-8" stroke="${C}" stroke-width="2.2"/>`),
 

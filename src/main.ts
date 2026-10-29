@@ -408,7 +408,8 @@ function renderizarAbas() {
       icone: it.icone,
       marcado: it.id === atual.id,
       acao: () => {
-        if (!it.emBreve) {
+        // ações de um toque (Selecionar tudo) não viram o padrão do botão
+        if (!it.emBreve && it.id !== "selecionarTudo") {
           prefs.ultimoMenu = { ...prefs.ultimoMenu, [c.id]: it.id };
           salvarPrefs();
           renderizarAbas();
@@ -2494,6 +2495,10 @@ async function comandoEsboco(c: Comando, botao: HTMLElement) {
       if (!editor) return avisar("Espelhamento dinâmico: abra um esboço primeiro.");
       editor.alternarEspelhoDinamico();
       return;
+    case "selecionarTudo":
+      if (!editor) return avisar("Selecionar tudo: abra um esboço primeiro.");
+      editor.selecionarTudo();
+      return;
     case "exibirRelacoes":
       if (!editor) return avisar("Relações: abra um esboço primeiro.");
       editor.definirFerramenta(c.id);
@@ -3802,6 +3807,10 @@ document.addEventListener("keydown", (e) => {
   else if (ctrl && (k === "y" || (k === "z" && e.shiftKey))) refazerPasso();
   else if (ctrl && k === "s") ACOES.salvar.fazer();
   else if (ctrl && (k === "b" || k === "q")) regenerar();
+  else if (ctrl && k === "a" && editor) {
+    e.preventDefault();
+    editor.selecionarTudo();
+  }
   else if (editor && editor.teclado(e)) {
     /* atalhos do esboço */
   } else if (e.key === " ") abrirSeletorVistas($("barra-vistas"));

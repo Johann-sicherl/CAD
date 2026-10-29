@@ -9,7 +9,7 @@ import type { TipoEntidade, Viewport } from "../viewport";
 import { ajustarTextoCota, desenharCota, medirCota, textoCota } from "./cotas";
 import {
   amostrar, angulo, angulosArco, centroTresPontos, tracosDaGeo, paramElipse, parabolaDe, paramParabola, pontoElipse, pontoParabola, dist, distanciaGeo, distPontoSegmento, EIXO_H, EIXO_V, extremidades,
-  mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type P2,
+  idsNaSelecao, mapaPontos, mult, ORIGEM, pontosDaGeo, polar, projetarNaGeo, soma, splineBeziers, pontoBezier, sub, type FormaSelecao, type P2,
 } from "./geometria";
 import * as op from "./operacoes";
 import { carregarFonte, fonteLida } from "./fontesTexto";
@@ -76,7 +76,9 @@ function instrucao(f: Ferramenta, n: number, ed?: EditorEsboco): string {
     case "converter": return "Toque arestas, vértices ou uma face da peça (a face converte o contorno inteiro, com os furos): viram geometria do esboço.";
     case "fileteEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
     case "chanfroEsboco": return "Toque o canto (ponto onde duas linhas se encontram).";
-    case "selecionar": return "Toque para selecionar; arraste pontos e linhas para mover o que está livre. Arestas e vértices da peça também podem ser tocados: viram referência (roxo) para relações e cotas.";
+    case "selecionar": return ed?.modoSelecao === "traco" ? "Seleção por traço: risque com a caneta; tudo o que o traço encostar entra na seleção. Toque numa entidade para tirá-la; no vazio, limpa."
+      : ed?.modoSelecao === "laco" ? "Seleção por laço: contorne com a caneta; o que ficar todo dentro entra na seleção. Toque no vazio para limpar."
+      : "Toque para selecionar; arraste no vazio para a caixa (da esquerda para a direita: só o que fica dentro; ao contrário: também o que cruza). Arraste pontos e linhas para movê-los.";
     case "ponto": return "Toque para cada ponto (posições de furo, referências).";
     case "linha": return n ? "Próximo ponto. Toque de novo no último ponto (ou Esc) para terminar." : "Toque o ponto inicial (ou arraste de um ponto ao outro).";
     case "retangulo": return n ? "Toque o canto oposto." : "Toque o primeiro canto.";
@@ -191,6 +193,9 @@ export class EditorEsboco {
   private aparoRefs: { id: string; p: P2 }[] = [];
   /** Rastro do aparar potente enquanto o cursor é arrastado. */
   private rastro: P2[] | null = null;
+  /** Seleção múltipla ao arrastar no vazio com Selecionar: caixa (padrão), traço ou laço. */
+  modoSelecao: "caixa" | "traco" | "laco" = "caixa";
+  private gesto: { pts: P2[]; x0: number } | null = null;
   get qtdLimitesAparar() {
     return this.aparoRefs.length;
   }
@@ -315,7 +320,7 @@ export class EditorEsboco {
 
   /** Variante atual de uma ferramenta (subfunção do menu ▾). */
   variante(f: string): string | undefined {
-    return ({ linha: this.tipoLinha, retangulo: this.tipoRetangulo, circulo: this.tipoCirculo, arco: this.tipoArco, rasgo: this.tipoRasgo } as Record<string, string>)[f];
+    return ({ linha: this.tipoLinha, retangulo: this.tipoRetangulo, circulo: this.tipoCirculo, arco: this.tipoArco, rasgo: this.tipoRasgo, selecionar: this.modoSelecao } as Record<string, string>)[f];
   }
 
   definirVariante(f: string, v: string) {
@@ -324,6 +329,7 @@ export class EditorEsboco {
     else if (f === "circulo") this.tipoCirculo = v as TipoCirculo;
     else if (f === "arco") this.tipoArco = v as TipoArco;
     else if (f === "rasgo") this.tipoRasgo = v as TipoRasgo;
+    else if (f === "selecionar") this.modoSelecao = v as EditorEsboco["modoSelecao"];
   }
 
   get instrucao(): string {
@@ -530,8 +536,9 @@ export class EditorEsboco {
       ? this.acharModelo(e.clientX, e.clientY, e.pointerType, ["vertice", "aresta"]) : null;
     if (e.pointerType === "touch") {
       if (!this.dedoDesenha) return false;
-      // com Selecionar, dedo no vazio gira a vista; em cima de algo, seleciona/arrasta
-      if (this.ferramenta === "selecionar" && !alvo) return false;
+      // com Selecionar, dedo no vazio gira a vista (na caixa); em cima de algo, seleciona/arrasta.
+      // Traço e laço escolhidos de propósito: o dedo também seleciona.
+      if (this.ferramenta === "selecionar" && !alvo && this.modoSelecao === "caixa") return false;
     }
     const anterior = this.cliques.length ? this.cliques[this.cliques.length - 1].p : undefined;
     const enc = this.ferramentaUsaEncaixe() ? this.encaixar(p, tol, this.ferramenta === "linha" ? anterior : undefined) : { p };
@@ -560,6 +567,11 @@ export class EditorEsboco {
 
     if (pt && this.ferramenta === "selecionar") {
       if (pt.moveu && pt.alvo) this.arrastar(pt, p);
+      else if (pt.moveu) {
+        // arrastar no vazio: gesto de seleção múltipla (prévia do traço, caixa ou laço)
+        (this.gesto ??= { pts: [pt.enc.p], x0: pt.x0 }).pts.push(p);
+        this.redesenhar();
+      }
       return;
     }
     if (pt && pt.moveu && this.ferramenta === "aparar" && this.aparo.modo === "potente") {
@@ -606,7 +618,9 @@ export class EditorEsboco {
       return;
     }
     if (this.ferramenta === "selecionar") {
-      if (pt.arraste) {
+      if (this.gesto) {
+        this.concluirGesto(e.clientX, e.clientY, pt.tipo);
+      } else if (pt.arraste) {
         this.resolver(true);
       } else if (pt.alvo) {
         this.alternarSelecao(pt.alvo.id);
@@ -641,6 +655,45 @@ export class EditorEsboco {
     else if (this.selecao.size) this.limparSelecao();
   }
 
+  /** Fim do gesto de seleção: soma à seleção o que o traço encostou ou o que a caixa/laço pegou. */
+  private concluirGesto(x: number, y: number, tipo: string) {
+    const g = this.gesto!;
+    this.gesto = null;
+    const pts = g.pts;
+    const forma: FormaSelecao = this.modoSelecao === "traco" ? { tipo: "traco", pts, tol: this.tolMm(tipo) }
+      : this.modoSelecao === "laco" ? { tipo: "laco", pts }
+      // caixa: da esquerda para a direita só o que fica dentro; ao contrário, também o que cruza
+      : { tipo: "caixa", a: pts[0], b: pts[pts.length - 1], cruzando: x < g.x0 };
+    const ids = idsNaSelecao(this.esb, forma);
+    for (const id of ids) this.selecao.add(id);
+    this.redesenhar();
+    this.h.atualizarInterface();
+    if (ids.length) {
+      this.abrirCaixaRelacoes(x, y);
+      this.h.avisar(`${ids.length} entidade(s) somada(s) à seleção (${this.selecao.size} no total). Toque no vazio para limpar.`);
+    }
+  }
+
+  /** Seleciona todas as entidades do esboço (Ctrl+A). */
+  selecionarTudo() {
+    if (this.ferramenta !== "selecionar") this.definirFerramenta("selecionar");
+    this.selecao = new Set(this.esb.geos.map((g) => (g.tipo === "ponto" ? g.p : g.id)));
+    this.redesenhar();
+    this.h.atualizarInterface();
+    this.h.avisar(this.selecao.size ? `${this.selecao.size} entidade(s) selecionada(s).` : "O esboço não tem entidades.");
+  }
+
+  /** Prévia do gesto de seleção: traço/laço como desenhado, caixa como retângulo. */
+  private previaGesto() {
+    const g = this.gesto!;
+    let pl = g.pts;
+    if (this.modoSelecao === "caixa") {
+      const a = pl[0], b = pl[pl.length - 1];
+      pl = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a];
+    } else if (this.modoSelecao === "laco") pl = [...pl, pl[0]];
+    return { segmentos: pl.flatMap((q, i) => (i ? [pl[i - 1], q] : [])), pontos: [] };
+  }
+
   /** Limpa a seleção e remove referências do modelo que ficaram sem uso. */
   limparSelecao() {
     this.selecao.clear();
@@ -657,6 +710,7 @@ export class EditorEsboco {
     const pt = this.ponteiro;
     this.ponteiro = null;
     this.fecharLupa();
+    this.gesto = null;
     if (pt?.arraste || this.rastro) {
       this.rastro = null;
       this.resolver(true);
@@ -2205,6 +2259,7 @@ export class EditorEsboco {
         : this.ferramenta === "offset" ? this.previaOffset()
         : this.ferramenta === "espelhar" ? this.previaEspelho()
         : this.ferramenta === "padraoLinearEsboco" || this.ferramenta === "padraoCircularEsboco" ? this.previaPadrao()
+        : this.gesto ? this.previaGesto()
         : this.rastro ? { segmentos: this.rastro.flatMap((q, i) => (i ? [this.rastro![i - 1], q] : [])), pontos: [] }
         : this.ferramenta === "estender" ? this.previaEstender() : undefined,
       remover: this.previaAparar(),
