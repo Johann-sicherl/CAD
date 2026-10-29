@@ -389,3 +389,30 @@ export function ondeEUsado(itens: Item[], id: string): { item: Item; nivel: numb
   subir(id, 1);
   return r;
 }
+
+/**
+ * Estrutura (BOM) que as montagens do WJCAD gravaram na tabela de referências: para cada item
+ * ligado a um arquivo de montagem, os itens das peças que ela contém, com a quantidade. Peça
+ * sem item ligado fica de fora e é contada em `semItem` (para avisar).
+ */
+export function bomDasReferencias(arquivos: Arquivo[], refs: ReferenciaArquivo[]): { bom: Map<string, { item: string; qtd: number }[]>; semItem: number } {
+  const porId = new Map(arquivos.filter((a) => !a.lixeira).map((a) => [a.id, a]));
+  const bom = new Map<string, { item: string; qtd: number }[]>();
+  let semItem = 0;
+  for (const a of porId.values()) {
+    if (!a.item) continue;
+    const filhos = refs.filter((r) => r.pai === a.id && r.tipo === "componente");
+    if (!filhos.length) continue;
+    const linhas = new Map<string, number>();
+    for (const r of filhos) {
+      const it = porId.get(r.filho)?.item;
+      if (!it) {
+        semItem++;
+        continue;
+      }
+      linhas.set(it, (linhas.get(it) ?? 0) + r.quantidade);
+    }
+    bom.set(a.item, [...linhas].map(([item, qtd]) => ({ item, qtd })));
+  }
+  return { bom, semItem };
+}
