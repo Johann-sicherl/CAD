@@ -189,6 +189,39 @@ export function caminhoDoArquivo(i: Indice, a: Arquivo): string[] {
   return [...nomes, a.nome];
 }
 
+/** Arquivo legível numa cópia do cofre: o atual e, ao lado, a pasta com uma cópia de cada versão. */
+export interface Visivel {
+  /** id do arquivo, ou `${id}#v${n}` para a versão n */
+  chave: string;
+  caminho: string[];
+  blob: string;
+  versao?: boolean;
+}
+
+/**
+ * Tudo o que a cópia em disco/Drive mostra: `CAD/Suporte.wjcad` (atual: a cópia de trabalho ou
+ * a última versão) e `CAD/Suporte (versões)/Suporte v1.wjcad`, `v2`… (uma por GO-IN, com a
+ * revisão quando houver). O app mostra só os arquivos; as pastas de versões são para quem abre o
+ * pendrive, o Drive ou a pasta do dispositivo.
+ */
+export function visiveisDoIndice(i: Indice): Visivel[] {
+  const out: Visivel[] = [];
+  for (const a of i.arquivos) {
+    const blob = blobAtual(a);
+    if (a.lixeira || !blob) continue;
+    const caminho = caminhoDoArquivo(i, a);
+    out.push({ chave: a.id, caminho, blob });
+    const nome = caminho[caminho.length - 1];
+    const ponto = nome.lastIndexOf(".");
+    const base = ponto > 0 ? nome.slice(0, ponto) : nome, ext = ponto > 0 ? nome.slice(ponto) : "";
+    for (const v of a.versoes) {
+      if (!v.blob) continue;
+      out.push({ chave: `${a.id}#v${v.n}`, caminho: [...caminho.slice(0, -1), `${base} (versões)`, `${base} v${v.n}${v.revisao ? ` rev ${v.revisao}` : ""}${ext}`], blob: v.blob, versao: true });
+    }
+  }
+  return out;
+}
+
 /** Caminho legível de cada pasta do cofre (inclusive as vazias), para criar/apagar no disco. */
 export function caminhosDasPastas(i: Indice): string[][] {
   return i.pastas.map((p) => caminhoDoArquivo(i, { pasta: p.id, nome: "" } as Arquivo).slice(0, -1));

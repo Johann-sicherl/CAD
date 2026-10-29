@@ -105,7 +105,7 @@ const repo = () => new RepositorioDrive(() => drive.token, drive.responder as ty
 // 1. primeiro envio: estrutura no Drive
 let r = await sincronizar([tab, repo()], AGORA);
 igual("sem falhas", r.falhas, []);
-igual("estrutura em Meu Drive/WJPDM", drive.arquivos(), ["WJPDM/.wjpdm/blobs/b1", "WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/pastas.json", "WJPDM/.wjpdm/visiveis.json", "WJPDM/CAD/Eixo.wjcad"]);
+igual("estrutura em Meu Drive/WJPDM", drive.arquivos(), ["WJPDM/.wjpdm/blobs/b1", "WJPDM/.wjpdm/indice.json", "WJPDM/.wjpdm/pastas.json", "WJPDM/.wjpdm/visiveis.json", "WJPDM/CAD/Eixo (versões)/Eixo v1.wjcad", "WJPDM/CAD/Eixo.wjcad"]);
 const visivel = [...drive.itens.values()].find((x) => x.name === "Eixo.wjcad")!;
 igual("conteúdo legível", visivel.dados, "eixo v1");
 
@@ -130,7 +130,7 @@ igual("outro aparelho recebe o cofre do Drive", [outro.indice?.arquivos.map((a) 
 tab.indice.pastas.push({ id: "p2", nome: "Projetos", pai: null, mod: "2026-10-28T10:00:00.000Z" });
 tab.indice.arquivos[0] = { ...tab.indice.arquivos[0], nome: "Eixo motor.wjcad", pasta: "p2", mod: "2026-10-28T11:00:00.000Z" };
 r = await sincronizar([tab, repo()], AGORA);
-igual("movido: só o caminho novo existe", drive.arquivos().filter((x) => !x.includes(".wjpdm")), ["WJPDM/Projetos/Eixo motor.wjcad"]);
+igual("movido: arquivo e versões só no caminho novo (pasta de versões antiga some)", drive.arquivos().filter((x) => !x.includes(".wjpdm")), ["WJPDM/Projetos/Eixo motor (versões)/Eixo motor v1.wjcad", "WJPDM/Projetos/Eixo motor (versões)/Eixo motor v2.wjcad", "WJPDM/Projetos/Eixo motor.wjcad"]);
 
 // 6. destruído no tablet: some do Drive (arquivo visível e conteúdo)
 tab.indice.arquivos = [];

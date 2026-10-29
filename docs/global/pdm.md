@@ -15,15 +15,21 @@ Status de tudo: **G5** salvo indicação.
 
 ## Cofre único e cópias (28/10/2026)
 
-✅ Todo arquivo dos apps vive no cofre (`src/comum/cofre.ts`). **Salvar grava só no dispositivo**
-(banco do app + pasta padrão do dispositivo), em GO-OUT: o primeiro salvar abre "Salvar no cofre"
-(pasta, Nova pasta, nome; lembra a última pasta de cada app) e o arquivo fica **só no dispositivo**
-(`soLocal`, ⌂ na lista) até o primeiro GO-IN, que publica a versão 1; depois, salvar grava a
-**cópia de trabalho** (✎). **GO-IN** cria a versão e **publica no pendrive e no Drive**, que só
-recebem o que passou por GO-IN. Desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em
+✅ Todo arquivo dos apps vive no cofre (`src/comum/cofre.ts`). O **primeiro salvar** abre "Salvar no
+cofre" (pasta, Nova pasta, nome; lembra a última pasta de cada app) e **já publica a versão 1** no
+dispositivo, no pendrive e no Drive (GO-IN automático, 29/10/2026); o arquivo segue em GO-OUT com
+quem salvou. Depois, **salvar grava só no dispositivo** a **cópia de trabalho** (✎). **GO-IN** — sem
+comentário nem escolha de conteúdo: é só a cópia — cria a versão e **publica no pendrive e no
+Drive**, que só recebem o que passou por GO-IN. **GO-IN da pasta** (menu da pasta no WJPDM e botão
+"GO-IN da pasta"): todos os arquivos da pasta e das subpastas em GO-OUT com você; os de outras
+pessoas ficam de fora com aviso.
+✅ **Pastas de versões nas cópias**: ao lado de cada arquivo, `<nome> (versões)/<nome> v1.wjcad`,
+`v2`, `v3 rev A`… (uma cópia por GO-IN). No app só aparecem os arquivos; no pendrive, no Drive e na
+pasta do dispositivo dá para abrir qualquer versão. Renomear/mover leva a pasta de versões junto;
+excluir apaga. O banco (`arquivos.versoes`) registra cada versão (data, autor, revisão, estado). Desfazer GO-OUT descarta a cópia de trabalho. "Abrir do cofre" em
 cada app. WJPDM e WJERP (cópias de segurança) entram direto na pasta da face, sem perguntar.
 ✅ Aba **Cofre** na lateral direita de cada app de documento: arquivo, pasta, estado, revisão,
-versão, GO-OUT; botões GO-OUT / GO-IN (comentário, manter em GO-OUT; salva antes de publicar) /
+versão, GO-OUT; botões GO-OUT / GO-IN (manter em GO-OUT; salva antes de publicar) /
 Desfazer GO-OUT / Salvar; lista **Meus arquivos em GO-OUT** de todos os apps com GO-IN por item ou
 dos marcados; número de arquivos em GO-OUT na própria aba.
 ✅ **Sincronia global a cada abertura** de qualquer app (WJCAD depois do kernel carregar): iguala
