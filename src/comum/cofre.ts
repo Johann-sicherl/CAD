@@ -225,7 +225,9 @@ async function escolherLocal(app: ChaveApp, nomeArquivo: string): Promise<{ past
           ${tab ? "" : `<p class="wjc-nao">Pasta padrão do dispositivo ainda não escolhida.</p>${temPastas() ? `<div class="wjc-botoes"><button data-b="tab">Escolher pasta do dispositivo…</button></div>` : ""}`}</section>
         <footer><button data-b="cancelar">Cancelar</button><button data-b="ok" class="destaque">Salvar</button></footer>`;
       const campo = caixa.querySelector<HTMLInputElement>("[data-nome]")!;
-      campo.onkeydown = (e) => e.key === "Enter" && ok();
+      campo.onkeydown = (e) => {
+        if (e.key === "Enter") ok(); // sem "&&": devolver false cancelaria as outras teclas
+      };
       caixa.querySelectorAll<HTMLButtonElement>("[data-p]").forEach((b) => (b.onclick = () => {
         sel = b.dataset.p!;
         caixa.querySelectorAll("[data-p]").forEach((x) => x.classList.toggle("sel", x === b));

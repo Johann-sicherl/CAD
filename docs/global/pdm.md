@@ -35,6 +35,9 @@ Os arquivos vão para a lixeira do cofre (30 dias; restaurados voltam para a rai
 espelham as pastas do cofre (também as vazias, `.wjpdm/pastas.json`): pasta excluída some da pasta
 do dispositivo e do pendrive (sem apagar o que alguém pôs lá à mão) e vai para a lixeira do Drive;
 pendrive desconectado recebe a exclusão quando for conectado.
+✅ Teclado: **F2** renomeia a pasta selecionada (ou a aberta na árvore), **Delete** exclui; nas
+janelas de nome (nova pasta, renomear, salvar no cofre) a digitação funciona em teclado físico e
+virtual (29/10/2026: o campo cancelava as teclas).
 ✅ **Cópias do cofre** (tela em 📁 / Ferramentas): pendrive (`WJPDM/` na raiz dele), pasta padrão do
 dispositivo e, quando configurado, Google Drive. Sincronia (`src/pdm/sincronia.ts`): junta os índices; o
 que falta é copiado; mesmo registro alterado em duas cópias: **a alteração mais recente vence** e a
