@@ -338,6 +338,65 @@ function maisPertoNaPolilinha(pl: P2[], p: P2): { d: number; q: P2 } {
   return { d, q };
 }
 
+/** Gesto de seleção múltipla no esboço (coordenadas do plano do esboço, mm). */
+export type FormaSelecao =
+  /** traço livre: seleciona o que o traço encosta (tolerância em mm) */
+  | { tipo: "traco"; pts: P2[]; tol: number }
+  /** caixa: da esquerda para a direita, só o que fica todo dentro; da direita para a esquerda, também o que cruza */
+  | { tipo: "caixa"; a: P2; b: P2; cruzando: boolean }
+  /** laço (forma livre fechada): o que fica todo dentro */
+  | { tipo: "laco"; pts: P2[] };
+
+const segmentosSeCruzam = (a: P2, b: P2, c: P2, d: P2) => {
+  const o = (p: P2, q: P2, r: P2) => cruz2(sub(q, p), sub(r, p));
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+};
+/** Distância entre dois segmentos (0 se se cruzam). */
+const distSegmentos = (a: P2, b: P2, c: P2, d: P2) =>
+  segmentosSeCruzam(a, b, c, d) ? 0 : Math.min(distPontoSegmento(a, c, d).d, distPontoSegmento(b, c, d).d, distPontoSegmento(c, a, b).d, distPontoSegmento(d, a, b).d);
+
+/**
+ * Entidades do esboço apanhadas por um gesto de seleção (traço, caixa ou laço). Devolve os ids
+ * como a seleção do editor os guarda: o id da geometria (o ponto, para um ponto solto).
+ */
+export function idsNaSelecao(esb: Pick<FeatureEsboco, "pontos" | "geos">, forma: FormaSelecao): string[] {
+  const pts = mapaPontos(esb);
+  const ids: string[] = [];
+  let traco: P2[] = [];
+  if (forma.tipo === "traco") {
+    // menos pontos no traço (a caneta manda centenas): um a cada meia tolerância
+    for (const p of forma.pts) if (!traco.length || dist(traco[traco.length - 1], p) >= forma.tol / 2) traco.push(p);
+    if (forma.pts.length && traco[traco.length - 1] !== forma.pts[forma.pts.length - 1]) traco.push(forma.pts[forma.pts.length - 1]);
+  }
+  const x0 = forma.tipo === "caixa" ? Math.min(forma.a.x, forma.b.x) : 0, x1 = forma.tipo === "caixa" ? Math.max(forma.a.x, forma.b.x) : 0;
+  const y0 = forma.tipo === "caixa" ? Math.min(forma.a.y, forma.b.y) : 0, y1 = forma.tipo === "caixa" ? Math.max(forma.a.y, forma.b.y) : 0;
+  const naCaixa = (p: P2) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+  const bordas: [P2, P2][] = [[{ x: x0, y: y0 }, { x: x1, y: y0 }], [{ x: x1, y: y0 }, { x: x1, y: y1 }], [{ x: x1, y: y1 }, { x: x0, y: y1 }], [{ x: x0, y: y1 }, { x: x0, y: y0 }]];
+  for (const g of esb.geos) {
+    let am: P2[];
+    try {
+      am = amostrar(g, pts, Math.PI / 24);
+    } catch {
+      continue;
+    }
+    if (!am.length || am.some((p) => !p)) continue;
+    const segs = am.length === 1 ? [[am[0], am[0]] as [P2, P2]] : am.slice(1).map((p, i) => [am[i], p] as [P2, P2]);
+    let pega = false;
+    if (forma.tipo === "traco") {
+      pega = traco.length === 1
+        ? segs.some(([a, b]) => distPontoSegmento(traco[0], a, b).d <= forma.tol)
+        : traco.slice(1).some((p, i) => segs.some(([a, b]) => distSegmentos(traco[i], p, a, b) <= forma.tol));
+    } else if (forma.tipo === "caixa") {
+      pega = am.every(naCaixa) || (forma.cruzando && (am.some(naCaixa) || segs.some(([a, b]) => bordas.some(([c, d]) => segmentosSeCruzam(a, b, c, d)))));
+    } else {
+      pega = forma.pts.length >= 3 && am.every((p) => pontoNoPoligono(p, forma.pts));
+    }
+    if (pega) ids.push(g.tipo === "ponto" ? g.p : g.id);
+  }
+  return ids;
+}
+
 export function distPontoSegmento(p: P2, a: P2, b: P2): { d: number; t: number } {
   const ab = sub(b, a);
   const l2 = esc2(ab, ab);

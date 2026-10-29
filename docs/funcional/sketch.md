@@ -318,6 +318,19 @@ chanfro.
 | Mesclar pontos | 2 pontos (vira 1) | ✅ (encaixe) |
 | Em arestas do modelo / no ponto do modelo | referências externas | ✅ (via referência do modelo) |
 
+### Seleção múltipla — ✅ (29/10/2026)
+Botão **Selecionar ▾** na aba Sketch (a seta escolhe o modo; o botão repete o último):
+- **Selecionar (toque e caixa)** (V): toque seleciona/desmarca; arrastar no vazio faz a **caixa** —
+  da esquerda para a direita, só o que fica todo dentro; da direita para a esquerda, também o que
+  cruza a borda (como nos CADs profissionais). Com o dedo (sem caneta), arrastar no vazio continua
+  girando a vista.
+- **Seleção por traço**: risque com a caneta; tudo o que o traço **encostar** (tolerância do toque)
+  entra na seleção. O dedo também risca neste modo.
+- **Seleção por laço**: contorne uma forma livre; o que ficar **todo dentro** entra na seleção.
+- **Selecionar tudo** (Ctrl+A): todas as entidades do esboço.
+- Os gestos **somam** à seleção (bom para a caneta, sem Ctrl); tocar no vazio limpa. Ao terminar,
+  abre a caixinha de relações aplicáveis. Função pura `idsNaSelecao` (testada em `teste-esboco`).
+
 ### Caixinha de relações no ponteiro — ✅
 - Ao selecionar entidades (Selecionar), abre ao lado do ponteiro uma caixinha com os **símbolos**
   das relações aplicáveis (H, V, ∥, ⊥, =, ⫽, T, ◎, ½, ⇹, ◉, ⚲); toque aplica. Some ao limpar a seleção.

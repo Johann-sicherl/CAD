@@ -7,7 +7,7 @@ import { novaFeature, novoEsboco, type FeatureEsboco, type FeatureExtrusao, type
 import { regenerar } from "../src/kernel/regenerar";
 import { SolverEsboco } from "../src/esboco/solver";
 import * as op from "../src/esboco/operacoes";
-import { aninhamento, areaAssinada, encontrarLacos, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
+import { aninhamento, areaAssinada, encontrarLacos, idsNaSelecao, ORIGEM, EIXO_H, EIXO_V } from "../src/esboco/geometria";
 import { atualizarExternas, criarExterna, podarExternas, projetar } from "../src/esboco/externas";
 import { referencial } from "../src/esboco/referencial";
 import { ajustarTextoCota, PASSO_COTA_PX } from "../src/esboco/cotas";
@@ -505,6 +505,25 @@ const extrusao = (esb: FeatureEsboco, prof: number, cortar = false): FeatureExtr
   const novas = op.espelhar(e, e.geos.filter((g) => g.tipo === "texto").map((g) => g.id), EIXO_V);
   confere("texto espelhado: área dobra", regenerar([e, extrusao(e, 1)]).volume ?? 0, 2 * v, 0.01);
   verdade("texto espelhado criado", novas.length === 1);
+}
+
+// seleção múltipla: traço, caixa (dentro / cruzando), laço
+{
+  const e = plano();
+  const p = (x: number, y: number) => op.ponto(e, { x, y });
+  const h = op.linha(e, p(0, 0), p(20, 0)); // horizontal embaixo
+  const v = op.linha(e, p(40, -10), p(40, 10)); // vertical à direita
+  const c = op.circulo(e, p(10, 30), 5); // círculo em cima
+  const pt = op.pontoSolto(e, p(60, 60));
+  const tem = (ids: string[], ...esp: string[]) => esp.every((x) => ids.includes(x)) && ids.length === esp.length;
+  const traco = idsNaSelecao(e, { tipo: "traco", pts: [{ x: 10, y: -5 }, { x: 10, y: 5 }, { x: 45, y: 5 }], tol: 0.5 });
+  verdade("traço pega a horizontal e a vertical que cruzou", tem(traco, h.id, v.id));
+  verdade("traço que passa perto (dentro da tolerância) pega", tem(idsNaSelecao(e, { tipo: "traco", pts: [{ x: 5, y: 25.3 }, { x: 15, y: 25.3 }], tol: 0.5 }), c.id));
+  verdade("caixa da esquerda para a direita: só o que fica dentro", tem(idsNaSelecao(e, { tipo: "caixa", a: { x: -1, y: -1 }, b: { x: 30, y: 40 }, cruzando: false }), h.id, c.id));
+  verdade("caixa cruzando: também o que corta a borda", tem(idsNaSelecao(e, { tipo: "caixa", a: { x: 30, y: 5 }, b: { x: 50, y: -50 }, cruzando: true }), v.id));
+  verdade("caixa sem cruzar não pega o que só corta a borda", idsNaSelecao(e, { tipo: "caixa", a: { x: 30, y: 5 }, b: { x: 50, y: -50 }, cruzando: false }).length === 0);
+  const laco = idsNaSelecao(e, { tipo: "laco", pts: [{ x: 0, y: 20 }, { x: 25, y: 20 }, { x: 25, y: 45 }, { x: 55, y: 70 }, { x: 70, y: 55 }, { x: 0, y: 40 }] });
+  verdade("laço pega o círculo e o ponto solto (pelo id do ponto)", tem(laco, c.id, pt.p));
 }
 
 if (falhas) {

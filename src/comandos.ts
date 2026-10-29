@@ -91,7 +91,15 @@ export const ABAS: Aba[] = [
           { id: "esboco3d", rotulo: "Esboço 3D", icone: "esboco3d", dica: "Esboço livre no espaço", grupo: 0, emBreve: true },
         ],
       },
-      { id: "selecionar", rotulo: "Selecionar", icone: "selecionar", dica: "Seleciona e arrasta entidades (V)", grupo: 0 },
+      {
+        id: "grupo-selecionar", rotulo: "Selecionar", icone: "selecionar", dica: "Seleção: toque, caixa, traço da caneta, laço e tudo (V, Ctrl+A)", grupo: 0,
+        itens: [
+          { id: "selecionar:caixa", rotulo: "Selecionar (toque e caixa)", icone: "selecionar", dica: "Toque seleciona; arrastar no vazio faz a caixa (→ só o que fica dentro, ← também o que cruza) (V)", grupo: 0 },
+          { id: "selecionar:traco", rotulo: "Seleção por traço", icone: "selecaoTraco", dica: "Risque com a caneta: tudo o que o traço encostar é selecionado", grupo: 0 },
+          { id: "selecionar:laco", rotulo: "Seleção por laço", icone: "selecaoLaco", dica: "Contorne com a caneta: o que ficar dentro do laço é selecionado", grupo: 0 },
+          { id: "selecionarTudo", rotulo: "Selecionar tudo", icone: "selecionarTudo", dica: "Seleciona todas as entidades do esboço (Ctrl+A)", grupo: 0 },
+        ],
+      },
       {
         id: "grupo-cota", rotulo: "Cota", icone: "cota", dica: "Cotas", grupo: 0,
         itens: [{ id: "cota", rotulo: "Cota inteligente", icone: "cota", dica: "Cota inteligente: linear, H/V, radial, angular (D)", grupo: 0 }],
