@@ -148,6 +148,59 @@ export interface Arquivo {
   trabalho?: { blob: string; tamanho: number; data: string; autor: string };
   /** última alteração do registro (sincronia entre cópias: a mais recente vence) */
   mod?: string;
+  /** dados do modelo gravados pelo WJCAD ao salvar (lista de materiais, legenda do desenho) */
+  modelo?: DadosModelo;
+}
+
+/** O que o WJCAD sabe do arquivo sem precisar abri-lo de novo. */
+export interface DadosModelo {
+  tipo: "peca" | "montagem" | "desenho";
+  configuracoes?: string[];
+  material?: string;
+  /** g */
+  massa?: number;
+  /** mm³ */
+  volume?: number;
+}
+
+/**
+ * Tabela de referências do cofre: o arquivo `pai` usa o arquivo `filho` (componente de uma
+ * montagem, modelo de um desenho). Base do "Contém" e do "Onde é usado".
+ */
+export interface ReferenciaArquivo {
+  /** `${pai}>${filho}>${configuracao}` (um registro por par e configuração) */
+  id: string;
+  pai: string;
+  filho: string;
+  tipo: "componente" | "desenho";
+  quantidade: number;
+  configuracao?: string;
+  mod?: string;
+}
+
+export const idReferencia = (pai: string, filho: string, configuracao = "") => `${pai}>${filho}>${configuracao}`;
+
+/**
+ * Troca as referências de um arquivo pai pelas novas: devolve as que gravar (com `mod`) e os ids
+ * que sair (viram exclusão para chegar às outras cópias). Iguais não são regravadas.
+ */
+export function trocarReferencias(atuais: ReferenciaArquivo[], pai: string, novas: Omit<ReferenciaArquivo, "id" | "pai" | "mod">[], agora: string) {
+  const antes = new Map(atuais.filter((r) => r.pai === pai).map((r) => [r.id, r]));
+  const gravar: ReferenciaArquivo[] = [];
+  const juntas = new Map<string, Omit<ReferenciaArquivo, "mod">>();
+  for (const n of novas) {
+    const id = idReferencia(pai, n.filho, n.configuracao);
+    const j = juntas.get(id);
+    if (j) j.quantidade += n.quantidade;
+    else juntas.set(id, { ...n, id, pai });
+  }
+  for (const r of juntas.values()) {
+    const v = antes.get(r.id);
+    antes.delete(r.id);
+    if (v && v.quantidade === r.quantidade && v.tipo === r.tipo) continue;
+    gravar.push({ ...r, mod: agora });
+  }
+  return { gravar, sair: [...antes.keys()] };
 }
 
 export interface Pasta {

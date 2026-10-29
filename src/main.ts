@@ -3525,9 +3525,10 @@ function mostrarAtalhos() {
 
 // ---------- documento: novo, abrir, fechar ----------
 
-/** Ambientes de documento. Só Peça por enquanto (chapa metálica é feita dentro da peça). */
+/** Ambientes de documento (chapa metálica é feita dentro da peça). Montagem e Desenho têm páginas próprias. */
 const AMBIENTES = [
   { id: "peca", rotulo: "Peça", descricao: "Sólido 3D a partir de esboços e recursos", icone: "peca" as NomeIcone },
+  { id: "montagem", rotulo: "Montagem", descricao: "Peças posicionadas entre si (componentes e posicionamentos)", icone: "montagem" as NomeIcone },
 ];
 let contadorPecas = 0;
 
@@ -3553,6 +3554,12 @@ function abrirDialogoNovo() {
     document.removeEventListener("keydown", teclas, true);
   };
   const ok = () => {
+    if (escolhido !== "peca") {
+      // montagem e desenho: páginas do WJCAD (a peça aberta continua no salvamento automático)
+      salvarAutosave();
+      location.href = new URL(`${import.meta.env.BASE_URL}cad/${escolhido}/#novo`, location.href).href;
+      return;
+    }
     if (aberto && doc.features.length && !confirm("Fechar a peça atual e começar uma nova? (o que não foi salvo em arquivo se perde)")) return;
     fechar();
     const d = documentoVazio();
@@ -3918,6 +3925,25 @@ if (location.hash === "#abrir-autosave") {
   history.replaceState(null, "", location.pathname + location.search);
   const doCofre = carregarAutosave();
   if (doCofre) abrirDocumento(doCofre);
+} else if (location.hash === "#novo") {
+  // Novo → Peça nas páginas de montagem/desenho
+  history.replaceState(null, "", location.pathname + location.search);
+  const d = documentoVazio();
+  desligar("cad");
+  d.nome = `Peça${++contadorPecas}`;
+  abrirDocumento(d);
+}
+// peça aberta a partir de uma montagem: botão para voltar a ela
+if (sessionStorage.getItem("wjcad:voltarMontagem")) {
+  const b = document.createElement("button");
+  b.className = "btn-ic btn-voltar";
+  b.title = "Voltar à montagem (salve a peça antes: a montagem se atualiza do cofre)";
+  b.innerHTML = `${ICONES.montagem}<span>Montagem</span>`;
+  b.onclick = () => {
+    sessionStorage.removeItem("wjcad:voltarMontagem");
+    location.href = new URL(`${import.meta.env.BASE_URL}cad/montagem/#abrir-autosave`, location.href).href;
+  };
+  document.querySelector(".rapidas")?.prepend(b);
 }
 mostrarPainel("arvore");
 renderizarAbas();

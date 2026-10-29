@@ -3,7 +3,7 @@
 
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
-import { setOC } from "replicad";
+import { setOC, type Shape3D } from "replicad";
 import type { Feature, Referencia } from "../model";
 import { ehFatal, exportar, exportarDxf, pecaAtual, regenerar, regenerarComRecuperacao } from "./regenerar";
 import { massa, medir, verificar } from "./avaliar";
@@ -14,7 +14,9 @@ export type PedidoKernel =
   | { tipo: "exportar"; seq: number; formato: "step" | "stl" }
   | { tipo: "medir"; seq: number; refs: Referencia[] }
   | { tipo: "massa"; seq: number }
-  | { tipo: "verificar"; seq: number };
+  | { tipo: "verificar"; seq: number }
+  /** Peça de um componente de montagem/desenho: regenera e guarda o sólido pela chave do conteúdo. */
+  | { tipo: "componente"; seq: number; chave: string; features: Feature[] };
 
 export type RespostaKernel =
   | { tipo: "pronto" }
@@ -35,6 +37,9 @@ async function carregarKernel() {
 }
 
 const inicializado = carregarKernel();
+
+/** Sólidos das peças de montagens e desenhos, pela chave do conteúdo (interferência, vistas). */
+export const solidosComponentes = new Map<string, Shape3D>();
 
 inicializado
   .then(() => enviar({ tipo: "pronto" }))
@@ -74,6 +79,17 @@ self.onmessage = async (ev: MessageEvent<PedidoKernel>) => {
       case "verificar":
         enviar({ tipo: "resposta", seq: p.seq, dados: verificar(pecaAtual()) });
         break;
+      case "componente": {
+        const r = await regenerarComRecuperacao(p.features, 0.05, {}, carregarKernel);
+        const peca = pecaAtual();
+        if (peca) solidosComponentes.set(p.chave, peca);
+        const m = r.malha;
+        enviar(
+          { tipo: "resposta", seq: p.seq, dados: { malha: m, topologia: r.topologia, volume: r.volume, erros: r.erros } },
+          m ? [m.vertices.buffer, m.normais.buffer, m.triangulos.buffer, m.arestas.buffer, m.faces.buffer, m.gruposArestas.buffer] : [],
+        );
+        break;
+      }
     }
   } catch (e) {
     // exportar/medir/massa também podem derrubar o kernel: recarrega para a próxima vez

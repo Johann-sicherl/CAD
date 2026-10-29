@@ -521,6 +521,28 @@ export class Viewport {
     return null;
   }
 
+  /** Ponto do sólido sob o ponteiro (null fora da peça). */
+  pontoSob(clientX: number, clientY: number): Vec3 | null {
+    const solido = this.solido();
+    const hit = solido ? this.raio(clientX, clientY).intersectObject(solido)[0] : undefined;
+    return hit ? (hit.point.toArray() as Vec3) : null;
+  }
+
+  /** Direção da vista (da câmera para a cena), direita e para cima da tela, em coordenadas do mundo. */
+  eixosCamera(): { dir: Vec3; direita: Vec3; cima: Vec3 } {
+    // eixos locais da câmera (−Z olha para a cena, X direita, Y para cima da tela) no mundo
+    const q = this.camera.quaternion;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    const direita = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+    const cima = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    return { dir: dir.toArray() as Vec3, direita: direita.toArray() as Vec3, cima: cima.toArray() as Vec3 };
+  }
+
+  /** Alvo da câmera (centro da órbita). */
+  alvoCamera(): Vec3 {
+    return this.controles.target.toArray() as Vec3;
+  }
+
   /** Canvas WebGL (a lupa copia dele logo depois de cada quadro). */
   canvas(): HTMLCanvasElement {
     return this.renderer.domElement;

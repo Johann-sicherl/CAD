@@ -62,6 +62,32 @@ Meu Drive/WJPDM; acesso de 1 hora renovado ao salvar/sincronizar (toque do usuá
 🟡 Arquivos colocados à mão na pasta do pendrive ainda não
 entram no cofre (adicionar pelo WJPDM).
 
+## Tabelas do cofre (29/10/2026)
+
+O cofre é um banco local (IndexedDB `wjpdm`) cujas lojas são as **tabelas**; cada cópia
+(pendrive, Drive, pasta do dispositivo) guarda as mesmas tabelas em `WJPDM/.wjpdm/indice.json`
+e o conteúdo dos arquivos em `.wjpdm/blobs/`. Cada registro tem `id` e `mod` (a alteração mais
+recente vence na sincronia); excluídos viram registros da tabela `exclusoes`.
+
+| Tabela | Registro | Quem grava |
+|---|---|---|
+| `meta` | nome do cofre, usuário, máscara de código, **fluxo de trabalho** | WJPDM |
+| `pastas` | id, nome, pasta-mãe | WJPDM, janela "Salvar no cofre" |
+| `arquivos` | nome, pasta, estado, revisão, GO-OUT, cartão de dados, versões, cópia de trabalho, histórico, só no dispositivo, **dados do modelo** (configurações, material, massa, volume, tipo: peça/montagem/desenho) | apps ao salvar, WJPDM |
+| `itens` | item de engenharia (código, descrição, tipo, unidade, lista de materiais) | WJPDM, WJERP |
+| **`referencias`** | **pai** (arquivo que usa) → **filho** (arquivo usado): tipo (`componente` da montagem, `desenho` do modelo), **quantidade**, **configuração** | WJCAD ao salvar montagem/desenho |
+| `exclusoes` | id, tipo, data (exclusão que propaga) | WJPDM |
+| `blobs` | conteúdo das versões e cópias de trabalho | apps, WJPDM |
+
+- **Contém / Onde é usado** (WJPDM, aba Referências do arquivo): lê `referencias` nos dois
+  sentidos (montagem → peças; peça → montagens e desenhos que a usam).
+- As referências de um arquivo são trocadas inteiras a cada salvar dele (o que saiu da montagem
+  vira exclusão). Arquivos "só no dispositivo" não levam as referências para o pendrive/Drive
+  até o GO-IN.
+- **Dados do modelo**: o WJCAD grava, ao salvar, as configurações da peça, o material, a massa e o
+  volume; o cartão herda o material se estiver vazio. A lista de materiais e a legenda do desenho
+  usam esses dados sem abrir o arquivo.
+
 ## Estado da v1 (25/10/2026) — `pdm/index.html`, `src/pdm/` (cofre local)
 
 ✅ Cofre **neste aparelho** (IndexedDB; funciona sem internet), regras puras testadas em

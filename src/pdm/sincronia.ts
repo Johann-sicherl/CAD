@@ -6,7 +6,7 @@
 // Tudo puro e testável em Node (scripts/teste-sincronia.ts); quem lê e grava cada cópia é um
 // Repositorio.
 
-import type { Arquivo, Fluxo, Item, Pasta } from "./regras";
+import type { Arquivo, Fluxo, Item, Pasta, ReferenciaArquivo } from "./regras";
 import { extensao } from "./regras";
 
 export interface MetaCofre {
@@ -22,7 +22,7 @@ export interface MetaCofre {
 /** Registro destruído (saiu da lixeira): some de todas as cópias. */
 export interface Exclusao {
   id: string;
-  tipo: "arquivo" | "pasta" | "item";
+  tipo: "arquivo" | "pasta" | "item" | "referencia";
   data: string;
 }
 
@@ -34,10 +34,12 @@ export interface Indice {
   pastas: Pasta[];
   arquivos: Arquivo[];
   itens: Item[];
+  /** tabela de referências entre arquivos (montagem → peças, desenho → modelo) */
+  referencias: ReferenciaArquivo[];
   exclusoes: Exclusao[];
 }
 
-export const indiceVazio = (): Indice => ({ formato: "wjpdm-indice", versao: 1, meta: null, pastas: [], arquivos: [], itens: [], exclusoes: [] });
+export const indiceVazio = (): Indice => ({ formato: "wjpdm-indice", versao: 1, meta: null, pastas: [], arquivos: [], itens: [], referencias: [], exclusoes: [] });
 
 /** Uma cópia do cofre (banco do aparelho, pasta do pendrive/tablet, Drive). */
 export interface Repositorio {
@@ -125,6 +127,7 @@ export function mesclar(indices: Indice[], agora: string): { indice: Indice; con
 
   r.pastas = juntar((i) => i.pastas);
   r.itens = juntar((i) => i.itens);
+  r.referencias = juntar((i) => i.referencias ?? []);
   const extras: Arquivo[] = [];
   r.arquivos = juntar(
     (i) => i.arquivos,
@@ -158,7 +161,13 @@ export function mesclar(indices: Indice[], agora: string): { indice: Indice; con
 
 /** O que uma cópia de publicação recebe: só versões que passaram por GO-IN. */
 export function vistaPublicada(i: Indice): Indice {
-  return { ...i, arquivos: i.arquivos.filter((a) => !a.soLocal).map((a) => (a.trabalho ? { ...a, trabalho: undefined } : a)) };
+  const soLocal = new Set(i.arquivos.filter((a) => a.soLocal).map((a) => a.id));
+  return {
+    ...i,
+    arquivos: i.arquivos.filter((a) => !a.soLocal).map((a) => (a.trabalho ? { ...a, trabalho: undefined } : a)),
+    // referências de arquivos nunca publicados ficam no dispositivo
+    referencias: (i.referencias ?? []).filter((r) => !soLocal.has(r.pai)),
+  };
 }
 
 /** Todos os blobs que o índice usa. */

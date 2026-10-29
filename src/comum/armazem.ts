@@ -3,7 +3,7 @@
 
 export type Loja = string;
 /** Lojas do cofre do WJPDM. */
-export const LOJAS_PDM = ["meta", "pastas", "arquivos", "itens", "blobs", "exclusoes"];
+export const LOJAS_PDM = ["meta", "pastas", "arquivos", "itens", "blobs", "exclusoes", "referencias"];
 
 const req = <T>(r: IDBRequest<T>) =>
   new Promise<T>((ok, erro) => {
@@ -12,9 +12,25 @@ const req = <T>(r: IDBRequest<T>) =>
   });
 
 export class Armazem {
-  private constructor(private db: IDBDatabase) {}
+  private constructor(private db: IDBDatabase) {
+    this.vigiar(db);
+  }
 
   private lojas: string[] = [];
+  private nome = "";
+  /** Outra página subiu a versão do banco (tabela nova): esta conexão fecha e reabre sozinha. */
+  private reabrindo: Promise<void> | null = null;
+
+  private vigiar(db: IDBDatabase) {
+    db.onversionchange = () => {
+      db.close();
+      this.reabrindo = Armazem.abrir(this.nome, this.lojas).then((a) => {
+        this.db = a.db;
+        this.vigiar(a.db);
+        this.reabrindo = null;
+      });
+    };
+  }
 
   /** Abre (ou cria) o banco com as lojas pedidas; lojas novas sobem a versão do banco. */
   static abrir(nome = "wjpdm", lojas: string[] = LOJAS_PDM): Promise<Armazem> {
@@ -33,34 +49,38 @@ export class Armazem {
           }
           const a = new Armazem(db);
           a.lojas = lojas;
+          a.nome = nome;
           ok(a);
         };
         r.onerror = () => erro(r.error);
+        // outra aba com o banco aberto na versão antiga: ela fecha (onversionchange) e o pedido segue
+        r.onblocked = () => {};
       };
       pedir();
     });
   }
 
-  private loja(l: Loja, modo: IDBTransactionMode = "readonly") {
+  private async loja(l: Loja, modo: IDBTransactionMode = "readonly") {
+    if (this.reabrindo) await this.reabrindo;
     return this.db.transaction(l, modo).objectStore(l);
   }
-  todos<T>(l: Loja): Promise<T[]> {
-    return req(this.loja(l).getAll()) as Promise<T[]>;
+  async todos<T>(l: Loja): Promise<T[]> {
+    return (await req((await this.loja(l)).getAll())) as T[];
   }
-  chaves(l: Loja): Promise<string[]> {
-    return req(this.loja(l).getAllKeys()) as Promise<string[]>;
+  async chaves(l: Loja): Promise<string[]> {
+    return (await req((await this.loja(l)).getAllKeys())) as string[];
   }
-  ler<T>(l: Loja, id: string): Promise<T | undefined> {
-    return req(this.loja(l).get(id)) as Promise<T | undefined>;
+  async ler<T>(l: Loja, id: string): Promise<T | undefined> {
+    return (await req((await this.loja(l)).get(id))) as T | undefined;
   }
   async por(l: Loja, valor: { id: string }) {
-    await req(this.loja(l, "readwrite").put(valor));
+    await req((await this.loja(l, "readwrite")).put(valor));
   }
   async apagar(l: Loja, id: string) {
-    await req(this.loja(l, "readwrite").delete(id));
+    await req((await this.loja(l, "readwrite")).delete(id));
   }
   async limparTudo() {
-    for (const l of this.lojas) await req(this.loja(l, "readwrite").clear());
+    for (const l of this.lojas) await req((await this.loja(l, "readwrite")).clear());
   }
   async blob(id: string): Promise<Blob | undefined> {
     return (await this.ler<{ id: string; dados: Blob }>("blobs", id))?.dados;

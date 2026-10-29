@@ -8,7 +8,7 @@
 
 import { Armazem } from "./armazem";
 import { blobAtual, caminhoDoArquivo, caminhosDasPastas, indiceVazio, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
-import type { Arquivo, Item, Pasta } from "../pdm/regras";
+import type { Arquivo, Item, Pasta, ReferenciaArquivo } from "../pdm/regras";
 
 // ---------- banco do aparelho ----------
 
@@ -22,6 +22,7 @@ export class RepositorioAparelho implements Repositorio {
       pastas: await this.db.todos<Pasta>("pastas"),
       arquivos: await this.db.todos<Arquivo>("arquivos"),
       itens: await this.db.todos<Item>("itens"),
+      referencias: await this.db.todos<ReferenciaArquivo>("referencias"),
       exclusoes: await this.db.todos("exclusoes"),
     };
   }
@@ -35,6 +36,7 @@ export class RepositorioAparelho implements Repositorio {
     await iguala("pastas", i.pastas);
     await iguala("arquivos", i.arquivos);
     await iguala("itens", i.itens);
+    await iguala("referencias", i.referencias ?? []);
     await iguala("exclusoes", i.exclusoes);
   }
   async listarBlobs() {

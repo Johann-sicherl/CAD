@@ -1,4 +1,4 @@
-# Especificação funcional — ambiente de Peça
+# Especificação funcional — WJCAD (Peça, Montagem e Desenho)
 
 Referência de **comportamento** para o WJCAD: cada comando, suas caixas (subformulários)
 e campos, tomando como modelo o fluxo de trabalho de CADs paramétricos profissionais
@@ -19,6 +19,8 @@ Arquivos:
 | Sketch (esboço: entidades, ferramentas, cotas, relações) | [sketch.md](sketch.md) |
 | Sheet Metal (chapa metálica) | [chapa.md](chapa.md) |
 | Avaliar (medições, propriedades de massa, análises) | [avaliar.md](avaliar.md) |
+| Montagem (componentes, posicionamentos, explodida, interferência, lista de materiais) | [montagem.md](montagem.md) |
+| Desenho (folhas, vistas, cotas, anotações, tabelas, PDF/DXF) | [desenho.md](desenho.md) |
 | Comparação com o guia introdutório do CAD de referência (lacunas priorizadas) | [referencia-introducao.md](referencia-introducao.md) |
 
 ## Estado da implementação (22/10/2026)
@@ -51,6 +53,10 @@ Arquivos:
   - **Exibir todas as cotas** (menu do toque longo/botão direito e menu ☰): cotas de todos os
     esboços e valores de todos os recursos ativos sobre o modelo, editáveis no lugar.
 
+- **Montagem** ✅ M-A e M-B (29/10/2026): página `cad/montagem/`, inserir componentes do cofre, mover/girar,
+  fixar/flutuar, isolar, posicionamentos padrão com solver e graus de liberdade, lista de materiais,
+  referências no WJPDM. Próximos: M-C (padrões, explodida, interferência, massa). Ver [montagem.md](montagem.md).
+- **Desenho** D-A em seguida. Ver [desenho.md](desenho.md).
 - **Features** ✅ extrusão/corte e revolução completos, furo assistido ISO, filete, chanfro, casca,
   nervura, inclinação, padrões linear/circular, espelhar, plano e eixo de referência, retrocesso,
   equações/variáveis globais, material, varredura, loft, curvas 3D (hélice, XYZ, pontos,

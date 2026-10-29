@@ -9,6 +9,9 @@ import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from ".
 
 type SemSeq<T> = T extends unknown ? Omit<T, "seq"> : never;
 
+/** Peça de um componente: malha, topologia (para selecionar e posicionar), volume e erros. */
+export type ResultadoComponente = Pick<ResultadoRegeneracao, "malha" | "topologia" | "volume" | "erros">;
+
 export class ClienteKernel {
   private worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   private seq = 0;
@@ -17,7 +20,7 @@ export class ClienteKernel {
 
   readonly pronto: Promise<void>;
 
-  constructor(private aoRegenerar: (r: ResultadoRegeneracao, ms: number) => void) {
+  constructor(private aoRegenerar: (r: ResultadoRegeneracao, ms: number) => void = () => {}) {
     this.pronto = new Promise((ok, falha) => {
       this.worker.onmessage = (ev: MessageEvent<RespostaKernel>) => {
         const r = ev.data;
@@ -74,6 +77,10 @@ export class ClienteKernel {
   }
   verificar() {
     return this.pedir<ResultadoVerificacao>({ tipo: "verificar" });
+  }
+  /** Regenera a peça de um componente (montagem/desenho); o sólido fica guardado no kernel pela chave. */
+  componente(chave: string, features: Feature[]) {
+    return this.pedir<ResultadoComponente>({ tipo: "componente", chave, features });
   }
 
   private enviar(p: PedidoKernel) {

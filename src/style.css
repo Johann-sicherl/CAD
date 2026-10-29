@@ -962,3 +962,24 @@ textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-mo
 .caixa-flutuante .pc-caixa { margin: 4px 0; }
 .cf-tudo { min-width: 44px; padding: 0; font-size: 18px; }
 .opcoes-toque { display: grid; gap: 8px; padding: 0 16px 12px; }
+
+/* ---------- Montagem e Desenho (cad/montagem/, cad/desenho/) ---------- */
+.campo-busca { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--linha); border-radius: 8px; font: inherit; margin-bottom: 6px; }
+.pc-arquivos { display: grid; gap: 4px; max-height: 300px; overflow-y: auto; margin-bottom: 8px; }
+.pc-arquivo { display: flex; align-items: center; gap: 10px; text-align: left; min-height: 48px; padding: 4px 8px; border: 1px solid var(--linha); border-radius: 8px; background: #fff; }
+.pc-arquivo svg { width: 26px; height: 26px; flex: none; color: var(--acento); }
+.pc-arquivo span { display: grid; min-width: 0; }
+.pc-arquivo strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-arquivo small { color: var(--texto-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-arquivo:hover { border-color: var(--acento); }
+.pc-botoes { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.pc-botoes button { min-height: 40px; padding: 0 12px; }
+.pc-botoes button[aria-pressed="true"] { background: var(--acento-suave); border-color: var(--acento); color: var(--acento); }
+.pc-grade-tipos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 6px; }
+.pc-tipo { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 2px 8px; font-size: 13px; text-align: left; }
+.pc-tipo svg { width: 22px; height: 22px; flex: none; }
+.pc-tipo[aria-pressed="true"] { background: var(--acento-suave); border-color: var(--acento); color: var(--acento); }
+.pc-tipo:disabled { opacity: 0.35; }
+body.disp-computador .pc-tipo { min-height: 36px; }
+.btn-voltar { width: auto !important; padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; color: var(--acento); border: 1px solid var(--acento); border-radius: 8px; }
+.btn-voltar span { font-size: 13px; }
