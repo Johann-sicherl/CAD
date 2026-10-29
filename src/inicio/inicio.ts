@@ -122,11 +122,22 @@ async function estadoOffline() {
 montarCaixas();
 void estadoOffline();
 {
+  // ⚙ configurações gerais: perfil do dispositivo e onde ficam os dados de todos os apps
+  // (pasta padrão do dispositivo, pendrive, Google Drive). Carregado só no toque: o início segue leve.
+  const topo = document.querySelector(".topo")!;
+  const cfg = document.createElement("button");
+  cfg.className = "topo-botao";
+  cfg.title = "Configurações do WJProMaster (dispositivo e pastas dos dados)";
+  cfg.setAttribute("aria-label", "Configurações");
+  cfg.innerHTML = svg(`<circle cx="12" cy="12" r="3.2" stroke="${C}"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>`);
+  cfg.onclick = async () => {
+    const { abrirCopias } = await import("../comum/cofre");
+    // as tarefas (WJTaskPlan/) seguem as mesmas cópias: iguala junto com o cofre
+    void abrirCopias(() => void import("../tarefas/copias").then((m) => m.sincronizarTarefas(false)).catch(() => {}), true);
+  };
+  topo.append(cfg);
   const b = botaoDiagnostico();
-  if (b) {
-    b.style.marginLeft = "auto";
-    document.querySelector(".topo")!.append(b);
-  }
+  if (b) topo.append(b);
 }
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {

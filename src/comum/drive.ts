@@ -279,7 +279,7 @@ export const nuvemGoogle: DestinoNuvem = {
   situacao() {
     if (valido()) return "Conectado: o cofre fica em Meu Drive/WJPDM.";
     if (autorizado()) return "Acesso vencido (o Google libera por 1 hora): toque em Sincronizar agora ou Reconectar.";
-    return "Não conectado. Toque em Conectar e autorize com a sua conta Google (o app só vê a pasta WJPDM que ele cria).";
+    return "Não conectado. Toque em Conectar e autorize com a sua conta Google (o app só vê as pastas que ele cria: WJPDM e WJTaskPlan).";
   },
   async conectar() {
     if (!(await pedirAcesso(!autorizado()))) throw new Error("O Google não liberou o acesso (janela fechada, bloqueada ou usuário fora da lista de teste).");
