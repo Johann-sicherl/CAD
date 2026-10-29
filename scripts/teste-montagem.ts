@@ -3,7 +3,7 @@
 import { documentoExemplo, type Documento } from "../src/model";
 import {
   aplicarDirecao, aplicarPonto, compor, embutirPeca, excluirComponentes, girarEmTorno, IDENTIDADE, inserirComponente, inverter, marcaDe, matriz,
-  montagemVazia, quantidades, quatDeEuler, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
+  montagemVazia, quantidades, quatDeEuler, aplicarPadroes, excluirPadrao, posesExplodidas, explosaoAutomatica, massaDaMontagem, copiasDoPadrao, quatEixoAngulo, rotuloComponente, validarMontagem, type Transformacao,
 } from "../src/montagem/modelo";
 import { centroDoComponente, facesDoComponente, globalDaEntidade, juntar, localDaEntidade } from "../src/montagem/cena";
 import { resolverMontagem, tiposPossiveis, primitivaLocal, transformar, compRel } from "../src/montagem/solver";
@@ -194,6 +194,53 @@ igual("centro do componente B", r3(centroDoComponente(cena, "B")!), [10.5, 0, 0]
   igual("tipos possíveis plano-plano", tiposPossiveis(primitivaLocal(F.topo)!, primitivaLocal(F.base)!).slice(0, 3), ["coincidente", "paralelo", "perpendicular"]);
   igual("tipo sugerido face plana + cilindro", tiposPossiveis(primitivaLocal(F.topo)!, primitivaLocal(furo)!)[0], "tangente");
   igual("tipo sugerido cilindro + cilindro", tiposPossiveis(primitivaLocal(furo)!, primitivaLocal(furo)!)[0], "concentrico");
+}
+
+// ---------- padrões, espelho, explosão, massa ----------
+{
+  const m = montagemVazia();
+  const p = embutirPeca(m, documentoExemplo(), {});
+  const A = inserirComponente(m, p);
+  const B = inserirComponente(m, p, { pos: [0, 0, 100], rot: [0, 0, 0, 1] });
+  m.padroes!.push({ id: "pl", nome: "Padrão linear1", tipo: "linear", sementes: [B.id], dir: [1, 0, 0], passo: 50, n: 3, dir2: [0, 1, 0], passo2: 20, n2: 2 });
+  aplicarPadroes(m);
+  const inst = m.componentes.filter((c) => c.padrao === "pl");
+  igual("linear 3 × 2: cinco cópias além da semente", inst.length, 5);
+  igual("cópias nas posições do padrão", inst.map((c) => c.t.pos.join(",")).sort(), ["0,20,100", "100,0,100", "100,20,100", "50,0,100", "50,20,100"]);
+  igual("instâncias numeradas depois da semente", inst.map((c) => c.instancia).sort(), [3, 4, 5, 6, 7]);
+  const ids = inst.map((c) => c.id).sort();
+  B.t = { pos: [10, 0, 100], rot: [0, 0, 0, 1] };
+  aplicarPadroes(m);
+  const inst2 = m.componentes.filter((c) => c.padrao === "pl");
+  igual("mover a semente leva as cópias e mantém os ids", [inst2.map((c) => c.id).sort().join() === ids.join(), inst2.some((c) => c.t.pos.join(",") === "110,20,100")], [true, true]);
+  (m.padroes![0] as { n: number }).n = 2;
+  aplicarPadroes(m);
+  igual("menos cópias: as que sobram saem", m.componentes.filter((c) => c.padrao === "pl").length, 3);
+  igual("quantidade na lista de materiais conta as cópias", quantidades(m)[0].qtd, 5);
+  m.padroes!.push({ id: "pc", nome: "Padrão circular1", tipo: "circular", sementes: [B.id], ponto: [0, 0, 0], eixo: [0, 1, 0], n: 4, angulo: 360 });
+  aplicarPadroes(m);
+  const circ = m.componentes.filter((c) => c.padrao === "pc").map((c) => r3(aplicarPonto(c.t, [0, 0, 0])).map(Math.round).join(","));
+  igual("circular 4 × 360° em Y", circ.sort(), ["-10,0,-100", "-100,0,10", "100,0,-10"].sort());
+  igual("circular de 90° em 3 instâncias: passo de 45°", copiasDoPadrao({ id: "x", nome: "", tipo: "circular", sementes: [], ponto: [0, 0, 0], eixo: [0, 0, 1], n: 3, angulo: 90 }, { pos: [10, 0, 0], rot: [0, 0, 0, 1] }).map((t) => r3(t.pos).map((v) => Math.round(v * 100) / 100)), [[7.07, 7.07, 0], [0, 10, 0]]);
+  m.padroes!.push({ id: "es", nome: "Espelho1", tipo: "espelho", sementes: [B.id], ponto: [0, 0, 0], normal: [0, 0, 1] });
+  aplicarPadroes(m, new Map([[p, [0, 10, 0] as Vec3]]));
+  igual("espelho pelo plano XY: z invertido", m.componentes.find((c) => c.padrao === "es")!.t.pos, [10, 0, -100]);
+  excluirPadrao(m, "pc");
+  igual("excluir padrão tira as instâncias", m.componentes.filter((c) => c.padrao === "pc").length, 0);
+  excluirComponentes(m, [B.id]);
+  aplicarPadroes(m);
+  igual("semente excluída: padrões e cópias saem", [m.padroes!.length, m.componentes.length], [0, 1]);
+  // explosão
+  const C = inserirComponente(m, p, { pos: [100, 0, 0], rot: [0, 0, 0, 1] });
+  m.explosao = [{ id: "e1", comps: [C.id], dir: [0, 2, 0], dist: 30 }, { id: "e2", comps: [C.id], dir: [1, 0, 0], dist: 5 }];
+  const ex = posesExplodidas(m);
+  igual("explosão soma os passos (só na exibição)", [ex.get(C.id)!.pos, C.t.pos, ex.get(A.id)!.pos], [[105, 30, 0], [100, 0, 0], [0, 0, 0]]);
+  const auto = explosaoAutomatica(m, new Map([[A.id, [0, 0, 0] as Vec3], [C.id, [100, 0, 0] as Vec3]]), 1);
+  igual("explosão automática: o fixo fica, o outro se afasta do centro", auto.map((x) => [x.comps[0] === C.id, r3(x.dir).map(Math.sign), x.dist]), [[true, [1, 0, 0], 50]]);
+  // massa: cubo de 1000 mm³ de aço (7,85) em dois lugares
+  const mp = { volume: 1000, area: 600, centro: [5, 5, 5] as Vec3, densidade: 7.85 };
+  const mm = massaDaMontagem([{ m: mp, t: IDENTIDADE() }, { m: mp, t: { pos: [100, 0, 0], rot: [0, 0, 0, 1] } }]);
+  igual("massa da montagem (g), volume e centro", [Math.round(mm.massa * 100) / 100, mm.volume, r3(mm.centro)], [15.7, 2000, [55, 5, 5]]);
 }
 
 console.log(falhas ? `\nmontagem: ${falhas} falha(s)` : "\nmontagem: tudo certo");

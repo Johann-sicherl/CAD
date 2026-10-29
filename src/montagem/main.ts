@@ -9,9 +9,9 @@ import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import { Viewport, type Entidade, type TipoEntidade, type Vista } from "../viewport";
 import { MATERIAIS, validarDocumento, type Documento, type Referencia, type Vec3 } from "../model";
 import {
-  embutirPeca, excluirComponentes, girarEmTorno, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
+  aplicarPadroes, embutirPeca, excluirComponentes, excluirPadrao, explosaoAutomatica, girarEmTorno, massaDaMontagem, posesExplodidas, IDENTIDADE, inserirComponente, marcaDe, montagemVazia, novoIdM, quantidades, quatDeEuler,
   quatEixoAngulo, rotuloComponente, validarMontagem, type ComponenteMontagem, type DocumentoMontagem, type PecaEmbutida, type Posicionamento,
-  type RefMontagem, type TipoPosicionamento, type Transformacao,
+  type PadraoComponentes, type RefMontagem, type TipoPosicionamento, type Transformacao,
 } from "./modelo";
 import { centroDoComponente, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
@@ -39,6 +39,8 @@ let selMate: string | null = null;
 /** Só estes aparecem (Isolar); null = todos. */
 let isolados: Set<string> | null = null;
 let solucao: ResultadoSolver | null = null;
+/** Mostra os passos da vista explodida (só exibição). */
+let mostrarExplodida = false;
 let estadoKernel: "iniciando" | "pronto" | "erro" = "iniciando";
 const malhas = new Map<string, ResultadoComponente>();
 const pedidos = new Map<string, Promise<ResultadoComponente>>();
@@ -47,7 +49,11 @@ const errosPeca = new Map<string, string>();
 type Comando =
   | { tipo: "inserir"; manter: boolean }
   | { tipo: "mover"; girar: boolean; snapshot: string; f: DadosMover }
-  | { tipo: "posicionar"; snapshot: string; sel: RefMontagem[]; m: Posicionamento; editando: boolean };
+  | { tipo: "posicionar"; snapshot: string; sel: RefMontagem[]; m: Posicionamento; editando: boolean }
+  /** padrão linear/circular ou espelhar: campo ativo = sementes (tocar componentes) ou referência */
+  | { tipo: "padrao"; snapshot: string; p: PadraoComponentes; editando: boolean; campo: "sementes" | "ref"; refNome: string }
+  | { tipo: "explodir"; snapshot: string; comps: string[]; dir: Vec3; dist: number; fator: number }
+  | { tipo: "medir"; sel: { ref: Referencia; nome: string; ent: Entidade }[]; linhas: { rotulo: string; valor: string }[] };
 interface DadosMover {
   modo: "livre" | "delta" | "posicao";
   dx: number; dy: number; dz: number;
@@ -114,9 +120,11 @@ function montarCena() {
     viewport.mostrarMalha(null);
     return;
   }
+  if (doc.padroes?.length) aplicarPadroes(doc, centrosLocais());
+  const poses = mostrarExplodida && doc.explosao?.length ? posesExplodidas(doc) : null;
   const itens = doc.componentes.filter(visivel).flatMap((c) => {
     const r = malhas.get(chaveDe(pecaDe(c)));
-    return r?.malha && r.topologia ? [{ comp: c.id, malha: r.malha, topo: r.topologia, t: c.t }] : [];
+    return r?.malha && r.topologia ? [{ comp: c.id, malha: r.malha, topo: r.topologia, t: poses?.get(c.id) ?? c.t }] : [];
   });
   cena = itens.length ? juntar(itens) : null;
   viewport.mostrarMalha(cena?.malha ?? null, cena?.topo ?? null);
@@ -138,6 +146,19 @@ async function atualizarCena(enquadrar = false) {
   if (enquadrar) viewport.enquadrar(false);
   atualizarStatus();
   renderizarArvore();
+}
+
+/** Centro (caixa) de cada peça no sistema dela: espelhamento de componentes. */
+function centrosLocais(): Map<string, Vec3> {
+  const m = new Map<string, Vec3>();
+  for (const p of doc?.pecas ?? []) {
+    const vs = malhas.get(chaveDe(p))?.topologia?.vertices;
+    if (!vs?.length) continue;
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const v of vs) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], v[i]); mx[i] = Math.max(mx[i], v[i]); }
+    m.set(p.id, [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2]);
+  }
+  return m;
 }
 
 // ---------- solver ----------
@@ -166,11 +187,13 @@ function resolver(o: { preferido?: string; arrastado?: { comp: string; alvo: Tra
     const c = compDe(id);
     if (c) c.t = t;
   }
+  if (doc.padroes?.length) aplicarPadroes(doc, centrosLocais());
 }
 
 /** Prefixo do estado do componente na árvore: (f) fixo, (−) subdefinido, (+) com erro. */
 function prefixo(c: ComponenteMontagem): string {
   if (c.fixo) return "(f) ";
+  if (c.padrao) return "";
   const erro = doc!.posicionamentos.some((m) => solucao?.erros.has(m.id) && (m.a?.comp === c.id || m.b?.comp === c.id));
   if (erro) return "(+) ";
   const g = solucao?.graus.get(c.id) ?? 6;
@@ -242,11 +265,14 @@ function atualizarStatus(texto?: string) {
   if (!texto && comando?.tipo === "posicionar") estado = `Posicionar: ${comando.sel.length < 2 ? `toque a ${comando.sel.length ? "2ª" : "1ª"} entidade (face, aresta, vértice ou plano)` : NOME_TIPO[comando.m.tipo]}`;
   else if (!texto && comando?.tipo === "mover") estado = `${comando.girar ? "Girar" : "Mover"} componente: arraste um componente flutuante`;
   else if (!texto && comando?.tipo === "inserir") estado = "Inserir componentes: escolha a peça no painel";
+  else if (!texto && comando?.tipo === "padrao") estado = comando.campo === "sementes" ? "Toque os componentes a repetir" : `Toque a referência: ${comando.refNome}`;
+  else if (!texto && comando?.tipo === "explodir") estado = "Vista explodida: toque os componentes do passo, escolha a direção e a distância";
+  else if (!texto && comando?.tipo === "medir") estado = "Medir: toque uma ou duas entidades (faces, arestas, vértices)";
   else if (!texto && selComps.length) estado = `Selecionado: ${selComps.map(nomeComp).join(", ")}`;
   if (nErros) estado += ` · ${nErros} posicionamento(s) com erro`;
   st.textContent = estado;
   st.classList.toggle("com-erro", nErros > 0);
-  const sub = doc.componentes.filter((c) => !c.fixo && !c.suprimido && (solucao?.graus.get(c.id) ?? 6) > 0).length;
+  const sub = doc.componentes.filter((c) => !c.fixo && !c.padrao && !c.suprimido && (solucao?.graus.get(c.id) ?? 6) > 0).length;
   $("st-info").textContent = `${doc.componentes.length} componente(s) · ${doc.posicionamentos.length} posicionamento(s)${sub ? ` · ${sub} subdefinido(s)` : doc.componentes.length ? " · totalmente definida" : ""}`;
 }
 
@@ -270,6 +296,7 @@ function destacar(realce: Entidade | null = null) {
   const doComp: Entidade[] = selComps.flatMap((id) => facesDoComponente(cena!.mapa, id).map((i) => ({ tipo: "face" as const, indice: i })));
   const sel: Entidade[] = [];
   if (comando?.tipo === "posicionar") for (const r of comando.sel) { const e = entidadeDe(r); if (e) sel.push(e); }
+  else if (comando?.tipo === "medir") sel.push(...comando.sel.map((s) => s.ent));
   else if (selMate) {
     const m = doc!.posicionamentos.find((x) => x.id === selMate);
     for (const r of [m?.a ?? null, m?.b ?? null]) { const e = entidadeDe(r); if (e) sel.push(e); }
@@ -338,8 +365,8 @@ function renderizarArvore() {
     lista.append(e);
   }
 
-  // componentes
-  for (const c of doc.componentes) {
+  // componentes (as instâncias de padrão aparecem dentro do padrão)
+  for (const c of doc.componentes.filter((x) => !x.padrao)) {
     const p = pecaDe(c);
     const g = solucao?.graus.get(c.id);
     const sub = c.suprimido ? "suprimido" : c.fixo ? "fixo" : g === 0 ? "totalmente definido" : `${g ?? 6} grau(s) livre(s)`;
@@ -365,6 +392,46 @@ function renderizarArvore() {
       destacar();
       const r = e.getBoundingClientRect();
       mostrarBarra(acoesDoComponente(), r.right, r.top + 40);
+    };
+    lista.append(e);
+  }
+
+  // padrões e espelhamentos
+  for (const pd of doc.padroes ?? []) {
+    const inst = doc.componentes.filter((c) => c.padrao === pd.id);
+    const ic: NomeIcone = pd.tipo === "linear" ? "padraoComponentes" : pd.tipo === "circular" ? "padraoCircular" : "espelhar";
+    const e = li("item", ic, pd.nome, `${pd.sementes.map(nomeComp).join(", ")} · ${inst.length} cópia(s)`);
+    e.classList.toggle("suprimida", !!pd.suprimido);
+    e.onclick = (ev) => {
+      if (comando) return avisar("Conclua o comando atual (✓) antes de selecionar outro item.");
+      selComps = inst.map((c) => c.id);
+      destacar();
+      renderizarArvore();
+      mostrarBarra(acoesDoPadrao(pd), ev.clientX, ev.clientY);
+    };
+    lista.append(e);
+    if (!recolhidos.has(pd.id)) for (const c of inst) {
+      const ei = li("item filho", "componente", rotuloComponente(doc, c), `cópia ${c.copia} de ${nomeComp(c.semente ?? null)}`, 1);
+      ei.classList.toggle("ativo", selComps.includes(c.id));
+      ei.onclick = (ev) => tocarComponente(c.id, ev.ctrlKey || ev.shiftKey || ev.metaKey, ei);
+      lista.append(ei);
+    }
+  }
+  // vista explodida
+  if (doc.explosao?.length) {
+    const e = li("item", "explodida", "Vista explodida", `${doc.explosao.length} passo(s) · ${mostrarExplodida ? "explodida (toque para recolher)" : "recolhida (toque para explodir)"}`);
+    e.classList.toggle("ativo", mostrarExplodida);
+    e.onclick = () => alternarExplosao();
+    e.oncontextmenu = (ev) => {
+      ev.preventDefault();
+      mostrarBarra([
+        { rotulo: "Editar passos", icone: "explodida", acao: abrirExplodir },
+        { rotulo: "Excluir a explosão", icone: "fechar", acao: () => {
+          doc!.explosao = [];
+          mostrarExplodida = false;
+          alterou();
+        } },
+      ], ev.clientX, ev.clientY);
     };
     lista.append(e);
   }
@@ -420,10 +487,11 @@ const ABAS_M: { id: string; rotulo: string; comandos: Cmd[] }[] = [
       { id: "posicionar", rotulo: "Posicionar", icone: "posicionar", dica: "Posicionamentos: coincidente, paralelo, perpendicular, tangente, concêntrico, travar, distância, ângulo (M)", grupo: 0 },
       { id: "mover", rotulo: "Mover componente", icone: "moverComponente", dica: "Arrastar livre, por ΔXYZ ou para uma posição XYZ", grupo: 1 },
       { id: "girar", rotulo: "Girar componente", icone: "girarComponente", dica: "Arrastar livre ou por ângulos em X, Y e Z", grupo: 1 },
-      { id: "padrao-linear", rotulo: "Padrão linear", icone: "padraoComponentes", dica: "Repete componentes em uma ou duas direções", grupo: 2, emBreve: true },
-      { id: "padrao-circular", rotulo: "Padrão circular", icone: "padraoCircular", dica: "Repete componentes em torno de um eixo", grupo: 2, emBreve: true },
-      { id: "espelhar", rotulo: "Espelhar componentes", icone: "espelhar", dica: "Copia componentes espelhados por um plano", grupo: 2, emBreve: true },
-      { id: "explodida", rotulo: "Vista explodida", icone: "explodida", dica: "Passos de explosão para o desenho de montagem", grupo: 3, emBreve: true },
+      { id: "padrao-linear", rotulo: "Padrão linear", icone: "padraoComponentes", dica: "Repete componentes em uma ou duas direções (as cópias seguem a semente)", grupo: 2 },
+      { id: "padrao-circular", rotulo: "Padrão circular", icone: "padraoCircular", dica: "Repete componentes em torno de um eixo", grupo: 2 },
+      { id: "espelhar", rotulo: "Espelhar componentes", icone: "espelhar", dica: "Cópia na posição espelhada por um plano (peças simétricas)", grupo: 2 },
+      { id: "explodida", rotulo: "Vista explodida", icone: "explodida", dica: "Passos de explosão (manual ou automática); toque de novo na árvore para explodir/recolher", grupo: 3 },
+      { id: "explodir-recolher", rotulo: "Explodir / Recolher", icone: "olho", dica: "Mostra a montagem explodida ou recolhida", grupo: 3 },
       { id: "isolar", rotulo: "Isolar", icone: "isolar", dica: "Mostra só os componentes selecionados (de novo: mostra todos)", grupo: 3 },
       { id: "mostrar-todos", rotulo: "Mostrar todos", icone: "olho", dica: "Mostra os componentes ocultos e sai do isolamento", grupo: 3 },
     ],
@@ -431,9 +499,9 @@ const ABAS_M: { id: string; rotulo: string; comandos: Cmd[] }[] = [
   {
     id: "avaliar", rotulo: "Avaliar", comandos: [
       { id: "lista-materiais", rotulo: "Lista de materiais", icone: "listaMateriais", dica: "Itens, código, descrição, material e quantidade (CSV, WJPlan)", grupo: 0 },
-      { id: "interferencia", rotulo: "Interferência", icone: "interferencia", dica: "Detecta volumes de interferência entre componentes", grupo: 0, emBreve: true },
-      { id: "massa", rotulo: "Propriedades de massa", icone: "massa", dica: "Massa, volume e centro de massa da montagem", grupo: 0, emBreve: true },
-      { id: "medir", rotulo: "Medir", icone: "medir", dica: "Distâncias e ângulos entre componentes", grupo: 1, emBreve: true },
+      { id: "interferencia", rotulo: "Interferência", icone: "interferencia", dica: "Detecta volumes de interferência entre componentes", grupo: 0 },
+      { id: "massa", rotulo: "Propriedades de massa", icone: "massa", dica: "Massa, volume e centro de massa da montagem", grupo: 0 },
+      { id: "medir", rotulo: "Medir", icone: "medir", dica: "Distâncias e ângulos entre componentes", grupo: 1 },
     ],
   },
 ];
@@ -473,7 +541,9 @@ function renderizarAbas() {
     }
     const ativo = (c.id === "posicionar" && comando?.tipo === "posicionar") || (c.id === "inserir" && comando?.tipo === "inserir")
       || (c.id === "mover" && comando?.tipo === "mover" && !comando.girar) || (c.id === "girar" && comando?.tipo === "mover" && comando.girar)
-      || (c.id === "isolar" && !!isolados);
+      || (c.id === "isolar" && !!isolados) || (c.id === "explodir-recolher" && mostrarExplodida)
+      || (c.id === "medir" && comando?.tipo === "medir") || (c.id === "explodida" && comando?.tipo === "explodir")
+      || (comando?.tipo === "padrao" && ((c.id === "padrao-linear" && comando.p.tipo === "linear") || (c.id === "padrao-circular" && comando.p.tipo === "circular") || (c.id === "espelhar" && comando.p.tipo === "espelho")));
     b.setAttribute("aria-pressed", String(ativo));
     b.onclick = () => executar(c);
     faixa.append(b);
@@ -492,6 +562,14 @@ function executar(c: Cmd) {
     case "isolar": return alternarIsolar();
     case "mostrar-todos": return mostrarTodos();
     case "lista-materiais": return mostrarListaMateriais();
+    case "padrao-linear": return abrirPadrao("linear");
+    case "padrao-circular": return abrirPadrao("circular");
+    case "espelhar": return abrirPadrao("espelho");
+    case "explodida": return abrirExplodir();
+    case "explodir-recolher": return alternarExplosao();
+    case "interferencia": return void verificarInterferencia();
+    case "massa": return void mostrarMassa();
+    case "medir": return abrirMedir();
   }
 }
 
@@ -572,6 +650,7 @@ function mostrarTodos() {
 }
 function excluirSelecao() {
   if (!doc || !selComps.length) return;
+  if (selComps.some((id) => compDe(id)?.padrao)) return avisar("Cópias de padrão saem editando ou excluindo o padrão (árvore).");
   const nomes = selComps.map(nomeComp).join(", ");
   const n = doc.posicionamentos.filter((m) => selComps.includes(m.a?.comp ?? "") || selComps.includes(m.b?.comp ?? "")).length;
   if (!confirm(`Excluir ${nomes}${n ? ` e ${n} posicionamento(s) deles` : ""}?`)) return;
@@ -644,20 +723,47 @@ function refDaEntidade(ent: Entidade): RefMontagem | null {
   return { comp: l.comp, ref };
 }
 
+/**
+ * Entidade sob o toque: aresta/vértice só quando o toque cai em cima deles (6 px); senão a face
+ * sob o dedo; senão a aresta/vértice mais perto dentro da tolerância do dedo. O dedo, largo,
+ * não troca a face tocada pela aresta ou o canto vizinhos.
+ */
+function picarNoToque(e: PointerEvent): Entidade | null {
+  const tol = e.pointerType === "touch" ? 22 : 10;
+  const av = new Set<TipoEntidade>(["aresta", "vertice"]);
+  return viewport.picarEntidade(e.clientX, e.clientY, av, 6)
+    ?? viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face"]), 2)
+    ?? viewport.picarEntidade(e.clientX, e.clientY, av, tol);
+}
+
 viewport.aoToqueCurto = (e) => {
   if (!doc) return;
   const tol = e.pointerType === "touch" ? 22 : 10;
   if (comando?.tipo === "posicionar") {
     // dedo em cima de uma face: a face ganha; aresta/vértice só bem perto (senão o dedo, largo,
     // pegaria a aresta vizinha em vez da face tocada)
-    const ent = viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face", "aresta", "vertice"]), Math.min(tol, 10))
-      ?? viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["aresta", "vertice"]), tol);
+    const ent = picarNoToque(e);
     const r = ent ? refDaEntidade(ent) : null;
     if (r) adicionarEntidade(r, { x: e.clientX, y: e.clientY });
     return;
   }
   if (comando?.tipo === "inserir") return colocarInserido(e.clientX, e.clientY);
+  if (comando?.tipo === "medir") {
+    const ent = picarNoToque(e);
+    if (ent) void adicionarMedida(ent);
+    return;
+  }
+  if (comando?.tipo === "padrao" && comando.campo === "ref") {
+    const ent = viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["face", "aresta"]), Math.min(tol, 10))
+      ?? viewport.picarEntidade(e.clientX, e.clientY, new Set<TipoEntidade>(["aresta"]), tol);
+    if (ent) referenciaDoPadrao(ent);
+    return;
+  }
   const alvo = componenteSob(e.clientX, e.clientY, tol);
+  if (comando?.tipo === "padrao" || comando?.tipo === "explodir") {
+    if (alvo) alternarNoComando(alvo.comp);
+    return;
+  }
   if (alvo) tocarComponente(alvo.comp, e.ctrlKey || e.shiftKey || e.metaKey, undefined, { x: e.clientX, y: e.clientY });
   else if (!comando) {
     selComps = [];
@@ -717,13 +823,15 @@ function confirmarComando() {
   if (comando.tipo === "posicionar" && comando.sel.length === 2) return void concluirPosicionamento(true);
   if (comando.tipo === "posicionar" && comando.editando) return void concluirPosicionamento(true);
   if (comando.tipo === "posicionar" && comando.sel.length === 1) return avisar("Toque a segunda entidade (ou ✕ para sair).");
+  if (comando.tipo === "padrao") return concluirPadrao();
+  if (comando.tipo === "medir") return fecharComando();
   fecharComando();
   alterou();
 }
 
 function cancelarComando() {
   if (!comando) return;
-  if (comando.tipo === "mover" || comando.tipo === "posicionar") {
+  if (comando.tipo === "mover" || comando.tipo === "posicionar" || comando.tipo === "padrao" || comando.tipo === "explodir") {
     doc = validarMontagem(JSON.parse(comando.snapshot));
     resolver();
     montarCena();
@@ -759,6 +867,9 @@ function renderizarComando() {
   if (!comando) return;
   if (comando.tipo === "inserir") return renderizarInserir();
   if (comando.tipo === "mover") return renderizarMover();
+  if (comando.tipo === "padrao") return renderizarPadrao();
+  if (comando.tipo === "explodir") return renderizarExplodir();
+  if (comando.tipo === "medir") return renderizarMedir();
   return renderizarPosicionar();
 }
 
@@ -999,6 +1110,10 @@ function interceptarArraste(e: PointerEvent): boolean {
   const alvo = componenteSob(e.clientX, e.clientY, e.pointerType === "touch" ? 22 : 10);
   if (!alvo) return false;
   const c = compDe(alvo.comp)!;
+  if (c.padrao) {
+    avisar(`${rotuloComponente(doc, c)} é cópia de um padrão: mova a semente (${nomeComp(c.semente ?? null)}).`);
+    return true;
+  }
   if (c.fixo) {
     avisar(`${rotuloComponente(doc, c)} está fixo: flutue-o para mover (menu do componente).`);
     return true;
@@ -1329,6 +1444,412 @@ function concluirPosicionamento(continuar: boolean) {
     renderizarArvore();
     atualizarStatus();
   } else fecharComando();
+}
+
+// ---------- padrões e espelhamento de componentes ----------
+
+const NOME_PADRAO = { linear: "Padrão linear", circular: "Padrão circular", espelho: "Espelho" } as const;
+const DIRECOES: [string, Vec3][] = [["X", [1, 0, 0]], ["Y", [0, 1, 0]], ["Z", [0, 0, 1]], ["−X", [-1, 0, 0]], ["−Y", [0, -1, 0]], ["−Z", [0, 0, -1]]];
+const PLANOS_ESPELHO: [string, Vec3][] = [["Plano Frontal (XY)", [0, 0, 1]], ["Plano Superior (XZ)", [0, 1, 0]], ["Plano Lateral (YZ)", [1, 0, 0]]];
+
+function abrirPadrao(tipo: PadraoComponentes["tipo"], existente?: PadraoComponentes) {
+  if (comando) cancelarComando();
+  if (!doc) return;
+  const n = (doc.padroes ?? []).filter((x) => x.tipo === tipo).length + 1;
+  const sementes = existente?.sementes ?? selComps.filter((id) => !compDe(id)?.padrao);
+  const base = { id: novoIdM(), nome: `${NOME_PADRAO[tipo]}${n}`, sementes };
+  const p: PadraoComponentes = existente ? JSON.parse(JSON.stringify(existente))
+    : tipo === "linear" ? { ...base, tipo, dir: [1, 0, 0], passo: Math.round(escalaDaCena()), n: 3 }
+    : tipo === "circular" ? { ...base, tipo, ponto: [0, 0, 0], eixo: [0, 1, 0], n: 4, angulo: 360 }
+    : { ...base, tipo, ponto: [0, 0, 0], normal: [1, 0, 0] };
+  comando = { tipo: "padrao", snapshot: JSON.stringify(doc), p, editando: !!existente, campo: sementes.length ? "ref" : "sementes", refNome: tipo === "espelho" ? "face plana" : tipo === "circular" ? "eixo (face cilíndrica ou aresta circular)" : "direção (aresta ou face)" };
+  doc.padroes = [...(doc.padroes ?? []).filter((x) => x.id !== p.id), p];
+  selComps = [...p.sementes];
+  previaPadrao();
+  mostrarPainel(true);
+  renderizarAbas();
+  renderizarPadrao();
+  atualizarStatus();
+}
+
+function previaPadrao() {
+  if (comando?.tipo !== "padrao" || !doc) return;
+  // padrão sem semente sai em aplicarPadroes: o que está sendo editado volta para a lista
+  const p = comando.p;
+  if (!(doc.padroes ?? []).includes(p)) doc.padroes = [...(doc.padroes ?? []).filter((x) => x.id !== p.id), p];
+  aplicarPadroes(doc, centrosLocais());
+  montarCena();
+}
+
+function alternarNoComando(id: string) {
+  if (!doc) return;
+  const c = compDe(id);
+  if (!c) return;
+  if (comando?.tipo === "padrao") {
+    const sid = c.padrao ? c.semente! : id;
+    if (c.padrao === comando.p.id) return;
+    const s = comando.p.sementes;
+    comando.p.sementes = s.includes(sid) ? s.filter((x) => x !== sid) : [...s, sid];
+    selComps = [...comando.p.sementes];
+    previaPadrao();
+    renderizarPadrao();
+  } else if (comando?.tipo === "explodir") {
+    comando.comps = comando.comps.includes(id) ? comando.comps.filter((x) => x !== id) : [...comando.comps, id];
+    selComps = [...comando.comps];
+    destacar();
+    renderizarExplodir();
+  }
+  renderizarArvore();
+  atualizarStatus();
+}
+
+/** Direção, eixo ou plano do padrão a partir da entidade tocada (coordenadas da montagem). */
+function referenciaDoPadrao(ent: Entidade) {
+  if (comando?.tipo !== "padrao" || !cena) return;
+  const p = comando.p;
+  const g = ent.tipo === "face" ? cena.topo.faces[ent.indice] : ent.tipo === "aresta" ? cena.topo.arestas[ent.indice] : null;
+  if (!g) return;
+  const ref: Referencia = ent.tipo === "face" ? { tipo: "face", ass: cena.topo.faces[ent.indice] } : { tipo: "aresta", ass: cena.topo.arestas[ent.indice] };
+  const pr = primitivaLocal(ref);
+  if (!pr) return avisar("Essa entidade não dá direção: toque uma aresta reta, face plana ou cilíndrica.");
+  if (p.tipo === "linear") {
+    const d = pr.tipo === "plano" ? pr.n : pr.tipo === "eixo" || pr.tipo === "linha" ? pr.d : null;
+    if (!d) return avisar("Toque uma aresta reta ou face (a normal dela vira a direção).");
+    p.dir = d;
+  } else if (p.tipo === "circular") {
+    if (pr.tipo !== "eixo" && pr.tipo !== "linha") return avisar("Toque uma face cilíndrica, aresta circular ou aresta reta (eixo).");
+    p.eixo = pr.d;
+    p.ponto = pr.p;
+  } else {
+    if (pr.tipo !== "plano") return avisar("Toque uma face plana (plano do espelho).");
+    p.normal = pr.n;
+    p.ponto = pr.p;
+  }
+  previaPadrao();
+  renderizarPadrao();
+}
+
+function renderizarPadrao() {
+  if (comando?.tipo !== "padrao") return;
+  const c = comando;
+  const p = c.p;
+  const painel = painelBase(`${NOME_PADRAO[p.tipo]}: ${p.nome}`);
+  const campo = (titulo: string, ativo: boolean, texto: string, aoTocar: () => void) => {
+    const b = document.createElement("button");
+    b.className = `campo-ref${ativo ? " ativo" : ""}`;
+    b.innerHTML = `<small></small><span></span>`;
+    b.querySelector("small")!.textContent = titulo;
+    b.querySelector("span")!.textContent = texto;
+    b.onclick = aoTocar;
+    return b;
+  };
+  const cS = caixa(painel, "Componentes a repetir");
+  cS.append(campo("Sementes (toque no modelo)", c.campo === "sementes", p.sementes.length ? p.sementes.map(nomeComp).join(", ") : "nenhum", () => {
+    c.campo = "sementes";
+    renderizarPadrao();
+    atualizarStatus();
+  }));
+  const num = (rot: string, valor: number, un: string, f: (v: number) => void, min = -1e9) => {
+    const l = document.createElement("label");
+    l.className = "campo";
+    l.innerHTML = `<span></span><input type="number" step="any" inputmode="decimal" />`;
+    l.querySelector("span")!.textContent = `${rot}${un ? ` (${un})` : ""}`;
+    const i = l.querySelector("input")!;
+    i.value = String(Math.round(valor * 1000) / 1000);
+    i.onchange = () => {
+      const v = Number(i.value.replace(",", "."));
+      if (!Number.isFinite(v) || v < min) return avisar("Valor inválido.");
+      f(v);
+      previaPadrao();
+      renderizarPadrao();
+    };
+    return l;
+  };
+  const botoesDir = (atual: Vec3, f: (v: Vec3) => void, lista = DIRECOES) => {
+    const g = document.createElement("div");
+    g.className = "pc-botoes";
+    for (const [r, v] of lista) {
+      const b = document.createElement("button");
+      b.textContent = r;
+      b.setAttribute("aria-pressed", String(v.every((x, k) => Math.abs(x - atual[k]) < 1e-9)));
+      b.onclick = () => {
+        f(v);
+        previaPadrao();
+        renderizarPadrao();
+      };
+      g.append(b);
+    }
+    return g;
+  };
+  const cR = caixa(painel, p.tipo === "linear" ? "Direção 1" : p.tipo === "circular" ? "Eixo" : "Plano do espelho");
+  const fmtV = (v: Vec3) => v.map((x) => fmt(x)).join("; ");
+  cR.append(campo(p.tipo === "linear" ? "Direção (ou toque aresta/face)" : p.tipo === "circular" ? "Eixo (ou toque face cilíndrica/aresta)" : "Plano (ou toque face plana)", c.campo === "ref",
+    p.tipo === "linear" ? fmtV(p.dir) : p.tipo === "circular" ? `${fmtV(p.eixo)} por ${fmtV(p.ponto)}` : `normal ${fmtV(p.normal)} por ${fmtV(p.ponto)}`, () => {
+      c.campo = "ref";
+      renderizarPadrao();
+      atualizarStatus();
+    }));
+  if (p.tipo === "linear") {
+    cR.append(botoesDir(p.dir, (v) => (p.dir = v)));
+    cR.append(num("Espaçamento", p.passo, "mm", (v) => (p.passo = v)), num("Instâncias (com a semente)", p.n, "", (v) => (p.n = Math.max(1, Math.round(v))), 1));
+    const c2 = caixa(painel, "Direção 2");
+    const usa = document.createElement("label");
+    usa.className = "interruptor";
+    usa.innerHTML = `<input type="checkbox" ${p.dir2 ? "checked" : ""}/><span>Usar direção 2</span>`;
+    usa.querySelector("input")!.onchange = (ev) => {
+      if ((ev.target as HTMLInputElement).checked) Object.assign(p, { dir2: [0, 0, 1] as Vec3, passo2: p.passo, n2: 2 });
+      else delete p.dir2;
+      previaPadrao();
+      renderizarPadrao();
+    };
+    c2.append(usa);
+    if (p.dir2) c2.append(botoesDir(p.dir2, (v) => (p.dir2 = v)), num("Espaçamento", p.passo2 ?? 0, "mm", (v) => (p.passo2 = v)), num("Instâncias", p.n2 ?? 1, "", (v) => (p.n2 = Math.max(1, Math.round(v))), 1));
+  } else if (p.tipo === "circular") {
+    cR.append(botoesDir(p.eixo, (v) => {
+      p.eixo = v;
+      p.ponto = [0, 0, 0];
+    }, DIRECOES.slice(0, 3)));
+    cR.append(num("Instâncias (com a semente)", p.n, "", (v) => (p.n = Math.max(1, Math.round(v))), 1), num("Ângulo total", p.angulo, "°", (v) => (p.angulo = v)));
+    cR.append(Object.assign(document.createElement("p"), { className: "dica", textContent: "360° = instâncias igualmente espaçadas na volta toda." }));
+  } else {
+    cR.append(botoesDir(p.normal, (v) => {
+      p.normal = v;
+      p.ponto = [0, 0, 0];
+    }, PLANOS_ESPELHO));
+    cR.append(Object.assign(document.createElement("p"), { className: "dica", textContent: "A cópia fica na posição espelhada com a mesma orientação (peças simétricas). Versão oposta de peça não simétrica: em breve." }));
+  }
+  const n = doc!.componentes.filter((x) => x.padrao === p.id).length;
+  painel.append(Object.assign(document.createElement("p"), { className: "dica", textContent: `${n} cópia(s). As cópias seguem a semente: mova ou posicione só a semente.` }));
+}
+
+function concluirPadrao() {
+  if (comando?.tipo !== "padrao" || !doc) return;
+  if (!comando.p.sementes.length) return avisar("Toque pelo menos um componente para repetir.");
+  const nome = comando.p.nome;
+  fecharComando();
+  selComps = [];
+  resolver();
+  alterou(true);
+  avisar(`${nome} pronto.`);
+}
+
+function acoesDoPadrao(p: PadraoComponentes): AcaoContexto[] {
+  return [
+    { rotulo: "Editar", icone: p.tipo === "linear" ? "padraoComponentes" : p.tipo === "circular" ? "padraoCircular" : "espelhar", acao: () => abrirPadrao(p.tipo, p) },
+    { rotulo: p.suprimido ? "Reativar" : "Suprimir", icone: "olhoFechado", acao: () => {
+      p.suprimido = !p.suprimido;
+      resolver();
+      alterou(true);
+    } },
+    { rotulo: "Excluir", icone: "fechar", acao: () => {
+      excluirPadrao(doc!, p.id);
+      selComps = [];
+      resolver();
+      alterou();
+    } },
+  ];
+}
+
+// ---------- vista explodida ----------
+
+function alternarExplosao() {
+  if (!doc) return;
+  if (!doc.explosao?.length) return abrirExplodir();
+  mostrarExplodida = !mostrarExplodida;
+  montarCena();
+  renderizarArvore();
+  renderizarAbas();
+}
+
+function abrirExplodir() {
+  if (comando) cancelarComando();
+  if (!doc) return;
+  comando = { tipo: "explodir", snapshot: JSON.stringify(doc), comps: selComps.filter((id) => compDe(id)), dir: [0, 1, 0], dist: Math.round(escalaDaCena() * 0.6), fator: 1 };
+  mostrarExplodida = true;
+  montarCena();
+  mostrarPainel(true);
+  renderizarAbas();
+  renderizarExplodir();
+  atualizarStatus();
+}
+
+function renderizarExplodir() {
+  if (comando?.tipo !== "explodir" || !doc) return;
+  const c = comando;
+  const painel = painelBase("Vista explodida");
+  const auto = caixa(painel, "Explosão automática");
+  auto.innerHTML = `<label class="campo"><span>Afastamento (× distância ao centro)</span><input type="number" step="0.25" min="0.25" data-f /></label>
+    <button class="largo destaque" data-b="auto">Explodir todos</button>`;
+  auto.querySelector<HTMLInputElement>("[data-f]")!.value = String(c.fator);
+  auto.querySelector<HTMLInputElement>("[data-f]")!.onchange = (e) => (c.fator = Math.max(0.1, Number((e.target as HTMLInputElement).value.replace(",", ".")) || 1));
+  auto.querySelector<HTMLButtonElement>('[data-b="auto"]')!.onclick = () => {
+    doc!.explosao = explosaoAutomatica(doc!, centrosDosComponentes(), c.fator);
+    mostrarExplodida = true;
+    montarCena();
+    renderizarExplodir();
+  };
+  const man = caixa(painel, "Novo passo");
+  man.innerHTML = `<p class="dica">${c.comps.length ? escapar(c.comps.map(nomeComp).join(", ")) : "Toque os componentes do passo no modelo."}</p><div class="pc-botoes" data-dir></div>
+    <label class="campo"><span>Distância (mm)</span><input type="number" step="any" data-d /></label>
+    <button class="largo" data-b="add">Adicionar passo</button>`;
+  const gd = man.querySelector<HTMLElement>("[data-dir]")!;
+  for (const [r, v] of DIRECOES) {
+    const b = document.createElement("button");
+    b.textContent = r;
+    b.setAttribute("aria-pressed", String(v.every((x, k) => x === c.dir[k])));
+    b.onclick = () => {
+      c.dir = v;
+      renderizarExplodir();
+    };
+    gd.append(b);
+  }
+  const di = man.querySelector<HTMLInputElement>("[data-d]")!;
+  di.value = String(c.dist);
+  di.onchange = () => (c.dist = Number(di.value.replace(",", ".")) || 0);
+  man.querySelector<HTMLButtonElement>('[data-b="add"]')!.onclick = () => {
+    if (!c.comps.length) return avisar("Toque os componentes do passo no modelo.");
+    doc!.explosao = [...(doc!.explosao ?? []), { id: novoIdM(), comps: [...c.comps], dir: c.dir, dist: c.dist }];
+    c.comps = [];
+    selComps = [];
+    mostrarExplodida = true;
+    montarCena();
+    renderizarExplodir();
+  };
+  const lista = caixa(painel, `Passos (${doc.explosao?.length ?? 0})`);
+  (doc.explosao ?? []).forEach((s, i) => {
+    const l = document.createElement("div");
+    l.className = "pc-passo";
+    l.innerHTML = `<span></span><button title="Excluir passo">✕</button>`;
+    l.querySelector("span")!.textContent = `${i + 1}. ${s.comps.map(nomeComp).join(", ")} · ${fmt(s.dist)} mm`;
+    l.querySelector("button")!.onclick = () => {
+      doc!.explosao = doc!.explosao!.filter((x) => x !== s);
+      montarCena();
+      renderizarExplodir();
+    };
+    lista.append(l);
+  });
+  if (!doc.explosao?.length) lista.append(Object.assign(document.createElement("p"), { className: "dica", textContent: "Nenhum passo ainda." }));
+}
+
+// ---------- interferência, massa, medir ----------
+
+/** Pedidos ao kernel que usam os sólidos guardados: se o kernel recarregou, recalcula e tenta de novo. */
+async function comSolidos<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    if (!/não calculada/.test((e as Error).message)) throw e;
+    malhas.clear();
+    await atualizarCena();
+    return f();
+  }
+}
+
+const itensKernel = (cs: ComponenteMontagem[]) => cs.map((c) => ({ comp: c.id, chave: chaveDe(pecaDe(c)), t: c.t }));
+
+async function verificarInterferencia() {
+  if (!doc) return;
+  const cs = doc.componentes.filter((c) => !c.suprimido && malhas.has(chaveDe(pecaDe(c))));
+  if (cs.length < 2) return avisar("A verificação precisa de pelo menos dois componentes.");
+  atualizarStatus("Verificando interferências…");
+  let r: { a: string; b: string; volume: number }[];
+  try {
+    r = await comSolidos(() => kernel.interferencia(itensKernel(cs)));
+  } catch (e) {
+    atualizarStatus();
+    return avisar(`Não foi possível verificar: ${(e as Error).message}`);
+  }
+  atualizarStatus();
+  abrirJanela("Interferências", r.length
+    ? `<p>${r.length} interferência(s) entre ${cs.length} componentes (faces só encostadas não contam).</p>
+      <table class="tabela"><thead><tr><th>Componentes</th><th>Volume (mm³)</th></tr></thead><tbody>${r.map((x, i) => `<tr data-i="${i}" class="clicavel"><td>${escapar(nomeComp(x.a))} × ${escapar(nomeComp(x.b))}</td><td>${fmt(x.volume)}</td></tr>`).join("")}</tbody></table>
+      <p class="dica">Toque uma linha para destacar o par.</p>`
+    : `<p>Nenhuma interferência entre os ${cs.length} componentes.</p>`, true);
+  $("janela-corpo").querySelectorAll<HTMLElement>("[data-i]").forEach((tr) => (tr.onclick = () => {
+    const x = r[Number(tr.dataset.i)];
+    selComps = [x.a, x.b];
+    destacar();
+    renderizarArvore();
+  }));
+}
+
+async function mostrarMassa() {
+  if (!doc) return;
+  const cs = doc.componentes.filter((c) => !c.suprimido && malhas.has(chaveDe(pecaDe(c))));
+  if (!cs.length) return avisar("A montagem não tem componentes calculados.");
+  atualizarStatus("Calculando massa…");
+  let mp: Awaited<ReturnType<typeof kernel.massaPecas>>;
+  try {
+    mp = await comSolidos(() => kernel.massaPecas([...new Set(cs.map((c) => chaveDe(pecaDe(c))))]));
+  } catch (e) {
+    atualizarStatus();
+    return avisar(`Não foi possível calcular: ${(e as Error).message}`);
+  }
+  atualizarStatus();
+  const semMaterial = new Set<string>();
+  const itens = cs.flatMap((c) => {
+    const p = pecaDe(c);
+    const m = mp[chaveDe(p)];
+    if (!m) return [];
+    const mat = p.doc.material ? MATERIAIS[p.doc.material] : undefined;
+    if (!mat) semMaterial.add(p.nome);
+    return [{ m: { ...m, densidade: mat?.densidade ?? 1 }, t: c.t }];
+  });
+  const r = massaDaMontagem(itens);
+  const n = (v: number, c = 3) => v.toLocaleString("pt-BR", { maximumFractionDigits: c });
+  abrirJanela("Propriedades de massa da montagem", `<table class="tabela"><tbody>
+    <tr><td>Massa</td><td>${r.massa >= 1000 ? `${n(r.massa / 1000)} kg` : `${n(r.massa, 2)} g`}</td></tr>
+    <tr><td>Volume</td><td>${n(r.volume, 1)} mm³</td></tr>
+    <tr><td>Área de superfície</td><td>${n(r.area, 1)} mm²</td></tr>
+    <tr><td>Centro de massa (X; Y; Z)</td><td>${r.centro.map((v) => n(v)).join("; ")} mm</td></tr>
+    <tr><td>Componentes</td><td>${itens.length}</td></tr></tbody></table>
+    ${semMaterial.size ? `<p class="dica">Sem material (densidade 1 g/cm³ usada): ${escapar([...semMaterial].join(", "))}. Defina o material na peça (☰ → Material).</p>` : ""}`);
+}
+
+function abrirMedir() {
+  if (comando) cancelarComando();
+  comando = { tipo: "medir", sel: [], linhas: [] };
+  mostrarPainel(true);
+  renderizarAbas();
+  renderizarMedir();
+  atualizarStatus();
+}
+
+async function adicionarMedida(ent: Entidade) {
+  if (comando?.tipo !== "medir" || !cena || !doc) return;
+  const c = comando;
+  const ref: Referencia | null = ent.tipo === "face" ? { tipo: "face", ass: cena.topo.faces[ent.indice] }
+    : ent.tipo === "aresta" ? { tipo: "aresta", ass: cena.topo.arestas[ent.indice] }
+    : { tipo: "vertice", p: cena.topo.vertices[ent.indice] };
+  const l = localDaEntidade(cena.mapa, ent.tipo, ent.indice);
+  const nome = `${{ face: "Face", aresta: "Aresta", vertice: "Vértice" }[ent.tipo]} de ${nomeComp(l?.comp ?? null)}`;
+  const i = c.sel.findIndex((s) => s.ent.tipo === ent.tipo && s.ent.indice === ent.indice);
+  if (i >= 0) c.sel.splice(i, 1);
+  else c.sel = [...c.sel.slice(-1), { ref, nome, ent }];
+  destacar();
+  c.linhas = [];
+  renderizarMedir();
+  if (!c.sel.length) return;
+  // só os componentes das entidades (a medida é exata no B-Rep)
+  const comps = [...new Set(c.sel.map((s) => localDaEntidade(cena!.mapa, s.ent.tipo, s.ent.indice)?.comp).filter((x): x is string => !!x))].map((id) => compDe(id)!);
+  try {
+    const r = await comSolidos(() => kernel.medirMontagem(itensKernel(comps).map(({ chave, t }) => ({ chave, t })), c.sel.map((s) => s.ref)));
+    if (comando !== c) return;
+    c.linhas = r.linhas;
+  } catch (e) {
+    c.linhas = [{ rotulo: "Erro", valor: (e as Error).message }];
+  }
+  renderizarMedir();
+}
+
+function renderizarMedir() {
+  if (comando?.tipo !== "medir") return;
+  const c = comando;
+  const p = painelBase("Medir");
+  const s = caixa(p, "Seleção");
+  s.innerHTML = c.sel.length ? c.sel.map((x) => `<p>${escapar(x.nome)}</p>`).join("") : `<p class="dica">Toque uma ou duas entidades (faces, arestas, vértices) de qualquer componente.</p>`;
+  const r = caixa(p, "Resultado");
+  r.innerHTML = c.linhas.length ? `<table class="tabela"><tbody>${c.linhas.map((l) => `<tr><td>${escapar(l.rotulo)}</td><td>${escapar(l.valor)}</td></tr>`).join("")}</tbody></table>` : `<p class="dica">${c.sel.length ? "Medindo…" : "—"}</p>`;
 }
 
 // ---------- lista de materiais ----------

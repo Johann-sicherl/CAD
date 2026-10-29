@@ -84,6 +84,15 @@ export class ClienteKernel {
   projetar(itens: { chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[], orientacao: Orientacao | Camera, tol = 0.2) {
     return this.pedir<Projecao>({ tipo: "projetar", itens, orientacao, tol });
   }
+  interferencia(itens: { comp: string; chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[]) {
+    return this.pedir<{ a: string; b: string; volume: number }[]>({ tipo: "interferencia", itens });
+  }
+  massaPecas(chaves: string[]) {
+    return this.pedir<Record<string, { volume: number; area: number; centro: [number, number, number] }>>({ tipo: "massaPecas", chaves });
+  }
+  medirMontagem(itens: { chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[], refs: Referencia[]) {
+    return this.pedir<ResultadoMedida>({ tipo: "medirMontagem", itens, refs });
+  }
   /** Regenera a peça de um componente (montagem/desenho); o sólido fica guardado no kernel pela chave. */
   componente(chave: string, features: Feature[]) {
     return this.pedir<ResultadoComponente>({ tipo: "componente", chave, features });

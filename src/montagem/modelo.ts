@@ -118,6 +118,34 @@ export interface ComponenteMontagem {
   fixo: boolean;
   oculto?: boolean;
   suprimido?: boolean;
+  /** instância gerada por um padrão/espelhamento (PadraoComponentes.id): segue a semente */
+  padrao?: string;
+  /** de qual semente e com qual cópia (índice) veio */
+  semente?: string;
+  copia?: number;
+}
+
+/** Padrão de componentes (linear, circular) ou espelhamento: gera instâncias que seguem as sementes. */
+export type PadraoComponentes = {
+  id: string;
+  nome: string;
+  sementes: string[];
+  suprimido?: boolean;
+} & (
+  /** direção 1 (e 2): passo em mm e total de cópias, contando a semente */
+  | { tipo: "linear"; dir: Vec3; passo: number; n: number; dir2?: Vec3; passo2?: number; n2?: number }
+  /** em torno do eixo (ponto, direção): total de instâncias e ângulo total (360 = igualmente espaçadas) */
+  | { tipo: "circular"; ponto: Vec3; eixo: Vec3; n: number; angulo: number }
+  /** plano (ponto, normal): cópia na posição espelhada, mesma orientação (peças simétricas) */
+  | { tipo: "espelho"; ponto: Vec3; normal: Vec3 }
+);
+
+/** Um passo da vista explodida: componentes deslocados numa direção. */
+export interface PassoExplosao {
+  id: string;
+  comps: string[];
+  dir: Vec3;
+  dist: number;
 }
 
 /** Entidade de um componente (face/aresta/vértice em coordenadas da peça) ou da montagem (comp null). */
@@ -152,12 +180,14 @@ export interface DocumentoMontagem {
   pecas: PecaEmbutida[];
   componentes: ComponenteMontagem[];
   posicionamentos: Posicionamento[];
+  padroes?: PadraoComponentes[];
+  explosao?: PassoExplosao[];
 }
 
 export const novoIdM = () => Math.random().toString(36).slice(2, 10);
 
 export function montagemVazia(nome = "Montagem1"): DocumentoMontagem {
-  return { formato: "wjasm", versao: 1, nome, pecas: [], componentes: [], posicionamentos: [] };
+  return { formato: "wjasm", versao: 1, nome, pecas: [], componentes: [], posicionamentos: [], padroes: [], explosao: [] };
 }
 
 /** Lê um arquivo .wjasm e completa campos novos. */
@@ -166,6 +196,8 @@ export function validarMontagem(dados: unknown): DocumentoMontagem {
   if (!d || d.formato !== "wjasm" || !Array.isArray(d.componentes)) throw new Error("Arquivo não é uma montagem WJCAD válida (.wjasm).");
   d.pecas ??= [];
   d.posicionamentos ??= [];
+  d.padroes ??= [];
+  d.explosao ??= [];
   const pecas = new Set(d.pecas.map((p) => p.id));
   // componente cuja peça sumiu do arquivo: não dá para mostrar
   d.componentes = d.componentes.filter((c) => pecas.has(c.peca));
@@ -240,4 +272,148 @@ export function quantidades(d: DocumentoMontagem): { peca: PecaEmbutida; qtd: nu
   const n = new Map<string, number>();
   for (const c of d.componentes) if (!c.suprimido) n.set(c.peca, (n.get(c.peca) ?? 0) + 1);
   return d.pecas.filter((p) => n.has(p.id)).map((p) => ({ peca: p, qtd: n.get(p.id)! }));
+}
+
+// ---------- padrões e espelhamento de componentes ----------
+
+const unit3 = (v: Vec3): Vec3 => {
+  const n = Math.hypot(...v) || 1;
+  return [v[0] / n, v[1] / n, v[2] / n];
+};
+
+/** Transformações das cópias (sem a semente) de um padrão, aplicadas à pose da semente. */
+export function copiasDoPadrao(p: PadraoComponentes, semente: Transformacao, centroLocal: Vec3 = [0, 0, 0]): Transformacao[] {
+  const out: Transformacao[] = [];
+  if (p.tipo === "linear") {
+    const d1 = unit3(p.dir), d2 = p.dir2 ? unit3(p.dir2) : null;
+    const n2 = d2 ? Math.max(1, Math.round(p.n2 ?? 1)) : 1;
+    for (let j = 0; j < n2; j++) for (let i = 0; i < Math.max(1, Math.round(p.n)); i++) {
+      if (!i && !j) continue;
+      const o: Vec3 = [0, 1, 2].map((k) => d1[k] * p.passo * i + (d2 ? d2[k] * (p.passo2 ?? 0) * j : 0)) as Vec3;
+      out.push({ pos: [semente.pos[0] + o[0], semente.pos[1] + o[1], semente.pos[2] + o[2]], rot: semente.rot });
+    }
+  } else if (p.tipo === "circular") {
+    const n = Math.max(1, Math.round(p.n));
+    // 360°: n instâncias igualmente espaçadas; menos que isso: n instâncias de 0 até o ângulo
+    const passo = Math.abs(p.angulo) >= 360 - 1e-9 ? p.angulo / n : n > 1 ? p.angulo / (n - 1) : 0;
+    for (let i = 1; i < n; i++) out.push(girarEmTorno(semente, quatEixoAngulo(p.eixo, passo * i), p.ponto));
+  } else {
+    // espelho do centro do componente pelo plano; a orientação fica (peça simétrica)
+    const nn = unit3(p.normal);
+    const c = aplicarPonto(semente, centroLocal);
+    const dist = (c[0] - p.ponto[0]) * nn[0] + (c[1] - p.ponto[1]) * nn[1] + (c[2] - p.ponto[2]) * nn[2];
+    out.push({ pos: [semente.pos[0] - 2 * dist * nn[0], semente.pos[1] - 2 * dist * nn[1], semente.pos[2] - 2 * dist * nn[2]], rot: semente.rot });
+  }
+  return out;
+}
+
+/**
+ * Recria as instâncias de todos os padrões a partir das sementes (pose atual). Instâncias que já
+ * existem mantêm o id (posicionamentos e destaques continuam valendo); as que sobram saem.
+ * `centros`: centro local de cada peça (espelho).
+ */
+export function aplicarPadroes(d: DocumentoMontagem, centros: Map<string, Vec3> = new Map()) {
+  // padrão sem nenhuma semente (excluídas) sai junto
+  d.padroes = (d.padroes ?? []).filter((p) => p.sementes.some((id) => d.componentes.some((c) => c.id === id && !c.padrao)));
+  const antigas = new Map(d.componentes.filter((c) => c.padrao).map((c) => [`${c.padrao}|${c.semente}|${c.copia}`, c]));
+  const novas: ComponenteMontagem[] = [];
+  for (const p of d.padroes ?? []) {
+    if (p.suprimido) continue;
+    for (const sid of p.sementes) {
+      const s = d.componentes.find((c) => c.id === sid && !c.padrao);
+      if (!s) continue;
+      copiasDoPadrao(p, s.t, centros.get(s.peca)).forEach((t, i) => {
+        const k = `${p.id}|${sid}|${i + 1}`;
+        const velha = antigas.get(k);
+        if (velha) {
+          velha.t = t;
+          velha.peca = s.peca;
+          velha.suprimido = s.suprimido;
+          antigas.delete(k);
+          novas.push(velha);
+        } else {
+          novas.push({ id: novoIdM(), peca: s.peca, instancia: 0, t, fixo: false, padrao: p.id, semente: sid, copia: i + 1, ...(s.suprimido ? { suprimido: true } : {}) });
+        }
+      });
+    }
+  }
+  const sai = [...antigas.values()].map((c) => c.id);
+  if (sai.length) excluirComponentes(d, sai);
+  const ids = new Set(d.componentes.map((c) => c.id));
+  for (const c of novas) if (!ids.has(c.id)) {
+    c.instancia = proximaInstancia(d, c.peca);
+    d.componentes.push(c);
+  }
+}
+
+/** Exclui o padrão e as instâncias dele. */
+export function excluirPadrao(d: DocumentoMontagem, id: string) {
+  d.padroes = (d.padroes ?? []).filter((p) => p.id !== id);
+  excluirComponentes(d, d.componentes.filter((c) => c.padrao === id).map((c) => c.id));
+}
+
+// ---------- vista explodida ----------
+
+/** Poses com os passos da explosão somados (só exibição: a montagem continua posicionada). */
+export function posesExplodidas(d: DocumentoMontagem): Map<string, Transformacao> {
+  const desl = new Map<string, Vec3>();
+  for (const p of d.explosao ?? []) {
+    const u = unit3(p.dir);
+    for (const id of p.comps) {
+      const a = desl.get(id) ?? [0, 0, 0];
+      desl.set(id, [a[0] + u[0] * p.dist, a[1] + u[1] * p.dist, a[2] + u[2] * p.dist]);
+    }
+  }
+  const out = new Map<string, Transformacao>();
+  for (const c of d.componentes) {
+    const v = desl.get(c.id);
+    out.set(c.id, v ? { pos: [c.t.pos[0] + v[0], c.t.pos[1] + v[1], c.t.pos[2] + v[2]], rot: c.t.rot } : c.t);
+  }
+  return out;
+}
+
+/**
+ * Explosão automática: cada componente (menos o fixo de referência) se afasta do centro da
+ * montagem na direção do próprio centro, proporcional à distância (fator × distância).
+ */
+export function explosaoAutomatica(d: DocumentoMontagem, centros: Map<string, Vec3>, fator = 1): PassoExplosao[] {
+  const ids = d.componentes.filter((c) => !c.suprimido && centros.has(c.id)).map((c) => c.id);
+  if (!ids.length) return [];
+  const g = [0, 1, 2].map((k) => ids.reduce((s, id) => s + centros.get(id)![k], 0) / ids.length) as Vec3;
+  const out: PassoExplosao[] = [];
+  for (const id of ids) {
+    const c = d.componentes.find((x) => x.id === id)!;
+    if (c.fixo) continue;
+    const v: Vec3 = [0, 1, 2].map((k) => centros.get(id)![k] - g[k]) as Vec3;
+    const L = Math.hypot(...v);
+    if (L < 1e-6) continue;
+    out.push({ id: novoIdM(), comps: [id], dir: v, dist: L * fator });
+  }
+  return out;
+}
+
+// ---------- propriedades de massa da montagem ----------
+
+export interface MassaPeca {
+  /** mm³, mm², centro em coordenadas da peça */
+  volume: number;
+  area: number;
+  centro: Vec3;
+  /** g/cm³ */
+  densidade: number;
+}
+
+/** Soma as peças posicionadas: massa (g), volume (mm³), área (mm²) e centro de massa da montagem. */
+export function massaDaMontagem(itens: { m: MassaPeca; t: Transformacao }[]): { massa: number; volume: number; area: number; centro: Vec3 } {
+  let massa = 0, volume = 0, area = 0;
+  const cm: Vec3 = [0, 0, 0];
+  for (const { m, t } of itens) {
+    const g = (m.volume * m.densidade) / 1000;
+    const c = aplicarPonto(t, m.centro);
+    massa += g;
+    volume += m.volume;
+    area += m.area;
+    for (let k = 0; k < 3; k++) cm[k] += c[k] * g;
+  }
+  return { massa, volume, area, centro: massa > 0 ? [cm[0] / massa, cm[1] / massa, cm[2] / massa] : [0, 0, 0] };
 }

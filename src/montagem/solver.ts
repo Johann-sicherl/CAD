@@ -391,7 +391,8 @@ export function resolverMontagem(d: DocumentoMontagem, o: OpcoesSolver = {}): Re
   const L = o.escala ?? 100;
   const centros = o.centros ?? new Map<string, Vec3>();
   const poses = new Map<string, Transformacao>([...comps.values()].map((c) => [c.id, c.t]));
-  const movel = (id: string | null): id is string => id !== null && !comps.get(id)!.fixo;
+  // instâncias de padrão seguem a semente (aplicarPadroes): no solver contam como fixas
+  const movel = (id: string | null): id is string => id !== null && !comps.get(id)!.fixo && !comps.get(id)!.padrao;
   const erros = new Map<string, string>();
 
   // blocos de resíduos
@@ -453,7 +454,7 @@ export function resolverMontagem(d: DocumentoMontagem, o: OpcoesSolver = {}): Re
 
   // graus de liberdade que sobram: espaço nulo do jacobiano dos posicionamentos
   const graus = new Map<string, number>();
-  for (const c of comps.values()) if (!c.fixo) graus.set(c.id, 6);
+  for (const c of comps.values()) if (!c.fixo && !c.padrao) graus.set(c.id, 6);
   if (moveis.length && !o.semGraus) {
     const n = moveis.length * 6;
     const r0 = blocos.map((b) => b.f());
