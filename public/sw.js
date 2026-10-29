@@ -6,7 +6,7 @@
 // __VERSAO__ é trocado a cada build (vite.config.ts): versão nova → cache novo → app atualizado.
 const CACHE = "jlscad-__VERSAO__";
 const BASE = new URL("./", self.location.href);
-const PAGINAS = ["./", "cad/", "cad/montagem/", "cad/desenho/", "planilha/", "documento/", "apresentacao/", "cronograma/", "pdm/", "erp/", "flow/", "flow/aparelho/"];
+const PAGINAS = ["./", "cad/", "cad/montagem/", "cad/desenho/", "planilha/", "documento/", "apresentacao/", "cronograma/", "pdm/", "erp/", "flow/", "flow/aparelho/", "tarefas/"];
 
 async function lista() {
   try {

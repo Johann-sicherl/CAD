@@ -116,6 +116,18 @@ export class RepositorioDrive implements Repositorio {
     return ((await r.json()) as { id: string }).id;
   }
 
+  /** Texto de um arquivo fora do cofre (ex.: Meu Drive/WJTaskPlan/tarefas.json); null se não existe. */
+  async lerArquivo(pasta: string[], nome: string): Promise<string | null> {
+    const p = await this.acharPasta(pasta);
+    const id = p && (await this.arquivoNa(p, nome));
+    return id ? (await this.baixar(id)).text() : null;
+  }
+  /** Grava (cria ou atualiza no lugar) um arquivo fora do cofre. */
+  async gravarArquivo(pasta: string[], nome: string, dados: Blob) {
+    const p = await this.pasta(pasta);
+    await this.enviar(dados, nome, p, await this.arquivoNa(p, nome));
+  }
+
   private sis = () => this.pasta(["WJPDM", ".wjpdm"]);
   private blobsPasta = () => this.pasta(["WJPDM", ".wjpdm", "blobs"]);
 
@@ -265,13 +277,16 @@ const valido = () => {
   return !!a && a.expira - Date.now() > 120000;
 };
 
+/** Drive com o acesso atual (para pastas irmãs do cofre, como Meu Drive/WJTaskPlan). */
+export const driveGoogle = () => new RepositorioDrive(() => lerAcesso()?.token ?? "");
+
 export const nuvemGoogle: DestinoNuvem = {
   nome: "Google Drive",
   conectado: () => valido(),
   situacao() {
     if (valido()) return "Conectado: o cofre fica em Meu Drive/WJPDM.";
     if (autorizado()) return "Acesso vencido (o Google libera por 1 hora): toque em Sincronizar agora ou Reconectar.";
-    return "Não conectado. Toque em Conectar e autorize com a sua conta Google (o app só vê a pasta WJPDM que ele cria).";
+    return "Não conectado. Toque em Conectar e autorize com a sua conta Google (o app só vê as pastas que ele cria: WJPDM e WJTaskPlan).";
   },
   async conectar() {
     if (!(await pedirAcesso(!autorizado()))) throw new Error("O Google não liberou o acesso (janela fechada, bloqueada ou usuário fora da lista de teste).");

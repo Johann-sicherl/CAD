@@ -3,8 +3,9 @@
 > **Ecossistema WJProMaster** (nome oficial do conjunto, definido pelo Johann). Faces:
 > **WJCAD** (este app, antigo JLSCAD), **WJPDM** (diretório/cofre do WJCAD), **WJPlan**
 > (planilhas), **WJWrite** (documentos), **WJApresentation** (apresentações), **WJCronProject**
-> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD) e **WJFlow** (escoamento de ar nas
-> peças do WJCAD; `docs/global/wjflow.md`). Tudo roda no **celular, tablet e
+> (cronogramas), **WJERP** (ERP SaaS ligado ao WJPDM/WJCAD), **WJFlow** (escoamento de ar nas
+> peças do WJCAD; `docs/global/wjflow.md`) e **WJTaskPlan** (tarefas em pastas, escritas à mão;
+> `docs/global/taskplan.md`). Tudo roda no **celular, tablet e
 > notebook/computador**. Visão, arquitetura (monorepo), roteiro **G0–G8** e especificação de cada
 > face estão em **`docs/global/`**; o prompt de trabalho está em `docs/global/prompt-mestre.md`.
 > Até a fase G0 (monorepo), tudo fica neste repositório: o WJCAD (descrito abaixo) e as primeiras
@@ -66,7 +67,8 @@ O fluxo de trabalho de CADs paramétricos comerciais serve de **inspiração fun
   `src/ui/basico.ts`). Arquivos `.wjasm`/`.wjdrw` no cofre (apps `asm`/`drw`); ao salvar, montagem e desenho gravam a
   tabela `referencias` do WJPDM (tipos `componente` e `desenho`). Especificação em `docs/funcional/montagem.md` e `desenho.md`.
 - **Várias páginas** (Vite multi-page): `index.html` = **início do WJProMaster** (caixas de cada software,
-  `src/inicio/`, leve: sem Three.js nem kernel), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
+  `src/inicio/`, leve: sem Three.js nem kernel; **⚙ Configurações do WJProMaster** no topo = perfil do dispositivo e
+  cópias de todos os apps, `abrirCopias(…, mestre)` carregado só no toque), `cad/index.html` = **WJCAD** (`src/main.ts`) e uma página
   por face (seção "Outras faces"). O logo de cada app volta ao início. Em desenvolvimento: `/` é o início,
   `/cad/` é o WJCAD. Página nova: entrada em `vite.config.ts` (`rollupOptions.input`), em `PAGINAS` do
   `public/sw.js` e caixa em `src/inicio/inicio.ts`.
@@ -100,6 +102,7 @@ Motores puros testados em Node (`pnpm teste`). Estado detalhado no fim de cada `
 | WJCronProject | `cronograma/` | `src/cronograma/` | `src/agenda/` (`teste-agenda.ts`) | `.wjcron`, XML MSPDI, autosave `wjcron:documento` |
 | WJPDM | `pdm/` | `src/pdm/` | `src/pdm/regras.ts` (`teste-pdm.ts`) | IndexedDB `wjpdm`, cópia `.wjpdm` |
 | WJERP | `erp/` | `src/erp/` | `src/erp/regras.ts` (`teste-erp.ts`) | IndexedDB `wjerp`, cópia `.wjerp` |
+| WJTaskPlan | `tarefas/` | `src/tarefas/` | `src/tarefas/regras.ts` (`teste-tarefas.ts`) | IndexedDB `wjtaskplan`; `WJTaskPlan/tarefas.json` + `.csv` (pasta irmã do WJPDM nas cópias) |
 | WJFlow | `flow/` (+ `flow/aparelho/`) | `src/flow/` | `src/flow/lbm.ts`, `geometria.ts`, `estudo.ts` (`teste-flow.ts`) | `.wjflow` (estudo + peça), autosave IndexedDB `wjflow`; túnel de vento LBM D3Q19 em WebGPU |
 
 Integrações já feitas: o WJPDM abre arquivos nos apps (grava o autosave do app; o WJCAD abre direto
@@ -133,8 +136,9 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google
   Drive** e **pasta padrão do dispositivo** (mesma estrutura nas três). Ao salvar/publicar e **a cada
-  abertura de um app** (`sincronizarAoAbrir`, sem pedir permissão: o que precisar de toque fica para
-  o "Sincronizar agora" da aba Cofre), as cópias se igualam
+  abertura de um app** (`sincronizarAoAbrir`, também na página inicial e no WJTaskPlan, sem pedir permissão; se o
+  pendrive ou o Drive precisarem de toque, aparece a **faixa "Sincronizar agora"** no topo, e um toque
+  iguala o cofre e as tarefas), as cópias se igualam
   (`src/pdm/sincronia.ts`, testes em `scripts/teste-sincronia.ts`): o que falta é copiado; registro
   alterado em duas: **a mais recente vence** e a outra vai para a lixeira; exclusões propagam pela
   lixeira (30 dias). Estrutura na cópia: `WJPDM/<pastas>/<arquivo>` legível + `WJPDM/.wjpdm/`

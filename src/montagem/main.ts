@@ -16,7 +16,7 @@ import {
 import { centroDoComponente, facesDoComponente, globalDaEntidade, indiceLocal, juntar, localDaEntidade, type Cena } from "./cena";
 import { compRel, NOME_TIPO, primitivaLocal, resolverMontagem, tiposPossiveis, transformar, type ResultadoSolver } from "./solver";
 import {
-  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, precisaToque, salvarNoCofre,
+  abrirArquivoNoApp, abrirCopias, abrirDoCofre, desligar, documentosDoCofre, instalarPainelCofre, lerDoCofre, salvarNoCofre,
   sincronizarAoAbrir, vinculo,
 } from "../comum/cofre";
 import { renderizarFormulario, type ContextoFormulario, type Esquema } from "../ui/formulario";
@@ -2174,7 +2174,7 @@ if (sessionStorage.getItem("wjcad:voltarDesenho")) {
   $("rapidas").prepend(b);
 }
 instalarPainelCofre("asm", salvar);
-void sincronizarAoAbrir(kernel.pronto)?.then((m) => precisaToque(m) && avisar(`Sincronia ao abrir: ${m}`), () => {});
+void sincronizarAoAbrir(kernel.pronto)?.catch(() => {});
 {
   let inicial: DocumentoMontagem | null = null;
   try {

@@ -132,6 +132,11 @@ export const IC = {
   recomecar: svg(`<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4" stroke="${C}"/>`),
   validar: svg(`<circle cx="12" cy="12" r="5"/><path d="M2 12h3M19 12h3"/><path d="M5 8h6M5 16h6M15 8c2 .5 3 2 3 4s-1 3.5-3 4" stroke="${C}"/>`),
   aparelho: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 15l2.5-4 2 3 2-5 1.5 3" stroke="${C}"/>`),
+  // tarefas (WJTaskPlan)
+  config: svg(`<circle cx="12" cy="12" r="3.2" stroke="${C}"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>`),
+  sincronizar: svg(`<path d="M4 11a8 8 0 0 1 14-4.5L20 8"/><path d="M20 4v4h-4"/><path d="M20 13a8 8 0 0 1-14 4.5L4 16M4 20v-4h4" stroke="${C}"/>`),
+  caneta: svg(`<path d="M15 4l5 5L9 20H4v-5z"/><path d="M13 6l5 5" stroke="${C}"/><path d="M4 20c3-1 5 1 8-1" stroke="${C}"/>`),
+  lista: svg(`<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h1M4 12h1M4 18h1" stroke="${C}" stroke-width="2.6"/>`),
   vento: svg(`<path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" stroke="${C}"/>`),
 };
 

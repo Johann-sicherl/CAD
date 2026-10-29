@@ -61,6 +61,11 @@ const FACES: Face[] = [
     descricao: "Túnel de vento virtual para as peças do WJCAD: Cd, sustentação, forças e cortes do escoamento.",
     icone: svg(`<path d="M3 8h9a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/><path d="M14 8.5c2 .8 2 2.2 0 3" stroke="${C}"/>`),
   },
+  {
+    id: "tarefas", nome: "WJTaskPlan", url: "tarefas/",
+    descricao: "Tarefas em pastas, escritas à mão com a caneta: estados, prazos com alerta e painel.",
+    icone: svg(`<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8l1.5 1.5L12 7M8 13l1.5 1.5L12 12" stroke="${C}"/><path d="M14 8h3M14 13h3M8 17.5h9"/>`),
+  },
 ];
 
 /** Nome do último documento do WJCAD guardado neste aparelho (autosave). */
@@ -117,11 +122,35 @@ async function estadoOffline() {
 montarCaixas();
 void estadoOffline();
 {
+  // ⚙ configurações gerais: perfil do dispositivo e onde ficam os dados de todos os apps
+  // (pasta padrão do dispositivo, pendrive, Google Drive). Carregado só no toque: o início segue leve.
+  const topo = document.querySelector(".topo")!;
+  const cfg = document.createElement("button");
+  cfg.className = "topo-botao";
+  cfg.title = "Configurações do WJProMaster (dispositivo e pastas dos dados)";
+  cfg.setAttribute("aria-label", "Configurações");
+  cfg.innerHTML = svg(`<circle cx="12" cy="12" r="3.2" stroke="${C}"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>`);
+  cfg.onclick = async () => {
+    const { abrirCopias } = await import("../comum/cofre");
+    // as tarefas (WJTaskPlan/) seguem as mesmas cópias: iguala junto com o cofre
+    void abrirCopias(() => void import("../tarefas/copias").then((m) => m.sincronizarTarefas(false)).catch(() => {}), true);
+  };
+  topo.append(cfg);
   const b = botaoDiagnostico();
-  if (b) {
-    b.style.marginLeft = "auto";
-    document.querySelector(".topo")!.append(b);
-  }
+  if (b) topo.append(b);
+}
+
+// sincronia ao abrir/recarregar o início: cofre (WJPDM/) e tarefas (WJTaskPlan/) com a pasta do
+// dispositivo, o pendrive e o Google Drive. Carregada depois que as caixas aparecem.
+setTimeout(() => {
+  void Promise.all([import("../comum/cofre"), import("../tarefas/copias")]).then(([cofre, tarefas]) => {
+    void sincronizarTudo(cofre, tarefas);
+    window.addEventListener(cofre.EVENTO_SINCRONIZADO, () => void tarefas.sincronizarTarefas(false).catch(() => {}));
+  });
+}, 300);
+async function sincronizarTudo(cofre: typeof import("../comum/cofre"), tarefas: typeof import("../tarefas/copias")) {
+  await cofre.sincronizarAoAbrir()?.catch(() => "");
+  await tarefas.sincronizarTarefas(false).catch(() => {});
 }
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
