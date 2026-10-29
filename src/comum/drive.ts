@@ -3,11 +3,12 @@
 // escopo drive.file: o app só enxerga o que ele mesmo criou no Drive (a pasta WJPDM).
 //
 // No Drive:  Meu Drive/WJPDM/<pastas>/<arquivo>        ← arquivo atual (o Drive guarda revisões)
+//            Meu Drive/WJPDM/<pastas>/<nome> (versões)/<nome> v<n>.<ext>  ← cópia de cada GO-IN
 //            Meu Drive/WJPDM/.wjpdm/indice.json        ← índice do cofre
 //            Meu Drive/WJPDM/.wjpdm/blobs/<id>         ← conteúdo de cada versão
 //            Meu Drive/WJPDM/.wjpdm/visiveis.json      ← o que já foi gravado em <pastas>
 
-import { blobAtual, caminhoDoArquivo, caminhosDasPastas, type Indice, type Repositorio } from "../pdm/sincronia";
+import { caminhosDasPastas, visiveisDoIndice, type Indice, type Repositorio } from "../pdm/sincronia";
 
 /** Cliente OAuth do projeto WJProMaster no Google Cloud (público; a chave secreta não é usada). */
 export const CLIENTE_GOOGLE = "751073631393-8tmbbv019s57975tbfv4h1g11gsahunb.apps.googleusercontent.com";
@@ -158,13 +159,10 @@ export class RepositorioDrive implements Repositorio {
     const antes: V = idMapa ? JSON.parse(await (await this.baixar(idMapa)).text()) : {};
     const agora: V = {};
     const igual = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
-    for (const a of i.arquivos) {
-      const blob = blobAtual(a);
-      if (a.lixeira || !blob) continue;
-      const caminho = caminhoDoArquivo(i, a);
-      const v = antes[a.id];
+    for (const { chave: id, caminho, blob } of visiveisDoIndice(i)) {
+      const v = antes[id];
       if (v && v.blob === blob && igual(v.caminho, caminho)) {
-        agora[a.id] = v;
+        agora[id] = v;
         continue;
       }
       const dados = await lerBlob(blob);
@@ -175,11 +173,20 @@ export class RepositorioDrive implements Repositorio {
         if (mesmoLugar && e instanceof ErroDrive && e.status === 404) return this.enviar(dados, caminho[caminho.length - 1], pasta); // apagado à mão no Drive
         throw e;
       });
-      agora[a.id] = { caminho, blob, drive };
+      agora[id] = { caminho, blob, drive };
     }
     for (const [id, v] of Object.entries(antes)) {
       if (agora[id]?.drive === v.drive) continue;
       await this.req(`${API}/${v.drive}`, { method: "DELETE" }).catch(() => {});
+    }
+    // pastas de versões que ficaram sem nada (arquivo excluído, renomeado ou movido)
+    const dirsVersoes = (x: V) => new Set(Object.entries(x).filter(([k]) => k.includes("#")).map(([, e]) => JSON.stringify(e.caminho.slice(0, -1))));
+    const versoesAgora = dirsVersoes(agora);
+    for (const k of [...dirsVersoes(antes)].filter((x) => !versoesAgora.has(x))) {
+      const c = ["WJPDM", ...(JSON.parse(k) as string[])];
+      const idp = await this.acharPasta(c);
+      if (idp) await this.req(`${API}/${idp}`, { method: "DELETE" }).catch(() => {});
+      for (const x of [...this.ids.keys()]) if (x === c.join("/") || x.startsWith(`${c.join("/")}/`)) this.ids.delete(x);
     }
     await this.enviar(new Blob([JSON.stringify(agora)], { type: "application/json" }), "visiveis.json", sis, idMapa);
     // pastas do cofre (também as vazias): cria as novas; as excluídas/renomeadas vão para a

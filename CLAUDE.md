@@ -121,11 +121,14 @@ WJFlow), que é atalho de navegação: o WJCAD continua sem comandos de simulaç
   sem texto, árvore/painéis em gaveta, dedo desenha. Tablet: caneta + dedo, alvos ≥ 44 px, lupa.
   Computador: botões compactos, mouse e atalhos. Classe `disp-*` no `body`.
 - **Cofre único (WJPDM):** todo arquivo de todos os apps vive no cofre do WJPDM (`src/comum/cofre.ts`).
-  **Salvar (💾/Ctrl+S) grava só no dispositivo** (banco do app + pasta padrão do dispositivo), em
-  GO-OUT: o primeiro salvar abre a janela "Salvar no cofre" (pasta do cofre, Nova pasta, nome) e o
-  arquivo fica `soLocal` ("só no dispositivo") até o primeiro GO-IN; os seguintes gravam a cópia de
-  trabalho. **GO-IN cria a versão e publica** no pendrive e no Drive (cópias `publicado`: só recebem
-  o que passou por GO-IN, `vistaPublicada`). Aba **Cofre** na lateral direita de cada app
+  **O primeiro salvar** (💾/Ctrl+S) abre a janela "Salvar no cofre" (pasta do cofre, Nova pasta,
+  nome) e **já publica a versão 1** no dispositivo, no pendrive e no Drive (GO-IN automático; o
+  arquivo segue em GO-OUT com quem salvou). **Os seguintes gravam só no dispositivo** (cópia de
+  trabalho em GO-OUT). **GO-IN** (sem comentário: é só a cópia) cria a versão e publica no pendrive
+  e no Drive (cópias `publicado`: só recebem o que passou por GO-IN, `vistaPublicada`); no WJPDM há
+  **GO-IN da pasta** inteira (com as subpastas). Nas três cópias, ao lado de cada arquivo fica a pasta
+  `<nome> (versões)/<nome> v<n>[ rev X].<ext>` com uma cópia de cada GO-IN (`visiveisDoIndice`); o app
+  mostra só os arquivos. Arquivos antigos `soLocal` ("só no dispositivo") continuam até o GO-IN. Aba **Cofre** na lateral direita de cada app
   (`instalarPainelCofre`): dados da peça (pasta, estado, revisão, versão, GO-OUT), GO-OUT / GO-IN /
   Desfazer GO-OUT e "Meus arquivos em GO-OUT" (todos os apps) com GO-IN por item ou dos marcados.
   O cofre tem até três cópias além do banco do aparelho: **pendrive** (WJPDM/ na raiz), **Google

@@ -306,6 +306,7 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     }
   }
   let local: { pasta: string; nome: string } | null = null;
+  let primeiro = false;
   if (!a) {
     local = await escolherLocal(app, nomeArquivo);
     if (!local) return "Salvamento cancelado.";
@@ -338,10 +339,11 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
     const nome = nomeLivre(local!.nome, irmaos);
     a = {
       id: uid(), nome, pasta: local!.pasta, revisao: "", estado: fluxoAtual().inicial, cartao: { descricao: nome.replace(/\.[^.]+$/, ""), projetista: usuario },
-      checkout: { usuario, data: t }, soLocal: true, mod: t,
+      checkout: { usuario, data: t }, mod: t,
       versoes: [{ n: 1, blob, tamanho: dados.size, autor: usuario, data: t, comentario: `Criado no ${NOME_APP[app]}`, revisao: "", estado: fluxoAtual().inicial }],
-      historico: [{ data: t, usuario, texto: `Criado no ${NOME_APP[app]} (em GO-OUT, só no dispositivo)` }],
+      historico: [{ data: t, usuario, texto: `Criado no ${NOME_APP[app]}: versão 1 publicada (GO-IN automático), segue em GO-OUT` }],
     };
+    primeiro = true;
     await db.por("arquivos", a);
     // o documento aberto passa a ter o nome escolhido (senão o próximo salvar renomearia de volta)
     if (nome !== nomeArquivo) renomear?.(nome.replace(/\.[^.]+$/, ""));
@@ -355,8 +357,10 @@ export async function salvarNoCofre(app: ChaveApp, nomeArquivo: string, dados: B
   if (extras.referencias) await gravarReferencias(db, a.id, extras.referencias);
   ligar(app, a.id);
   avisarMudanca();
-  const sinc = await sincronizarCofre({ pedir: true, publicar: false });
+  // primeiro salvar: a versão 1 vai para o dispositivo, o pendrive e o Drive (GO-IN automático)
+  const sinc = await sincronizarCofre({ pedir: true, publicar: primeiro });
   const onde = caminhoDaPasta(await db.todos<Pasta>("pastas"), a.pasta);
+  if (primeiro) return `Salvo e publicado (versão 1): ${onde ? `${onde}/` : ""}${a.nome}. ${sinc} Segue em GO-OUT com você: os próximos salvamentos ficam no dispositivo até o GO-IN.${aviso}`;
   return `Salvo no dispositivo, em GO-OUT: ${onde ? `${onde}/` : ""}${a.nome}. ${sinc} Faça o GO-IN para publicar no pendrive e no Drive.${aviso}`;
 }
 
@@ -426,11 +430,11 @@ export async function goOut(id: string): Promise<string> {
 }
 
 /**
- * GO-IN: a cópia de trabalho vira a próxima versão, o arquivo deixa de ser "só no dispositivo" e
- * tudo é publicado no pendrive e no Drive. `manter`: continua em GO-OUT. `renovacao`: pedida no
- * toque (janela do Google).
+ * GO-IN: a cópia de trabalho vira a próxima versão (uma cópia do arquivo, sem comentário), o
+ * arquivo deixa de ser "só no dispositivo" e tudo é publicado no pendrive e no Drive. `manter`:
+ * continua em GO-OUT. `renovacao`: pedida no toque (janela do Google).
  */
-export async function goIn(ids: string[], comentario: string, manter: boolean, renovacao?: Promise<boolean>): Promise<string> {
+export async function goIn(ids: string[], manter: boolean, renovacao?: Promise<boolean>): Promise<string> {
   renovacao ??= renovarNuvem(true);
   const db = await abrirCofre();
   const usuario = await usuarioDo(db);
@@ -445,10 +449,10 @@ export async function goIn(ids: string[], comentario: string, manter: boolean, r
     const t = agora();
     if (a.trabalho) {
       const n = a.versoes[a.versoes.length - 1].n + 1;
-      a.versoes.push({ n, blob: a.trabalho.blob, tamanho: a.trabalho.tamanho, autor: usuario, data: t, comentario, revisao: a.revisao, estado: a.estado });
-      a.historico.push({ data: t, usuario, texto: `Versão ${n}${comentario ? ` — ${comentario}` : ""}` });
+      a.versoes.push({ n, blob: a.trabalho.blob, tamanho: a.trabalho.tamanho, autor: usuario, data: t, comentario: "", revisao: a.revisao, estado: a.estado });
+      a.historico.push({ data: t, usuario, texto: `Versão ${n}` });
       a.trabalho = undefined;
-    } else if (a.soLocal && comentario) a.versoes[0].comentario = comentario;
+    }
     if (a.soLocal) a.historico.push({ data: t, usuario, texto: "Publicado (primeiro GO-IN)" });
     a.soLocal = undefined;
     if (!manter) {
@@ -712,8 +716,8 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
           ${meu && !atual.soLocal ? `<button data-b="desfazer">Desfazer GO-OUT</button>` : ""}
           <button data-b="salvar">Salvar</button>
         </div>
-        ${meu ? `<input type="text" data-com placeholder="Comentário da versão (opcional)" /><label><input type="checkbox" data-manter /> Manter em GO-OUT depois do GO-IN</label>` : ""}`
-      : `<p>Este documento ainda não está no cofre. Ao salvar, você escolhe a pasta; ele fica em GO-OUT, só no dispositivo, até o GO-IN.</p>
+        ${meu ? `<label><input type="checkbox" data-manter /> Manter em GO-OUT depois do GO-IN</label>` : ""}`
+      : `<p>Este documento ainda não está no cofre. Ao salvar, você escolhe a pasta: a versão 1 é publicada no dispositivo, no pendrive e no Drive e ele segue em GO-OUT com você.</p>
         <div class="wjc-botoes"><button data-b="salvar" class="destaque">Salvar no cofre…</button></div>`}
       </section>
       <section><h3>Meus arquivos em GO-OUT (${lista.length})</h3>
@@ -743,11 +747,10 @@ export function instalarPainelCofre(app: ChaveApp, salvar: () => Promise<unknown
     /** GO-IN: a janela do Google precisa abrir no toque, antes de qualquer espera. */
     const publicar = (ids: string[]) => {
       const renovacao = renovarNuvem(true);
-      const com = corpo.querySelector<HTMLInputElement>("[data-com]")?.value.trim() ?? "";
       const manter = !!corpo.querySelector<HTMLInputElement>("[data-manter]")?.checked;
       return executar(async () => {
         if (atual && ids.includes(atual.id)) await salvar(); // publica o que está na tela
-        return goIn(ids, com, manter, renovacao);
+        return goIn(ids, manter, renovacao);
       });
     };
     const acoes: Record<string, () => unknown> = {

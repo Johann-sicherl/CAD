@@ -1,7 +1,7 @@
 // Teste da sincronia entre cópias do cofre do WJPDM (src/pdm/sincronia.ts), com cópias em memória:
 // arquivo novo, versão nova, conflito (mais recente vence, o outro vai para a lixeira), exclusão,
 // lixeira vencida, cópia que falha no meio e repetição sem efeito.
-import { caminhoDoArquivo, indiceVazio, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
+import { visiveisDoIndice, caminhoDoArquivo, indiceVazio, sincronizar, type Indice, type Repositorio } from "../src/pdm/sincronia";
 import type { Arquivo } from "../src/pdm/regras";
 
 let falhas = 0;
@@ -205,6 +205,14 @@ const AGORA = "2026-10-28T12:00:00.000Z";
   velho.indice = { ...indiceVazio(), referencias: undefined } as unknown as Indice;
   const r = await sincronizar([ap, velho], AGORA);
   igual("índice antigo sem a tabela não quebra", r.falhas, []);
+}
+
+// pastas de versões ao lado do arquivo (o que as cópias mostram em disco/Drive)
+{
+  const i = indiceVazio();
+  i.pastas.push({ id: "p", nome: "CAD", pai: null } as never);
+  i.arquivos.push({ id: "a", nome: "Suporte.wjcad", pasta: "p", revisao: "A", estado: "x", cartao: {}, historico: [], versoes: [{ n: 1, blob: "b1", revisao: "" }, { n: 2, blob: "b2", revisao: "A" }], trabalho: { blob: "w", tamanho: 1, data: "", autor: "" } } as never);
+  igual("versões: atual = cópia de trabalho; v1 e v2 rev A na pasta (versões)", visiveisDoIndice(i).map((v) => [v.caminho.join("/"), v.blob]), [["CAD/Suporte.wjcad", "w"], ["CAD/Suporte (versões)/Suporte v1.wjcad", "b1"], ["CAD/Suporte (versões)/Suporte v2 rev A.wjcad", "b2"]]);
 }
 
 console.log(falhas ? `\nsincronia: ${falhas} falha(s)` : "\nsincronia: tudo certo");

@@ -4,7 +4,7 @@
 
 import "./pdm.css";
 import { $, baixar, Casca, el, escapar, janela, menu, registrarOffline, salvarArquivo } from "../comum/casca";
-import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, sincronizarCofre } from "../comum/cofre";
+import { abrirArquivoNoApp, abrirCopias, aoMudarCofre, APPS, goIn, sincronizarCofre } from "../comum/cofre";
 import { IC } from "../comum/icones";
 import { Armazem, deBase64, paraBase64 } from "../comum/armazem";
 import {
@@ -116,6 +116,7 @@ arvore.addEventListener("contextmenu", (e) => {
   const id = n.dataset.pasta!;
   menu(e.clientX, e.clientY, [
     { rotulo: "Nova pasta aqui", icone: "novaPasta", acao: () => novaPasta(id) },
+    { rotulo: id === RAIZ ? "GO-IN de tudo (meus GO-OUT)" : "GO-IN da pasta (todos os arquivos)", icone: "checkin", acao: () => goInPasta(id) },
     ...(id !== RAIZ ? [{ rotulo: "Renomear pasta", icone: "editar" as const, acao: () => renomearPasta(id) }, { rotulo: "Excluir pasta", icone: "apagar" as const, acao: () => void excluirPasta(id) }] : []),
   ]);
 });
@@ -217,6 +218,7 @@ lista.addEventListener("contextmenu", (e) => {
     const id = tr.dataset.pasta;
     menu(e.clientX, e.clientY, [
       { rotulo: "Abrir pasta", icone: "pasta", acao: () => ((local = { tipo: "pasta", id }), (sel = null), renderizar()) },
+      { rotulo: "GO-IN da pasta (todos os arquivos)", icone: "checkin", acao: () => goInPasta(id) },
       { rotulo: "Renomear pasta", icone: "editar", acao: () => renomearPasta(id) },
       { rotulo: "Excluir pasta", icone: "apagar", acao: () => void excluirPasta(id) },
     ]);
@@ -242,7 +244,7 @@ function menuArquivo(x: number, y: number) {
     { rotulo: "Obter (baixar)", icone: "exportar", acao: () => void obter(a) },
     "-",
     { rotulo: "GO-OUT (retirar para editar)", icone: "checkout", acao: () => void checkout(a) },
-    { rotulo: "GO-IN… (devolver ao cofre)", icone: "checkin", acao: () => checkin(a) },
+    { rotulo: "GO-IN (publicar)", icone: "checkin", acao: () => checkin(a) },
     { rotulo: "Desfazer GO-OUT", icone: "desfazer", acao: () => void desfazerCheckout(a) },
     { rotulo: "Alterar estado…", icone: "estado", acao: () => alterarEstado(a) },
     "-",
@@ -315,7 +317,7 @@ function renderizarPainel() {
   const tot = arquivos.filter((x) => !x.lixeira);
   conteudo.innerHTML = `<p class="pd-dica">Selecione um arquivo para ver o cartão de dados, a visualização, as versões e o histórico.</p>
     <p class="pd-dica">${tot.length} arquivo(s) · ${pastas.length} pasta(s) · ${itens.length} item(ns) · usuário: <b>${escapar(usuario())}</b></p>
-    <p class="pd-dica">Salvar nos apps grava <b>no dispositivo</b> (em GO-OUT, funciona sem internet); o <b>GO-IN</b> cria a versão e publica no pendrive e no Google Drive (💾 / Cópias do cofre). O cofre no servidor, compartilhado pela equipe, chega na fase G5.</p>`;
+    <p class="pd-dica">O <b>primeiro salvar</b> de um arquivo já publica a versão 1 no dispositivo, no pendrive e no Google Drive; os seguintes gravam <b>no dispositivo</b> (em GO-OUT, funciona sem internet) e o <b>GO-IN</b> guarda a cópia como nova versão e publica. Cada versão fica, nas cópias, na pasta "&lt;nome&gt; (versões)" ao lado do arquivo. O cofre no servidor, compartilhado pela equipe, chega na fase G5.</p>`;
 }
 abasEl.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-aba]");
@@ -661,39 +663,28 @@ async function novaVersao(a: Arquivo, dados: Blob | { trabalho: true }, comentar
   renderizar();
 }
 
+/** GO-IN direto: a cópia de trabalho vira a próxima versão e tudo é publicado (sem perguntas). */
 function checkin(a: Arquivo) {
   if (a.checkout?.usuario !== usuario()) return casca.avisar(a.checkout ? `O GO-OUT é de ${a.checkout.usuario}.` : "Faça o GO-OUT antes do GO-IN.");
-  const trab = a.trabalho;
-  const { corpo } = janela(`GO-IN — ${a.nome}`, `
-    <div class="wj-campo"><label>Conteúdo da nova versão</label>
-      <label><input type="radio" name="fonte" value="trabalho" ${trab ? "checked" : "disabled"}/> Cópia de trabalho${trab ? ` (salva em ${quando(trab.data)})` : " (nada salvo no app desde a última versão)"}</label>
-      <label><input type="radio" name="fonte" value="aparelho"/> Arquivo do aparelho…</label>
-      <label><input type="radio" name="fonte" value="nada" ${trab ? "" : "checked"}/> Só o cartão de dados (sem versão nova)</label></div>
-    <div class="wj-campo"><label>Comentário</label><input id="ck-com" placeholder="O que mudou?" /></div>
-    <label><input id="ck-manter" type="checkbox"/> Manter em GO-OUT (continuar editando)</label>`, [
-    { rotulo: "Cancelar" },
-    {
-      rotulo: "GO-IN", destaque: true, acao: (b) => {
-        const fonte = (b.querySelector('input[name="fonte"]:checked') as HTMLInputElement | null)?.value ?? "nada";
-        const com = (b.querySelector("#ck-com") as HTMLInputElement).value.trim();
-        const manter = (b.querySelector("#ck-manter") as HTMLInputElement).checked;
-        const finalizar = async (dados?: Blob | { trabalho: true }) => {
-          if (dados) await novaVersao(a, dados, com);
-          else historico(a, `GO-IN sem versão nova${com ? ` — ${com}` : ""}`);
-          if (a.soLocal) delete a.soLocal, historico(a, "Publicado (primeiro GO-IN)");
-          if (!manter) delete a.checkout, historico(a, "GO-IN");
-          await gravarArquivo(a);
-          renderizar();
-          void sincronizarCofre({ pedir: false, publicar: true }).then((m) => casca.avisar(m, 5000));
-        };
-        if (fonte === "trabalho") void finalizar({ trabalho: true });
-        else if (fonte === "aparelho") {
-          void escolherVarios().then((fs) => (fs[0] ? finalizar(fs[0]) : casca.avisar("Nenhum arquivo escolhido: GO-IN cancelado.")));
-        } else void finalizar();
-      },
-    },
-  ]);
-  (corpo.querySelector("#ck-com") as HTMLInputElement).focus();
+  void goIn([a.id], false).then(async (m) => {
+    await carregar();
+    casca.avisar(m, 6000);
+  });
+}
+
+/** GO-IN de uma pasta inteira (com as subpastas): todos os arquivos em GO-OUT com você. */
+function goInPasta(id: string) {
+  const ids = descendentes(id);
+  const dentro = arquivos.filter((a) => ids.includes(a.pasta) && !a.lixeira);
+  const meus = dentro.filter((a) => a.checkout?.usuario === usuario());
+  const deOutros = dentro.filter((a) => a.checkout && a.checkout.usuario !== usuario());
+  const nome = id === RAIZ ? "cofre" : `pasta "${pastas.find((p) => p.id === id)?.nome ?? ""}"`;
+  if (!meus.length) return casca.avisar(`Nada para o GO-IN na ${nome}: nenhum arquivo em GO-OUT com você${deOutros.length ? ` (${deOutros.length} em GO-OUT com outras pessoas)` : ""}.`, 6000);
+  // goIn pede o acesso ao Google já no toque (antes de qualquer espera)
+  void goIn(meus.map((a) => a.id), false).then(async (m) => {
+    await carregar();
+    casca.avisar(`${m}${deOutros.length ? ` ${deOutros.length} arquivo(s) em GO-OUT com outras pessoas ficaram de fora.` : ""}`, 8000);
+  });
 }
 
 async function abrirNoApp(a: Arquivo) {
@@ -1116,6 +1107,7 @@ const casca: Casca = new Casca({
         [
           { id: "co", rotulo: "GO-OUT", icone: "checkout", acao: exigeArquivo((a) => void checkout(a)) },
           { id: "ci", rotulo: "GO-IN", icone: "checkin", acao: exigeArquivo((a) => checkin(a)) },
+          { id: "cip", rotulo: "GO-IN da pasta", icone: "checkin", peq: true, dica: "GO-IN de todos os arquivos da pasta aberta (e subpastas) em GO-OUT com você", acao: () => (local.tipo === "pasta" ? goInPasta(local.id) : casca.avisar("Abra uma pasta do cofre.")) },
           { id: "dco", rotulo: "Desfazer GO-OUT", icone: "desfazer", peq: true, acao: exigeArquivo((a) => void desfazerCheckout(a)) },
         ],
         [{ id: "estado", rotulo: "Alterar estado", icone: "estado", dica: "Mudar o estado no ciclo de vida (Fluxo de trabalho em Ferramentas)", acao: exigeArquivo(alterarEstado) }],

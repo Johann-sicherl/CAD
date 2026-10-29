@@ -3,11 +3,12 @@
 // mesma interface (Repositorio) quando o acesso ao Google estiver configurado.
 //
 // Pasta de disco:  <raiz>/WJPDM/<pastas>/<arquivo>   ← arquivo atual, abre em qualquer computador
+//                  <raiz>/WJPDM/<pastas>/<nome> (versões)/<nome> v<n>.<ext>   ← cópia de cada GO-IN
 //                  <raiz>/WJPDM/.wjpdm/indice.json   ← pastas, cartões, estados, versões, histórico
 //                  <raiz>/WJPDM/.wjpdm/blobs/<id>    ← conteúdo de cada versão (nunca muda)
 
 import { Armazem } from "./armazem";
-import { blobAtual, caminhoDoArquivo, caminhosDasPastas, indiceVazio, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
+import { caminhosDasPastas, indiceVazio, visiveisDoIndice, type Indice, type MetaCofre, type Repositorio } from "../pdm/sincronia";
 import type { Arquivo, Item, Pasta, ReferenciaArquivo } from "../pdm/regras";
 
 // ---------- banco do aparelho ----------
@@ -162,12 +163,9 @@ export class RepositorioPasta implements Repositorio {
     }
     const agora: Visiveis = {};
     const igual = (a: string[], b: string[]) => a.length === b.length && a.every((x, k) => x === b[k]);
-    for (const a of i.arquivos) {
-      const blob = blobAtual(a);
-      if (a.lixeira || !blob) continue;
-      const caminho = caminhoDoArquivo(i, a);
-      agora[a.id] = { caminho, blob };
-      const v = antes[a.id];
+    for (const { chave: id, caminho, blob } of visiveisDoIndice(i)) {
+      agora[id] = { caminho, blob };
+      const v = antes[id];
       if (v && v.blob === blob && igual(v.caminho, caminho)) continue;
       const dados = await lerBlob(blob);
       if (!dados) continue;
@@ -186,6 +184,19 @@ export class RepositorioPasta implements Repositorio {
         await d.removeEntry(nomeSeguro(nome)).catch(() => d.removeEntry(semAcentos(nomeSeguro(nome))));
       } catch {
         /* já não existia */
+      }
+    }
+    // pastas de versões que ficaram vazias (arquivo excluído, renomeado ou movido)
+    const dirsVersoes = (v: Visiveis) => new Set(Object.entries(v).filter(([k]) => k.includes("#")).map(([, x]) => chave(x.caminho.slice(0, -1))));
+    const versoesAgora = dirsVersoes(agora);
+    for (const c of [...dirsVersoes(antes)].filter((k) => !versoesAgora.has(k)).map((k) => JSON.parse(k) as string[])) {
+      try {
+        let d: FileSystemDirectoryHandle = cofre;
+        for (const n of c.slice(0, -1)) d = await subpasta(d, n, false);
+        const n = c[c.length - 1];
+        await d.removeEntry(nomeSeguro(n)).catch(() => d.removeEntry(semAcentos(nomeSeguro(n))));
+      } catch {
+        /* já não existia ou tem arquivos de fora do cofre */
       }
     }
     // pastas excluídas ou renomeadas no cofre: apaga do disco (as mais fundas primeiro). Sem
