@@ -770,7 +770,10 @@ function pedirTexto(titulo: string, rotulo: string, valor: string, ok: (v: strin
   ]);
   const inp = corpo.querySelector("#pt-v") as HTMLInputElement;
   inp.select();
-  inp.onkeydown = (e) => e.key === "Enter" && (corpo.closest(".wj-janela")!.querySelector<HTMLElement>("footer button:last-child")!.click());
+  // corpo com chaves: "&&" devolveria false nas outras teclas, e um on… que devolve false cancela a tecla
+  inp.onkeydown = (e) => {
+    if (e.key === "Enter") corpo.closest(".wj-janela")!.querySelector<HTMLElement>("footer button:last-child")!.click();
+  };
 }
 
 function novaPasta(pai = pastaAtual()) {
@@ -995,6 +998,8 @@ document.addEventListener("keydown", (e) => {
   const a = arquivoSel();
   if (e.key === "Delete" && a) void (a.lixeira ? destruir(a) : excluirArquivo(a));
   else if (e.key === "Delete" && sel?.tipo === "pasta") void excluirPasta(sel.id);
+  else if (e.key === "F2" && sel?.tipo === "pasta") renomearPasta(sel.id);
+  else if (e.key === "F2" && !sel && local.tipo === "pasta" && local.id !== RAIZ) renomearPasta(local.id); // pasta aberta na árvore
   else if (e.key === "F2" && a) renomearArquivo(a);
   else if (e.key === "Enter" && a) void (APPS[extensao(a.nome)] ? abrirNoApp(a) : obter(a));
   else return;
