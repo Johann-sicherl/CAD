@@ -25,8 +25,18 @@ Face simples do WJProMaster, pedida pelo Johann em 29/10/2026. Página `tarefas/
 2. **Serviço online de escrita à mão do Google** (os traços vão para o Google e o texto volta). Precisa
    de internet; pode ser desligado em Configurações. É um serviço público sem contrato: se o Google
    mudar ou desligar, o app avisa e o campo de texto continua valendo.
-3. Sem nenhum dos dois: escrever direto no campo com a **S Pen para texto** do Galaxy Tab (recurso do
-   próprio tablet, sem internet) ou digitar.
+3. **Escrita do tablet** (botão na janela da tarefa; entra sozinha quando não há internet nem
+   reconhecedor próprio): a área de escrita do app some e o campo fica grande para escrever nele com a
+   **S Pen para texto** do Galaxy Tab (ou a escrita à mão do teclado do Android com o pacote de idioma
+   baixado), que transcreve **no próprio tablet, sem internet**. A escolha fica lembrada.
+
+Reconhecimento offline dentro do app (modelo embutido) foi avaliado e descartado por ora: os modelos
+abertos para escrita cursiva em português são grandes (dezenas a centenas de MB) e erram muito; o
+reconhecedor do próprio tablet é melhor e já está no aparelho.
+
+**Teclado físico** (capa com teclado, Bluetooth, computador): o app percebe a primeira tecla real e,
+daí em diante, a janela da tarefa abre com o campo pronto para digitar (Enter = OK, Shift+Enter =
+nova linha). Mesmo antes disso, uma tecla digitada com a janela aberta vai para o campo.
 
 ## Dados e cópias
 
