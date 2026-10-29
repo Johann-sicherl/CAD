@@ -81,6 +81,11 @@ recente vence na sincronia); excluídos viram registros da tabela `exclusoes`.
 
 - **Contém / Onde é usado** (WJPDM, aba Referências do arquivo): lê `referencias` nos dois
   sentidos (montagem → peças; peça → montagens e desenhos que a usam).
+- **Estrutura para o WJERP**: ao "Importar do WJPDM", o item ligado a um arquivo de montagem que
+  não tem lista de materiais manual recebe a estrutura das `referencias` (itens ligados às peças,
+  com as quantidades; peça sem item ligado fica de fora com aviso) — `bomDasReferencias`.
+- **Desenho de montagem** atualiza ao abrir também as peças da montagem que mudaram no cofre
+  (sem precisar abrir e salvar a montagem antes).
 - As referências de um arquivo são trocadas inteiras a cada salvar dele (o que saiu da montagem
   vira exclusão). Arquivos "só no dispositivo" não levam as referências para o pendrive/Drive
   até o GO-IN.

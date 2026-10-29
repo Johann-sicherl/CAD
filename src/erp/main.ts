@@ -8,6 +8,7 @@ import { $, baixar, Casca, el, escapar, janela, registrarOffline, salvarArquivo 
 import { Armazem } from "../comum/armazem";
 import { IC, type NomeIc } from "../comum/icones";
 import { calcularEstoque, mrp, parcelas, proximoNumero, saldoDe, type ItemErp, type Movimento, type Sugestao } from "./regras";
+import { bomDasReferencias, type Arquivo, type ReferenciaArquivo } from "../pdm/regras";
 
 type Reg = Record<string, unknown> & { id: string };
 type TipoCampo = "texto" | "numero" | "moeda" | "data" | "lista" | "ref" | "area";
@@ -936,6 +937,9 @@ async function importarDoPDM() {
   }
   const its = await pdm.todos<{ id: string; codigo: string; descricao: string; tipo: string; unidade: string; material?: string; bom: { item: string; qtd: number }[] }>("itens");
   if (!its.length) return casca.avisar("O cofre do WJPDM neste aparelho não tem itens (cadastre em WJPDM → Itens).", 6000);
+  // estrutura das montagens do WJCAD (tabela de referências): vale para o item sem lista manual
+  const { bom: daMontagem, semItem } = bomDasReferencias(await pdm.todos<Arquivo>("arquivos"), await pdm.todos<ReferenciaArquivo>("referencias").catch(() => []));
+  for (const p of its) if (!p.bom.length && daMontagem.has(p.id)) p.bom = daMontagem.get(p.id)!;
   const mapa = new Map<string, Reg>();
   let novos = 0, atualizados = 0;
   for (const p of its) {
@@ -950,7 +954,7 @@ async function importarDoPDM() {
     if (p.bom.length) r.linhas = p.bom.filter((l) => mapa.has(l.item)).map((l) => ({ id: uid(), item: mapa.get(l.item)!.id, qtd: l.qtd }));
     await gravar("itens", r);
   }
-  casca.avisar(`WJPDM: ${novos} item(ns) novo(s), ${atualizados} atualizado(s) (descrição, unidade e estrutura).`, 6000);
+  casca.avisar(`WJPDM: ${novos} item(ns) novo(s), ${atualizados} atualizado(s) (descrição, unidade e estrutura).${semItem ? ` ${semItem} peça(s) de montagem sem item no cofre ficaram fora da estrutura (ligue o item no cartão do arquivo).` : ""}`, 8000);
   tela = { tipo: "lista", ent: "itens" };
   renderizar();
 }

@@ -8,7 +8,7 @@ import { ICONES, type NomeIcone } from "../icones";
 import { ClienteKernel, type ResultadoComponente } from "../kernel/cliente";
 import type { Corte, Projecao } from "../kernel/projecao";
 import { ehBaseChapa, MATERIAIS, validarDocumento, type Documento } from "../model";
-import { aplicarPonto, marcaDe, posesExplodidas, quantidades, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
+import { aplicarPonto, embutirPeca, marcaDe, posesExplodidas, quantidades, validarMontagem, type DocumentoMontagem } from "../montagem/modelo";
 import {
   desenhoCota, entidadeSob, gerarDxf, medida, posicionarBaloes, reencontrar, segmentos, type Balao, type Cota, type EntCota, type EntDxf,
 } from "./anotacoes";
@@ -132,7 +132,7 @@ const errosProj = new Map<string, string>();
 const tolDe = (escala: number) => Number(Math.min(5, Math.max(0.01, 0.15 / escala)).toPrecision(2));
 const v3 = (v: number[]) => v.map((x) => x.toFixed(4)).join(",");
 const chaveProj = (m: ModeloDesenho, c: Camera, escala: number, o: OpcoesProj = {}) =>
-  `${m.id}:${m.marca ?? ""}|${v3(c.olho)}|${v3(c.direita)}|${tolDe(escala)}${o.corte ? `|c${v3(o.corte.p)}` : ""}${o.explodida ? `|x${marcaDe(JSON.stringify((m.doc as DocumentoMontagem).explosao ?? []))}` : ""}${o.planificada ? "|p" : ""}`;
+  `${m.id}:${m.marca ?? ""}${m.tipo === "montagem" ? `:${marcaDe((m.doc as DocumentoMontagem).pecas.map((p) => p.marca ?? p.id).join())}` : ""}|${v3(c.olho)}|${v3(c.direita)}|${tolDe(escala)}${o.corte ? `|c${v3(o.corte.p)}` : ""}${o.explodida ? `|x${marcaDe(JSON.stringify((m.doc as DocumentoMontagem).explosao ?? []))}` : ""}${o.planificada ? "|p" : ""}`;
 const chaveDaVista = (f: Folha, v: VistaDesenho, m: ModeloDesenho) => chaveProj(m, v.camera, escalaDaVista(f, v), opcoesDa(v));
 
 /** Sólidos das peças no kernel (uma vez por chave). */
@@ -2519,6 +2519,25 @@ async function atualizarDoCofre() {
       }
     } catch {
       /* conteúdo inválido no cofre: fica a cópia embutida */
+    }
+  }
+  // peças das montagens: a versão do cofre entra mesmo sem a montagem ter sido salva de novo
+  for (const m of doc.modelos) {
+    if (m.tipo !== "montagem") continue;
+    const a = m.doc as DocumentoMontagem;
+    for (const p of [...a.pecas]) {
+      if (!p.arquivo) continue;
+      const r = await lerDoCofre(p.arquivo).catch(() => null);
+      if (!r) continue;
+      try {
+        const nova = validarDocumento(JSON.parse(r.texto));
+        if (marcaDe(`${JSON.stringify(nova.features)}|${nova.material ?? ""}`) !== p.marca) {
+          embutirPeca(a, nova, { arquivo: p.arquivo, versao: r.versao });
+          mudaram.push(p.nome);
+        }
+      } catch {
+        /* peça inválida no cofre: fica a embutida */
+      }
     }
   }
   if (mudaram.length) {

@@ -1,7 +1,7 @@
 // Teste das regras do cofre do WJPDM em Node.
 import {
   aplicarTransicao, bloqueioDaTransicao, bloqueioDoCheckout, copiaDoFluxo, estadoDe, explodirBOM, FLUXO_PADRAO, fluxoAtual, nomeLivre, ondeEUsado,
-  proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, trocarReferencias, usarFluxo, validarFluxo, type Arquivo, type Item,
+  proximaRevisao, proximaRevisaoNoEsquema, proximoCodigo, transicoesDe, trocarReferencias, bomDasReferencias, usarFluxo, validarFluxo, type Arquivo, type Item,
 } from "../src/pdm/regras";
 
 let falhas = 0;
@@ -110,6 +110,16 @@ igual("explosão", Array.isArray(ex) ? ex.map((l) => `${l.nivel}:${l.item.codigo
 igual("onde é usado", ondeEUsado(itens, "paraf").map((x) => `${x.nivel}:${x.item.codigo}`).join(" "), "1:10-0001 1:11-0001");
 itens[2].bom.push({ item: "conj", qtd: 1 });
 igual("ciclo na lista", typeof explodirBOM(itens, "conj"), "string");
+
+// estrutura das montagens (tabela de referências) para o WJERP
+{
+  const arq = (id: string, item?: string, lixeira = false) => ({ id, nome: id, pasta: "raiz", versoes: [], revisao: "", estado: "desenvolvimento", cartao: {}, historico: [], ...(item ? { item } : {}), ...(lixeira ? { lixeira } : {}) }) as unknown as Arquivo;
+  const ref = (pai: string, filho: string, quantidade: number, tipo: "componente" | "desenho" = "componente") => ({ id: `${pai}>${filho}>`, pai, filho, tipo, quantidade });
+  const r = bomDasReferencias([arq("M", "itM"), arq("A", "itA"), arq("B", "itB"), arq("C"), arq("D", "itD"), arq("Z", "itZ", true)],
+    [ref("M", "A", 2), ref("M", "B", 4), ref("M", "C", 1), ref("D", "M", 1, "desenho"), ref("Z", "A", 1)]);
+  igual("estrutura da montagem: A×2, B×4", r.bom.get("itM"), [{ item: "itA", qtd: 2 }, { item: "itB", qtd: 4 }]);
+  igual("peça sem item fica de fora (avisa); desenho e lixeira não contam", [r.semItem, r.bom.has("itD"), r.bom.has("itZ")], [1, false, false]);
+}
 
 console.log(falhas ? `\npdm: ${falhas} falha(s)` : "\npdm: tudo certo");
 if (falhas) process.exit(1);

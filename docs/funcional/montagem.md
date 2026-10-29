@@ -219,7 +219,9 @@ canto ✓/✕ e menu do botão direito/toque longo da peça. Novo → Montagem n
   **Onde é usado** ✅ com M-A.
 - **GO-IN da montagem** avisa quando há componentes em GO-OUT (alterados e ainda não publicados)
   e oferece o GO-IN deles junto — M-D.
-- **WJERP**: a lista de materiais vira a estrutura (BOM) do item da montagem — M-C.
+- **WJERP**: a lista de materiais vira a estrutura (BOM) do item da montagem — ✅ (Importar do
+  WJPDM, pela tabela de referências; o item da montagem e os das peças precisam estar ligados aos
+  arquivos no cartão).
 
 ## 6. Atalhos (computador)
 
