@@ -4,6 +4,8 @@
 import type { Feature, Referencia } from "../model";
 import type { PedidoKernel, RespostaKernel } from "./worker";
 import type { ResultadoRegeneracao } from "./regenerar";
+import type { Projecao } from "./projecao";
+import type { Camera, Orientacao } from "../desenho/modelo";
 import type { ResumoPlanificado } from "./dxf";
 import type { PropriedadesMassa, ResultadoMedida, ResultadoVerificacao } from "./avaliar";
 
@@ -77,6 +79,10 @@ export class ClienteKernel {
   }
   verificar() {
     return this.pedir<ResultadoVerificacao>({ tipo: "verificar" });
+  }
+  /** Vista de desenho: projeção dos sólidos (chaves de `componente`) em suas posições. */
+  projetar(itens: { chave: string; t: { pos: [number, number, number]; rot: [number, number, number, number] } }[], orientacao: Orientacao | Camera, tol = 0.2) {
+    return this.pedir<Projecao>({ tipo: "projetar", itens, orientacao, tol });
   }
   /** Regenera a peça de um componente (montagem/desenho); o sólido fica guardado no kernel pela chave. */
   componente(chave: string, features: Feature[]) {

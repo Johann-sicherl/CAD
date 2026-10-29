@@ -983,3 +983,39 @@ textarea.campo-texto { width: 100%; box-sizing: border-box; font: 14px/1.4 ui-mo
 body.disp-computador .pc-tipo { min-height: 36px; }
 .btn-voltar { width: auto !important; padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; color: var(--acento); border: 1px solid var(--acento); border-radius: 8px; }
 .btn-voltar span { font-size: 13px; }
+
+/* desenho: folha (SVG em mm) sobre a área cinza */
+.viewport-folha { background: #c9d0d8; overflow: hidden; }
+.viewport-folha svg { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+#folha .sombra { fill: rgba(0, 0, 0, 0.18); }
+#folha .papel { fill: #fff; }
+#folha .l-moldura { stroke: #111; stroke-width: var(--lm); fill: none; }
+#folha .l-media { stroke: #111; stroke-width: var(--lv); }
+#folha .l-fina { stroke: #333; stroke-width: var(--lf); }
+#folha text { font-family: "Helvetica", "Arial", sans-serif; fill: #111; }
+#folha .t-rot { fill: #555; }
+#folha .t-aviso { fill: #b0392b; }
+#folha .v-vis { fill: none; stroke: #111; stroke-linecap: round; stroke-linejoin: round; }
+#folha .v-oc { fill: none; stroke: #444; }
+#folha .v-centro { fill: none; stroke: #555; }
+#folha .v-alvo { fill: transparent; stroke: none; pointer-events: all; cursor: move; }
+#folha .vista:hover .v-vis { stroke: #1d63c9; }
+#folha .vista.sel .v-vis, #folha .vista.sel .v-oc { stroke: #1d63c9; }
+#folha .moldura-sel { fill: none; stroke: #1d63c9; stroke-width: var(--lf); stroke-dasharray: 2 1.2; pointer-events: none; }
+#folha .nota { cursor: move; }
+#folha .nota.sel { fill: #1d63c9; }
+.abas-folhas { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; max-width: calc(100% - 16px); overflow-x: auto; z-index: 3; }
+.aba-folha { min-height: 36px; padding: 0 14px; border: 1px solid var(--linha); border-radius: 8px; background: var(--painel); font-size: 13px; }
+.aba-folha[aria-selected="true"] { border-color: var(--acento); color: var(--acento); font-weight: 600; }
+.aba-folha.mais { min-width: 40px; padding: 0; font-size: 18px; }
+.campo > span { font-size: 13px; color: var(--texto-2); }
+.campo input, .campo textarea, .pc-caixa-corpo textarea { min-height: 40px; padding: 6px 10px; border: 1px solid var(--linha); border-radius: 8px; font: inherit; background: #fff; width: 100%; }
+.pc-caixa-corpo textarea { resize: vertical; }
+.opcao { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 14px; }
+.opcao input { width: 20px; height: 20px; accent-color: var(--acento); }
+.pc-escolhido { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
+.pc-escolhido svg { width: 28px; height: 28px; color: var(--acento); }
+.pc-escolhido span { display: grid; min-width: 0; }
+.pc-escolhido small { color: var(--texto-2); }
+.pc-escolhido button { grid-column: 1 / -1; }
+.arvore .com-erro strong { color: #b0392b; }

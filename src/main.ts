@@ -3445,6 +3445,10 @@ const ACOES: Record<string, { rotulo: string; icone: NomeIcone; fazer: () => voi
   step: { rotulo: "Exportar STEP", icone: "exportar", fazer: () => exportar("step") },
   stl: { rotulo: "Exportar STL", icone: "exportar", fazer: () => exportar("stl") },
   fluxo: { rotulo: "Abrir no WJFlow (escoamento de ar)", icone: "exportar", fazer: () => void abrirNoWJFlow() },
+  desenho: { rotulo: "Criar desenho desta peça", icone: "desenho", fazer: () => {
+    salvarAutosave();
+    location.href = new URL(`${import.meta.env.BASE_URL}cad/desenho/#de-peca`, location.href).href;
+  } },
   equacoes: { rotulo: "Equações…", icone: "equacoes", fazer: abrirEquacoes },
   material: { rotulo: "Material…", icone: "materialPeca", fazer: () => escolherMaterial($("btn-menu")) },
   cotas: { rotulo: "Exibir todas as cotas", icone: "cota", fazer: () => (recursoComCotas === TODAS_AS_COTAS ? fecharCotasNoModelo() : mostrarTodasAsCotas()) },
@@ -3529,6 +3533,7 @@ function mostrarAtalhos() {
 const AMBIENTES = [
   { id: "peca", rotulo: "Peça", descricao: "Sólido 3D a partir de esboços e recursos", icone: "peca" as NomeIcone },
   { id: "montagem", rotulo: "Montagem", descricao: "Peças posicionadas entre si (componentes e posicionamentos)", icone: "montagem" as NomeIcone },
+  { id: "desenho", rotulo: "Desenho", descricao: "Folha ABNT com vistas da peça ou montagem, legenda e PDF", icone: "desenho" as NomeIcone },
 ];
 let contadorPecas = 0;
 
@@ -3933,7 +3938,7 @@ if (location.hash === "#abrir-autosave") {
   d.nome = `Peça${++contadorPecas}`;
   abrirDocumento(d);
 }
-// peça aberta a partir de uma montagem: botão para voltar a ela
+// peça aberta a partir de uma montagem ou de um desenho: botão para voltar (o mais recente primeiro)
 if (sessionStorage.getItem("wjcad:voltarMontagem")) {
   const b = document.createElement("button");
   b.className = "btn-ic btn-voltar";
@@ -3943,6 +3948,13 @@ if (sessionStorage.getItem("wjcad:voltarMontagem")) {
     sessionStorage.removeItem("wjcad:voltarMontagem");
     location.href = new URL(`${import.meta.env.BASE_URL}cad/montagem/#abrir-autosave`, location.href).href;
   };
+  document.querySelector(".rapidas")?.prepend(b);
+} else if (sessionStorage.getItem("wjcad:voltarDesenho")) {
+  const b = document.createElement("button");
+  b.className = "btn-ic btn-voltar";
+  b.title = "Voltar ao desenho (salve a peça antes: as vistas se atualizam do cofre)";
+  b.innerHTML = `${ICONES.desenho}<span>Desenho</span>`;
+  b.onclick = () => (location.href = new URL(`${import.meta.env.BASE_URL}cad/desenho/#abrir-autosave`, location.href).href);
   document.querySelector(".rapidas")?.prepend(b);
 }
 mostrarPainel("arvore");

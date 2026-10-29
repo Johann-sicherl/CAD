@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <title>Desenho — WJCAD</title>
+  </head>
+  <body class="ambiente-desenho">
+    <!-- mesma estrutura da peça e da montagem; no lugar do viewport 3D, a folha (SVG em mm) -->
+    <header class="barra-topo">
+      <button id="btn-lateral" class="btn-ic" title="Árvore / painel do comando" data-requer-doc></button>
+      <a class="marca" href="../../" title="Voltar ao WJProMaster"><img src="/icone.svg" alt="" class="logo" /> WJCAD</a>
+      <div class="menu-wrap">
+        <button id="btn-menu" class="btn-ic" aria-haspopup="true" aria-expanded="false" title="Menu"></button>
+        <div id="menu-arquivo" class="menu" role="menu" hidden></div>
+      </div>
+      <div id="rapidas" class="rapidas"></div>
+      <input id="nome-doc" class="nome-doc" aria-label="Nome do desenho" data-requer-doc />
+    </header>
+
+    <nav class="comandos" data-requer-doc>
+      <div id="faixa-comandos" class="faixa-comandos" role="toolbar"></div>
+      <div id="abas" class="abas" role="tablist"></div>
+    </nav>
+
+    <main class="area">
+      <aside class="lateral" aria-label="Árvore do desenho" data-requer-doc>
+        <ol id="arvore" class="arvore"></ol>
+        <div id="painel-comando" class="painel-comando" hidden></div>
+      </aside>
+
+      <section class="viewport-wrap">
+        <div id="viewport" class="viewport viewport-folha"><svg id="folha" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg></div>
+        <div id="abas-folhas" class="abas-folhas" role="tablist" aria-label="Folhas"></div>
+        <div id="barra-vistas" class="barra-vistas" role="toolbar" aria-label="Vistas"></div>
+        <div id="canto-confirmacao" class="canto-confirmacao" hidden>
+          <button id="cc-ok" title="OK (Enter)">✓</button>
+          <button id="cc-cancelar" title="Cancelar (Esc)">✕</button>
+        </div>
+        <div id="barra-contexto" class="barra-contexto" hidden></div>
+        <div id="janela" class="janela" hidden>
+          <header><strong id="janela-titulo"></strong><button id="janela-fechar" class="btn-ic" title="Fechar">✕</button></header>
+          <div id="janela-corpo"></div>
+        </div>
+        <div id="carregando" class="carregando">Carregando o núcleo geométrico…</div>
+        <div id="aviso" class="aviso" role="status" hidden></div>
+      </section>
+      <section id="tela-inicial" class="tela-inicial" hidden>
+        <div class="tela-inicial-acoes">
+          <button id="ti-novo" class="destaque"></button>
+          <button id="ti-abrir"></button>
+        </div>
+        <div id="ti-recentes" class="tela-inicial-recentes"></div>
+      </section>
+    </main>
+
+    <footer class="status">
+      <span id="st-estado" class="st-estado">Desenho</span>
+      <span id="st-kernel">Kernel: iniciando</span>
+      <span id="st-info"></span>
+      <span class="st-dir" title="Norma e unidade">ABNT · mm</span>
+    </footer>
+
+    <input type="file" id="arquivo" hidden />
+    <script type="module" src="/src/desenho/main.ts"></script>
+  </body>
+</html>
